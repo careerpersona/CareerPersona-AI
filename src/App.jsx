@@ -27,6 +27,7 @@ async function askClaude(prompt, maxTokens = 2500) {
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
   });
   const data = await res.json();
+  if (data.error) throw new Error(data.error.message || "API error");
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
 }
 
@@ -81,7 +82,7 @@ function Input({ label, ...props }) {
 }
 
 function Textarea({ label, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<textarea style={{ width: "100%", minHeight: 200, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }} {...props} /></div>;
+  return <div>{label && <Label>{label}</Label>}<textarea style={{ width: "100%", minHeight: 200, background: "white", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }} {...props} /></div>;
 }
 
 function Select({ label, children, ...props }) {
@@ -1086,7 +1087,10 @@ export default function App() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         input:focus, textarea:focus, select:focus { border-color: ${C.purple} !important; box-shadow: 0 0 0 3px ${C.purple}15 !important; }
         ::placeholder { color: ${C.textMuted}; opacity: 0.55; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        textarea { background: white !important; color: #0F172A !important; border-color: #E2E8F0 !important; }
+        input:not([type=checkbox]) { background: white !important; color: #0F172A !important; }
+        select { background: white !important; color: #0F172A !important; }
+        @keyframes spin { to { transform: rotate(360deg); } } textarea { background: white !important; color: #0F172A !important; } input[type=text], input[type=email], input[type=password], input[type=number] { background: white !important; color: #0F172A !important; }
         button:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
         button:active:not(:disabled) { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
