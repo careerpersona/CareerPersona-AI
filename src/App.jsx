@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 
 const C = {
-  bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
+  bg: "#FFFFFF", bgSoft: "#FFFFFF", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
   purple: "#6B21E8", purpleLight: "#F3EEFF", purpleMid: "#9B59F5", text: "#0F172A", textMid: "#334155",
   textMuted: "#64748B", green: "#059669", greenLight: "#ECFDF5", red: "#DC2626", redLight: "#FEF2F2",
   yellow: "#D97706", yellowLight: "#FFFBEB", blue: "#2563EB", blueLight: "#EFF6FF",
@@ -1128,4 +1128,5 @@ export default function App() {
     </div>
   );
 }
+
 
