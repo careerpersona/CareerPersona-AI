@@ -65,7 +65,7 @@ function AppName({ size = 18, onClick }) {
 
 function Btn({ children, onClick, variant = "primary", disabled, style = {} }) {
   const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 7, transition: "all 0.15s", ...style };
-  const variants = { primary: { background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff" }, secondary: { background: C.bgSoft, color: C.textMid, border: `1px solid ${C.border}` }, green: { background: C.green, color: "#fff" }, ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` }, danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}40` }, blue: { background: C.blue, color: "#fff" } };
+  const variants = { primary: { background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff" }, secondary: { background: "#ffffff", color: C.textMid, border: `1px solid ${C.border}` }, green: { background: C.green, color: "#fff" }, ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` }, danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}40` }, blue: { background: C.blue, color: "#fff" } };
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
@@ -142,7 +142,7 @@ function CopyBtn({ text, label = "Copy" }) {
 
 function ContentDisplay({ content }) {
   return (
-    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", fontSize: 14, lineHeight: 1.85, color: C.text, whiteSpace: "pre-wrap", maxHeight: 420, overflowY: "auto", fontFamily: "inherit" }}>
+    <div style={{ background: "#ffffff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", fontSize: 14, lineHeight: 1.85, color: C.text, whiteSpace: "pre-wrap", maxHeight: 420, overflowY: "auto", fontFamily: "inherit" }}>
       {content}
     </div>
   );
@@ -165,7 +165,7 @@ function AuthPage({ onLogin }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ minHeight: "100vh", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Logo size={56} /></div>
@@ -173,7 +173,7 @@ function AuthPage({ onLogin }) {
           <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>Your AI-powered career platform</div>
         </div>
         <Card>
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 22 }}>
+          <div style={{ display: "flex", gap: 3, background: "#ffffff", borderRadius: 10, padding: 3, marginBottom: 22 }}>
             {["login","signup"].map(m => <button key={m} style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? "Sign In" : "Sign Up"}</button>)}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -368,7 +368,7 @@ JOB DESCRIPTION: ${jobDesc}`, 3500);
           </div>
 
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 3, background: "#ffffff", borderRadius: 10, padding: 3, marginBottom: 20 }}>
             {[["resume","✨ Tailored Resume"],["suggestions","💡 Improvement Tips"],["cover","📄 Cover Letter"]].map(([id, lbl]) => (
               <button key={id} style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</button>
             ))}
@@ -387,7 +387,7 @@ JOB DESCRIPTION: ${jobDesc}`, 3500);
           {tab === "suggestions" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {results.suggestions?.map((s, i) => (
-                <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <div key={i} style={{ background: "#ffffff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 20 }}>{"🎯📝💼🔧⚡"[i]}</span>
                   <span style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{s}</span>
                 </div>
@@ -622,7 +622,7 @@ Q: ${activeQ.question}\nA: ${answer}`, 1500);
 
             {/* Answer Examples */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 3, background: "#ffffff", borderRadius: 10, padding: 3, marginBottom: 14 }}>
                 {[["strong","💪 Strong Answer"],["weak","❌ Weak Answer"],["ai","✨ AI Recommended"]].map(([id, lbl]) => (
                   <button key={id} style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: answerTab === id ? "#fff" : "transparent", color: answerTab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }} onClick={() => setAnswerTab(id)}>{lbl}</button>
                 ))}
@@ -885,7 +885,7 @@ Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"
       {loading && <Spinner steps={["Personalizing messages…","Writing LinkedIn outreach…","Crafting email…","Adding icebreakers…"]} currentStep={1} />}
       {results && (
         <div>
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 3, background: "#ffffff", borderRadius: 10, padding: 3, marginBottom: 20 }}>
             {[["linkedin","💼 LinkedIn"],["email","📧 Email"],["followup","🔁 Follow-up"],["tips","💡 Tips"]].map(([id, lbl]) => (
               <button key={id} style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</button>
             ))}
@@ -911,7 +911,7 @@ Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"
             <Card>
               <div style={{ marginBottom: 16 }}>
                 <Label>SUBJECT LINE</Label>
-                <div style={{ background: C.bgSoft, borderRadius: 9, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ background: "#ffffff", borderRadius: 9, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{results.email.subject}</span>
                   <CopyBtn text={results.email.subject} label="Copy" />
                 </div>
@@ -930,7 +930,7 @@ Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"
               <div style={{ marginTop: 20 }}>
                 <Label>💬 CONVERSATION ICEBREAKERS</Label>
                 {results.icebreakers?.map((ic, i) => (
-                  <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div key={i} style={{ background: "#ffffff", borderRadius: 10, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 10, alignItems: "flex-start" }}>
                     <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0 }}>{i+1}.</span>
                     <span style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>{ic}</span>
                   </div>
@@ -1081,7 +1081,7 @@ export default function App() {
   if (!user) return <AuthPage onLogin={handleLogin} />;
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
+    <div style={{ minHeight: "100vh", background: "#ffffff", fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1103,7 +1103,7 @@ export default function App() {
           <Logo size={36} />
           <AppName size={18} />
         </div>
-        <nav style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px", overflowX: "auto" }}>
+        <nav style={{ display: "flex", gap: 2, background: "#ffffff", borderRadius: 11, padding: "3px", overflowX: "auto" }}>
           {nav.map(n => (
             <button key={n.id} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none", transition: "all 0.15s" }} onClick={() => setPage(n.id)}>
               <span>{n.icon}</span><span className="nav-label">{n.label}</span>
@@ -1128,3 +1128,4 @@ export default function App() {
     </div>
   );
 }
+
