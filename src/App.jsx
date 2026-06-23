@@ -21,7 +21,7 @@ const useAuth = () => {
 };
 
 async function askClaude(prompt, maxTokens = 2500) {
-  const res = await fetch("/api/claude", {
+  const res = await fetch("https://proxy.dawn-voice-2790.workers.dev", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
@@ -1128,4 +1128,5 @@ export default function App() {
     </div>
   );
 }
+
 
