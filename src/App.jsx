@@ -582,7 +582,7 @@ Q: ${activeQ.question}\nA: ${answer}`, 1500);
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
       {!questions.length && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
-          <Card><Textarea label="Job Description *" placeholder="Paste the job description to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 160 }} /></Card>
+          <Card><Textarea label="Job Description *" placeholder="Paste the job description to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 260 }} /></Card>
           <div style={{ display: "flex", gap: 10 }}><Btn onClick={generate} disabled={!jobDesc.trim()} style={{ padding: "13px 28px" }}>🎤 Generate 12 Questions</Btn><Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn></div>
         </div>
       )}
@@ -635,7 +635,7 @@ Q: ${activeQ.question}\nA: ${answer}`, 1500);
             {/* Practice */}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>🎯 Practice Your Answer</div>
-              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 130, marginBottom: 12 }} />
+              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 260, marginBottom: 12 }} />
               <Btn onClick={getFeedback} disabled={!answer.trim() || fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
             </div>
 
@@ -700,7 +700,7 @@ function TrackerPage({ applications, setApplications }) {
             <Input label="Contact Email" placeholder="recruiter@company.com" value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
             <div style={{ gridColumn: "1 / -1" }}><Input label="Job URL" placeholder="https://linkedin.com/jobs/…" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
-          <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 90 }} /></div>
+          <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 260 }} /></div>
           <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>💾 Save Application</Btn><Btn variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Btn></div>
         </Card>
       )}
@@ -876,8 +876,8 @@ Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"
           <Input label="Their Role" placeholder="Engineering Manager" value={form.targetRole} onChange={e => setForm(f => ({ ...f, targetRole: e.target.value }))} />
           <Input label="Company *" placeholder="Stripe, Google, Amazon…" value={form.targetCompany} onChange={e => setForm(f => ({ ...f, targetCompany: e.target.value }))} />
           <Select label="Purpose" value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>{purposes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</Select>
-          <div style={{ gridColumn: "1 / -1" }}><Textarea label="Your Background *" placeholder="e.g. 4-year software engineer with React experience at a fintech startup, currently exploring senior roles at larger companies…" value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 90 }} /></div>
-          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 90 }} /></div>}
+          <div style={{ gridColumn: "1 / -1" }}><Textarea label="Your Background *" placeholder="e.g. 4-year software engineer with React experience at a fintech startup, currently exploring senior roles at larger companies…" value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 260 }} /></div>
+          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 260 }} /></div>}
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <Btn onClick={generate} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
@@ -1128,3 +1128,4 @@ export default function App() {
     </div>
   );
 }
+
