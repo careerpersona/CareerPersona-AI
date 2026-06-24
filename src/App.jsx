@@ -822,6 +822,7 @@ function InterviewPage() {
   const [mockIdx, setMockIdx] = useState(0);
   const [mockAnswers, setMockAnswers] = useState({}); // {qId: {answer, feedback}}
   const [mockSummary, setMockSummary] = useState(null);
+  const [mockAnswerDraft, setMockAnswerDraft] = useState("");
   const [mockLoading, setMockLoading] = useState(false);
   const [answerTab, setAnswerTab] = useState("strong");
   const [restored, setRestored] = useState(false);
@@ -841,6 +842,10 @@ function InterviewPage() {
           setSavedFeedback(s.savedFeedback || {});
           setMockAnswers(s.mockAnswers || {});
           setMockSummary(s.mockSummary || null);
+          setMode(s.mode || "browse");
+          setMockIdx(s.mockIdx || 0);
+          setMockAnswerDraft(s.mockAnswerDraft || "");
+          setActiveQ(s.activeQ || null);
           setRestored(true);
         }
       }
@@ -853,9 +858,10 @@ function InterviewPage() {
     try {
       localStorage.setItem(INTERVIEW_STORAGE_KEY, JSON.stringify({
         questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary,
+        mode, mockIdx, mockAnswerDraft, activeQ,
       }));
     } catch { /* quota or disabled — non-fatal */ }
-  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary]);
+  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ]);
 
   const clearSession = () => {
     try { localStorage.removeItem(INTERVIEW_STORAGE_KEY); } catch {}
@@ -974,7 +980,6 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
   // ── Mock interview mode ──
   const startMock = () => { setMode("mock"); setMockIdx(0); setMockSummary(null); setError(""); };
   const mockQuestions = questions;
-  const [mockAnswerDraft, setMockAnswerDraft] = useState("");
 
   const submitMockAnswer = async () => {
     if (!mockAnswerDraft.trim()) return;
@@ -1598,7 +1603,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useStorage("cp_apps", []);
   const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
-  const [page, setPage] = useState("resume");
+  const [page, setPage] = useStorage("cp_active_page", "resume");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogin = (u) => { login(u); setProfile(u); };
