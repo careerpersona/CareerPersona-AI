@@ -1409,19 +1409,42 @@ function TrackerPage({ applications, setApplications }) {
 
 // ─── SALARY PAGE ───────────────────────────────────────────
 function SalaryPage() {
-  const [form, setForm] = useState({ jobTitle: "", location: "", experience: "", skills: "", company: "" });
-  const [loading, setLoading] = useState(false); const [results, setResults] = useState(null); const [error, setError] = useState("");
-  const fmt = n => n ? `$${Number(n).toLocaleString()}` : "—";
+  const [form, setForm] = useStorage("cp_salary_form", { jobTitle: "", location: "", experience: "", skills: "", company: "" });
+  const [results, setResults] = useStorage("cp_salary_results", null);
+  const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+  const fmt = n => (n !== undefined && n !== null && n !== "" && !isNaN(Number(n))) ? `$${Number(n).toLocaleString()}` : "—";
+  const txt = (v, fallback = "—") => (v !== undefined && v !== null && String(v).trim() !== "") ? v : fallback;
+
+  // Safe JSON parse with truncation recovery (same approach as Interview page)
+  const safeParse = (raw) => {
+    try { return JSON.parse(raw); }
+    catch {
+      const start = raw.indexOf("{") >= 0 ? raw.indexOf("{") : raw.indexOf("[");
+      const end = raw.lastIndexOf("}") >= 0 ? raw.lastIndexOf("}") : raw.lastIndexOf("]");
+      if (start >= 0 && end > start) {
+        try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+      }
+      return null;
+    }
+  };
 
   const analyze = async () => {
     if (!form.jobTitle || !form.location) { setError("Job title and location are required."); return; }
     setError(""); setLoading(true); setResults(null);
     try {
-      const raw = await askClaude(`2026 salary data. Return ONLY JSON:
+      const companyBlock = form.company ? `, company type: ${form.company}` : "";
+      const raw = await askClaude(`2026 salary data. Return ONLY JSON, no markdown:
 {"salaryRange":{"low":<n>,"median":<n>,"high":<n>},"totalComp":{"median":<n>},"equityRange":"<range>","bonusRange":"<range>","topPayingCompanies":[{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"}],"salaryByExperience":[{"level":"Entry","salary":<n>},{"level":"Mid","salary":<n>},{"level":"Senior","salary":<n>}],"negotiationTips":["<t1>","<t2>","<t3>"],"marketOutlook":"<2 sentence outlook>","skillPremiums":[{"skill":"<s>","premium":"<p>"},{"skill":"<s>","premium":"<p>"}],"benchmarkInsight":"<1 sentence>","demandLevel":"<High|Medium|Low>","jobOpenings":"<estimate>"}
-${form.jobTitle} in ${form.location}, ${form.experience} exp, skills: ${form.skills}`, 1500);
-      setResults(JSON.parse(raw));
-    } catch { setError("Failed to get salary data. Please try again."); } finally { setLoading(false); }
+${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: ${form.skills || "general"}${companyBlock}`, 2500);
+      const parsed = safeParse(raw);
+      if (!parsed || !parsed.salaryRange) {
+        setError("The salary data came back incomplete. Please try again in a moment.");
+      } else {
+        setResults(parsed);
+      }
+    } catch (e) {
+      setError("Couldn't reach the salary service. Check your connection and try again.");
+    } finally { setLoading(false); }
   };
 
   return (
@@ -1437,13 +1460,19 @@ ${form.jobTitle} in ${form.location}, ${form.experience} exp, skills: ${form.ski
           <div style={{ gridColumn: "1 / -1" }}><Input label="Company Type (optional)" placeholder="FAANG, startup, mid-size company…" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
-        <Btn onClick={analyze} style={{ padding: "13px 28px" }}>💰 Get Salary Data</Btn>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Btn onClick={analyze} disabled={loading} style={{ padding: "13px 28px" }}>💰 Get Salary Data</Btn>
+          {results && <Btn variant="secondary" onClick={() => { setResults(null); setError(""); }}>New Search</Btn>}
+        </div>
       </Card>
       {loading && <Spinner steps={["Researching market rates…","Analyzing compensation data…","Calculating skill premiums…"]} currentStep={1} />}
       {results && (
         <div>
+          <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic", marginBottom: 12, padding: "8px 12px", background: C.bgSoft, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            ℹ️ Figures are AI-generated estimates for guidance only — not verified market data. Always cross-check with sources like Levels.fyi, Glassdoor, or official offers before negotiating.
+          </div>
           <Card style={{ marginBottom: 16, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1.5px solid ${C.purple}20` }}>
-            <div style={{ fontSize: 14, color: C.purple, fontWeight: 600, marginBottom: 16 }}>{results.benchmarkInsight}</div>
+            <div style={{ fontSize: 14, color: C.purple, fontWeight: 600, marginBottom: 16 }}>{txt(results.benchmarkInsight, "Estimated compensation based on your inputs.")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: 18, paddingBottom: 18 }} className="three-col">
               {[["Low", results.salaryRange?.low, C.textMuted], ["Median", results.salaryRange?.median, C.purple], ["High", results.salaryRange?.high, C.green]].map(([l, v, c]) => (
                 <div key={l} style={{ textAlign: "center", borderRight: l !== "High" ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
@@ -1453,7 +1482,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience} exp, skills: ${form.ski
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[["Total Comp (Median)", fmt(results.totalComp?.median), C.purple], ["Equity", results.equityRange, C.yellow], ["Bonus", results.bonusRange, C.green], ["Market Demand", results.demandLevel, C.blue]].map(([l, v, c]) => (
+              {[["Total Comp (Median)", fmt(results.totalComp?.median), C.purple], ["Equity", txt(results.equityRange), C.yellow], ["Bonus", txt(results.bonusRange), C.green], ["Market Demand", txt(results.demandLevel), C.blue]].map(([l, v, c]) => (
                 <div key={l} style={{ background: `${c}12`, border: `1px solid ${c}25`, borderRadius: 10, padding: "10px 16px" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{l}</div>
@@ -1465,8 +1494,9 @@ ${form.jobTitle} in ${form.location}, ${form.experience} exp, skills: ${form.ski
             <Card>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>📈 Salary by Experience</div>
               {results.salaryByExperience?.map(({ level, salary }) => {
-                const max = Math.max(...results.salaryByExperience.map(x => x.salary));
-                return <div key={level} style={{ marginBottom: 12 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}><span style={{ color: C.textMid }}>{level}</span><span style={{ color: C.purple, fontWeight: 700 }}>{fmt(salary)}</span></div><PBar val={Math.round((salary/max)*100)} color={C.purple} /></div>;
+                const vals = results.salaryByExperience.map(x => Number(x.salary) || 0);
+                const max = Math.max(...vals, 1);
+                return <div key={level} style={{ marginBottom: 12 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}><span style={{ color: C.textMid }}>{level}</span><span style={{ color: C.purple, fontWeight: 700 }}>{fmt(salary)}</span></div><PBar val={Math.round(((Number(salary) || 0)/max)*100)} color={C.purple} /></div>;
               })}
             </Card>
             <Card>
