@@ -930,7 +930,7 @@ function InterviewPage() {
     setLoading(true); setQuestions([]); setError("");
     try {
       const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1000)}` : "";
-      const raw = await askClaude(`You are an expert interview coach. Generate 12 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
+      const raw = await askClaude(`You are an expert interview coach. Generate 8 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
 [{"id":1,"category":"Behavioral|Technical|Situational|Culture Fit","difficulty":"Easy|Medium|Hard","question":"<question>","whyAsked":"<1 sentence>","tipToAnswer":"<1-2 sentences; STAR for behavioral>","strongAnswer":"<2-3 sentences>","weakAnswer":"<1-2 sentences>","aiRecommendedAnswer":"<2-3 sentences>","star":true}]
 JOB:
 ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
@@ -1057,7 +1057,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             )}
           </Card>
           <div style={{ display: "flex", gap: 10 }}>
-            <Btn onClick={generate} disabled={!jobDesc.trim() || loading} style={{ padding: "13px 28px" }}>🎤 Generate 12 Questions</Btn>
+            <Btn onClick={generate} disabled={!jobDesc.trim() || loading} style={{ padding: "13px 28px" }}>🎤 Generate 8 Questions</Btn>
             <Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn>
           </div>
         </div>
