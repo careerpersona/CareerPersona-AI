@@ -70,8 +70,8 @@ function Btn({ children, onClick, variant = "primary", disabled, style = {} }) {
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
-function Card({ children, style = {} }) {
-  return <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", ...style }}>{children}</div>;
+function Card({ children, style = {}, onClick, ...rest }) {
+  return <div onClick={onClick} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", ...style }} {...rest}>{children}</div>;
 }
 
 function Label({ children }) {
@@ -822,6 +822,7 @@ function InterviewPage() {
   const [mockIdx, setMockIdx] = useState(0);
   const [mockAnswers, setMockAnswers] = useState({}); // {qId: {answer, feedback}}
   const [mockSummary, setMockSummary] = useState(null);
+  const [showReview, setShowReview] = useState(false);
   const [mockAnswerDraft, setMockAnswerDraft] = useState("");
   const [mockLoading, setMockLoading] = useState(false);
   const [answerTab, setAnswerTab] = useState("strong");
@@ -846,6 +847,7 @@ function InterviewPage() {
           setMockIdx(s.mockIdx || 0);
           setMockAnswerDraft(s.mockAnswerDraft || "");
           setActiveQ(s.activeQ || null);
+          setShowReview(s.showReview || false);
           setRestored(true);
         }
       }
@@ -858,15 +860,15 @@ function InterviewPage() {
     try {
       localStorage.setItem(INTERVIEW_STORAGE_KEY, JSON.stringify({
         questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary,
-        mode, mockIdx, mockAnswerDraft, activeQ,
+        mode, mockIdx, mockAnswerDraft, activeQ, showReview,
       }));
     } catch { /* quota or disabled — non-fatal */ }
-  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ]);
+  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview]);
 
   const clearSession = () => {
     try { localStorage.removeItem(INTERVIEW_STORAGE_KEY); } catch {}
     setQuestions([]); setJobDesc(""); setActiveQ(null); setFeedback(null);
-    setSavedFeedback({}); setMockAnswers({}); setMockSummary(null); setMode("browse");
+    setSavedFeedback({}); setMockAnswers({}); setMockSummary(null); setMode("browse"); setShowReview(false);
     setMockIdx(0); setRestored(false); setError("");
   };
 
@@ -1007,8 +1009,10 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
   const buildMockSummary = async (answersMap) => {
     const scores = Object.values(answersMap).map(a => a.feedback?.score).filter(n => typeof n === "number");
     const avg = scores.length ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10 : 0;
+    const answeredCount = Object.keys(answersMap).length;
     setMockSummary({
-      answered: Object.keys(answersMap).length,
+      answered: answeredCount,
+      skipped: mockQuestions.length - answeredCount,
       total: mockQuestions.length,
       avgScore: avg,
     });
@@ -1045,7 +1049,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Interview Prep</h1>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Interview Prep <span style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>v11</span></h1>
           <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
         </div>
         {questions.length > 0 && <Btn variant="secondary" onClick={clearSession}>🗑 Clear Session</Btn>}
@@ -1103,13 +1107,13 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((q, i) => (
-              <Card key={q.id} style={{ cursor: "pointer" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
+              <Card key={q.id} style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{q.category}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>STAR</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>✓ Practiced ({savedFeedback[q.id].feedback?.score}/10)</Badge>}</div>
                     <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6, fontWeight: 500 }}>Q{i+1}. {q.question}</div>
                   </div>
-                  <span style={{ color: C.textMuted, fontSize: 22, marginLeft: 12 }}>›</span>
+                  <span style={{ color: C.textMuted, fontSize: 22, marginLeft: 12, pointerEvents: "none" }}>›</span>
                 </div>
               </Card>
             ))}
@@ -1121,7 +1125,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
       {questions.length > 0 && mode === "mock" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); }}>← Exit Mock</Btn>
+            <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>← Exit Mock</Btn>
             {!mockSummary && <div style={{ fontWeight: 700, color: C.text }}>Question {mockIdx + 1} of {mockQuestions.length}</div>}
           </div>
 
@@ -1139,16 +1143,65 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             </Card>
           )}
 
-          {mockSummary && (
+          {mockSummary && !showReview && (
             <Card style={{ textAlign: "center", padding: 40 }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Mock Interview Complete 🎉</div>
               <div style={{ fontSize: 48, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red, marginBottom: 4 }}>{mockSummary.avgScore}/10</div>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 20 }}>Average score across {mockSummary.answered} answered question{mockSummary.answered !== 1 ? "s" : ""}</div>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 18 }}>Average score across {mockSummary.answered} answered question{mockSummary.answered !== 1 ? "s" : ""}</div>
+              <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 24 }}>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{mockSummary.answered}</div><div style={{ fontSize: 12, color: C.textMuted }}>Answered</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.yellow }}>{mockSummary.skipped}</div><div style={{ fontSize: 12, color: C.textMuted }}>Skipped</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.text }}>{mockSummary.total}</div><div style={{ fontSize: 12, color: C.textMuted }}>Total</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</div><div style={{ fontSize: 12, color: C.textMuted }}>Complete</div></div>
+              </div>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <Btn onClick={() => { setMode("browse"); setMockSummary(null); }}>Review Answers</Btn>
-                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); }}>Retry Mock</Btn>
+                <Btn onClick={() => setShowReview(true)}>📋 Review Your Answers</Btn>
+                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>Retry Mock</Btn>
               </div>
             </Card>
+          )}
+
+          {mockSummary && showReview && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Interview Review</div>
+                <Btn variant="secondary" onClick={() => setShowReview(false)}>← Back to Summary</Btn>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {mockQuestions.map((q, i) => {
+                  const ans = mockAnswers[q.id];
+                  return (
+                    <Card key={q.id}>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                        <Badge color={C.purple}>{q.category}</Badge>
+                        <Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>
+                        {ans ? <Badge color={C.green}>✓ Answered {ans.feedback?.score ? `(${ans.feedback.score}/10)` : ""}</Badge> : <Badge color={C.textMuted}>⊘ Skipped</Badge>}
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>Q{i + 1}. {q.question}</div>
+                      {ans ? (
+                        <div>
+                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>YOUR ANSWER</div>
+                          <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginBottom: ans.feedback ? 12 : 0 }}>{ans.answer}</div>
+                          {ans.feedback && (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
+                              <div style={{ background: C.greenLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>✓ STRENGTHS</div>{(ans.feedback.strengths || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                              <div style={{ background: C.yellowLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 6 }}>↑ IMPROVE</div>{(ans.feedback.improvements || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>You skipped this question. The strong answer was: </div>
+                      )}
+                      {!ans && <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginTop: 6 }}>{q.strongAnswer}</div>}
+                    </Card>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>← Back to Question List</Btn>
+                <Btn onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>Retry Mock</Btn>
+              </div>
+            </div>
           )}
         </div>
       )}
