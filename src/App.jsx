@@ -1012,6 +1012,29 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
   const cats = ["All","Behavioral","Technical","Situational","Culture Fit"];
   const filtered = questions.filter(q => filterCat === "All" || q.category === filterCat);
 
+  // Reliable behavioral detection — STAR applies to behavioral/situational questions
+  const isBehavioral = (q) => {
+    if (!q) return false;
+    if (q.star === true) return true;
+    const cat = (q.category || "").toLowerCase();
+    if (cat.includes("behavior") || cat.includes("situational")) return true;
+    // keyword fallback for questions phrased as "tell me about a time…"
+    const txt = (q.question || "").toLowerCase();
+    return /tell me about a time|describe a situation|give me an example|a time when|how did you handle|walk me through a/.test(txt);
+  };
+
+  // Reusable STAR guidance card
+  const StarCard = () => (
+    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+      <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>⭐ STAR FRAMEWORK — use this structure for your answer</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
+        {[["S — Situation","Describe the context and circumstances."],["T — Task","Explain your responsibility or goal."],["A — Action","Describe the specific steps you took."],["R — Result","Explain the outcome and impact."]].map(([h, d]) => (
+          <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
+        ))}
+      </div>
+    </div>
+  );
+
   // ── RENDER ──
   return (
     <div>
@@ -1102,6 +1125,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
               <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Badge color={C.purple}>{mockQuestions[mockIdx].category}</Badge><Badge color={diffColor[mockQuestions[mockIdx].difficulty]}>{mockQuestions[mockIdx].difficulty}</Badge></div>
               <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1.4, marginBottom: 8 }}>{mockQuestions[mockIdx].question}</div>
               <div style={{ height: 6, background: C.bgSoft, borderRadius: 4, marginBottom: 20, overflow: "hidden" }}><div style={{ width: `${((mockIdx) / mockQuestions.length) * 100}%`, height: "100%", background: C.purple }} /></div>
+              {isBehavioral(mockQuestions[mockIdx]) && <StarCard />}
               <Textarea label="Your answer" placeholder="Answer as if you're in a real interview…" value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
               <div style={{ display: "flex", gap: 10 }}>
                 <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim() || mockLoading}>{mockLoading ? "Scoring…" : (mockIdx + 1 < mockQuestions.length ? "Submit & Next →" : "Submit & Finish")}</Btn>
@@ -1136,16 +1160,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
               <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>💡 HOW TO ANSWER {activeQ.star ? "(STAR)" : ""}</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.tipToAnswer}</div></div>
             </div>
 
-            {activeQ.star && (
-              <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-                <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>⭐ STAR FRAMEWORK</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
-                  {[["S — Situation","Set the scene; describe the context."],["T — Task","Explain your responsibility or goal."],["A — Action","Detail the specific steps you took."],["R — Result","Share the measurable outcome."]].map(([h, d]) => (
-                    <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {isBehavioral(activeQ) && <StarCard />}
 
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 14 }}>
