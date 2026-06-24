@@ -1325,33 +1325,11 @@ function TrackerPage({ applications, setApplications }) {
   const decided = (stats["Offer"] || 0) + (stats["Rejected"] || 0) + (stats["Withdrawn"] || 0);
   const successRate = decided > 0 ? Math.round(((stats["Offer"] || 0) / decided) * 100) : null;
 
-  const today = new Date().toISOString().split("T")[0];
-  const loadSampleData = () => {
-    const samples = [
-      { company: "Google", jobTitle: "Software Engineer", status: "Applied", atsScore: "88" },
-      { company: "Microsoft", jobTitle: "Frontend Engineer", status: "Interview", atsScore: "82" },
-      { company: "Amazon", jobTitle: "SDE II", status: "Final Interview", atsScore: "79" },
-      { company: "Apple", jobTitle: "iOS Engineer", status: "Offer", atsScore: "91" },
-      { company: "Meta", jobTitle: "Product Engineer", status: "Rejected", atsScore: "74" },
-    ].map(s => ({ ...s, id: uid(), date: today, notes: "Sample application for testing.", url: "", followUpDate: "", contactName: "", contactEmail: "", _sample: true }));
-    // Avoid adding duplicates of the sample set
-    setApplications(p => {
-      const existing = new Set(p.map(a => `${(a.company||"").toLowerCase()}|${(a.jobTitle||"").toLowerCase()}`));
-      const toAdd = samples.filter(s => !existing.has(`${s.company.toLowerCase()}|${s.jobTitle.toLowerCase()}`));
-      return [...toAdd, ...p];
-    });
-  };
-  const clearSamples = () => setApplications(p => p.filter(a => !a._sample));
-
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
         <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Application Tracker</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{applications.length} applications tracked</p></div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {applications.some(a => a._sample) && <Btn variant="secondary" onClick={clearSamples} style={{ padding: "12px 18px" }}>🗑 Clear Samples</Btn>}
-          <Btn variant="secondary" onClick={loadSampleData} style={{ padding: "12px 18px" }}>🧪 Load Sample Data</Btn>
-          <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>+ Add Application</Btn>
-        </div>
+        <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>+ Add Application</Btn>
       </div>
       {applications.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
