@@ -910,7 +910,15 @@ function InterviewPage() {
       const start = raw.indexOf("[") >= 0 ? raw.indexOf("[") : raw.indexOf("{");
       const end = raw.lastIndexOf("]") >= 0 ? raw.lastIndexOf("]") : raw.lastIndexOf("}");
       if (start >= 0 && end > start) {
-        try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+        try { return JSON.parse(raw.slice(start, end + 1)); } catch { /* fall through */ }
+      }
+      // recover a truncated array: keep complete objects up to the last full one
+      if (raw.indexOf("[") >= 0) {
+        const arrStart = raw.indexOf("[");
+        const lastComplete = raw.lastIndexOf("}");
+        if (lastComplete > arrStart) {
+          try { return JSON.parse(raw.slice(arrStart, lastComplete + 1) + "]"); } catch { return null; }
+        }
       }
       return null;
     }
@@ -921,11 +929,11 @@ function InterviewPage() {
     if (!jobDesc.trim()) { setError("Please paste a job description first."); return; }
     setLoading(true); setQuestions([]); setError("");
     try {
-      const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1500)}` : "";
-      const raw = await askClaude(`You are an expert interview coach. Generate 12 interview questions tailored to the job below. Include a mix of Behavioral, Technical, Situational, and Culture Fit. For Behavioral questions, the tipToAnswer MUST explicitly use the STAR framework (Situation, Task, Action, Result). Return ONLY a JSON array, no markdown:
-[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<question>","whyAsked":"<why interviewer asks>","tipToAnswer":"<how to answer; for Behavioral use STAR explicitly>","strongAnswer":"<strong example answer>","weakAnswer":"<weak answer to avoid>","aiRecommendedAnswer":"<best possible answer>","star":<true if behavioral else false>}]
-JOB DESCRIPTION:
-${jobDesc.slice(0, 4000)}${resumeBlock}`, 4000);
+      const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1000)}` : "";
+      const raw = await askClaude(`You are an expert interview coach. Generate 12 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
+[{"id":1,"category":"Behavioral|Technical|Situational|Culture Fit","difficulty":"Easy|Medium|Hard","question":"<question>","whyAsked":"<1 sentence>","tipToAnswer":"<1-2 sentences; STAR for behavioral>","strongAnswer":"<2-3 sentences>","weakAnswer":"<1-2 sentences>","aiRecommendedAnswer":"<2-3 sentences>","star":true}]
+JOB:
+${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
       const parsed = safeParse(raw);
       if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
         setError("Could not generate questions (the AI response was invalid). Please try again.");
