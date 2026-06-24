@@ -474,6 +474,60 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
   const [filters, setFilters] = useState({ title: "", country: "United States", city: "", remote: false, employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
+  const resumeFileRef = useRef();
+  const [uploadingResume, setUploadingResume] = useState(false);
+
+  // Extract text from uploaded resume file (PDF / DOCX / TXT)
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    setError(""); setUploadingResume(true);
+    try {
+      if (ext === "pdf") {
+        // Load PDF.js from CDN once
+        if (!window.pdfjsLib) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+          });
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        const buf = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        let text = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const pageObj = await pdf.getPage(i);
+          const content = await pageObj.getTextContent();
+          text += content.items.map(it => it.str).join(" ") + "\n";
+        }
+        if (text.trim()) { setResume(text.trim()); }
+        else { setError("Could not extract text from this PDF. It may be scanned/image-based — please paste your resume instead."); }
+      } else if (ext === "docx" || ext === "doc" || ext === "txt") {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          let text = ev.target.result;
+          if (ext === "docx" || ext === "doc") {
+            // Strip XML tags from raw docx text fallback
+            text = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          }
+          if (text && text.trim()) setResume(text.trim());
+          else setError("Could not read this file. Please paste your resume text instead.");
+        };
+        if (ext === "txt") reader.readAsText(file);
+        else reader.readAsText(file);
+      } else {
+        setError("Unsupported file type. Please upload PDF, DOCX, or TXT.");
+      }
+    } catch (err) {
+      setError("Could not read the file. Please paste your resume text instead.");
+    } finally {
+      setUploadingResume(false);
+      e.target.value = ""; // reset so same file can be re-selected
+    }
+  };
 
   // Worker URL — same as Claude proxy, new /api/jobs route
   const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
@@ -592,7 +646,16 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
             <Btn onClick={() => search(false)} style={{ padding: "12px 28px" }}>🔍 Search Jobs</Btn>
           </div>
         </div>
-        {showResume && <div style={{ marginTop: 16 }}><Textarea label="Your Resume (for AI match scoring)" placeholder="Paste your resume to see how well you match each job…" value={resume} onChange={e => setResume(e.target.value)} style={{ minHeight: 180 }} />{resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Resume Saved</Btn>}</div>}
+        {showResume && <div style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Your Resume (for AI match scoring)</span>
+            <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
+            <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => resumeFileRef.current.click()} disabled={uploadingResume}>{uploadingResume ? "Extracting…" : "📎 Upload PDF / DOCX / TXT"}</Btn>
+          </div>
+          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume, or upload a file above, to see how well you match each job…" value={resume} onChange={e => setResume(e.target.value)} />
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words extracted` : "PDF and TXT extract best. For DOCX, paste text if extraction looks off."}</div>
+          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Resume Saved</Btn>}
+        </div>}
       </Card>
 
       {loading && jobs.length === 0 && <Spinner steps={["Searching Adzuna & JSearch…", "Merging and deduplicating results…", "Ranking by relevance…"]} currentStep={1} />}
