@@ -1546,19 +1546,81 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
 function NetworkingPage() {
-  const [form, setForm] = useState({ targetName: "", targetRole: "", targetCompany: "", yourBackground: "", purpose: "coffee-chat", jobDesc: "" });
-  const [loading, setLoading] = useState(false); const [results, setResults] = useState(null); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
+  const [form, setForm] = useStorage("cp_network_form", { targetName: "", targetRole: "", targetCompany: "", yourBackground: "", purpose: "coffee-chat", jobDesc: "" });
+  const [results, setResults] = useStorage("cp_network_results", null);
+  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
+  const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
+  const [draft, setDraft] = useStorage("cp_network_draft", null);
+
+  // Replace template placeholders with the user's actual data
+  const cleanPlaceholders = (s) => {
+    if (!s || typeof s !== "string") return s;
+    const name = (form.targetName || "there").trim();
+    const company = (form.targetCompany || "your company").trim();
+    const role = (form.targetRole || "your role").trim();
+    return s
+      .replace(/\[(their |target )?name\]/gi, name)
+      .replace(/\[(your )?name\]/gi, "")
+      .replace(/\[company( name)?\]/gi, company)
+      .replace(/\[(their |target )?(role|title|position)\]/gi, role)
+      .replace(/\[[^\]]*\]/g, "") // strip any remaining [placeholder]
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  };
+
+  // Seed editable draft from generated results (and on refresh-restore)
+  useEffect(() => {
+    if (results && !draft) {
+      setDraft({
+        linkedinMessage: cleanPlaceholders(results.linkedinMessage) || "",
+        linkedinNote: cleanPlaceholders(results.linkedinNote) || "",
+        callToAction: cleanPlaceholders(results.callToAction) || "",
+        emailSubject: cleanPlaceholders(results.email?.subject) || "",
+        emailBody: cleanPlaceholders(results.email?.body) || "",
+        followUp: cleanPlaceholders(results.followUp) || "",
+        icebreakers: (results.icebreakers || []).map(cleanPlaceholders),
+      });
+    }
+  }, [results]);
+
+  const updateDraft = (key, val) => setDraft(d => ({ ...(d || {}), [key]: val }));
+  const updateIcebreaker = (i, val) => setDraft(d => { const ic = [...(d?.icebreakers || [])]; ic[i] = val; return { ...d, icebreakers: ic }; });
   const purposes = [{ value: "coffee-chat", label: "☕ Coffee Chat" }, { value: "referral", label: "🤝 Referral Request" }, { value: "informational", label: "🎓 Informational Interview" }, { value: "reconnect", label: "👋 Reconnect" }, { value: "cold-outreach", label: "📨 Cold Outreach" }];
+  const txt = (v, fallback = "—") => (v !== undefined && v !== null && String(v).trim() !== "") ? v : fallback;
+
+  // Safe JSON parse with truncation recovery
+  const safeParse = (raw) => {
+    try { return JSON.parse(raw); }
+    catch {
+      const start = raw.indexOf("{") >= 0 ? raw.indexOf("{") : raw.indexOf("[");
+      const end = raw.lastIndexOf("}") >= 0 ? raw.lastIndexOf("}") : raw.lastIndexOf("]");
+      if (start >= 0 && end > start) {
+        try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+      }
+      return null;
+    }
+  };
 
   const generate = async () => {
     if (!form.targetCompany || !form.yourBackground) { setError("Please fill in your background and the target company."); return; }
     setError(""); setLoading(true); setResults(null);
     try {
-      const raw = await askClaude(`Networking outreach. Return ONLY JSON:
+      const raw = await askClaude(`Networking outreach. Return ONLY JSON, no markdown:
 {"linkedinMessage":"<280 chars max>","linkedinNote":"<2 para InMail>","email":{"subject":"<subject>","body":"<100 word email>"},"followUp":"<follow up>","icebreakers":["<i1>","<i2>"],"doList":["<d1>","<d2>"],"dontList":["<dont1>","<dont2>"],"callToAction":"<ask>"}
-To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}`, 1500);
-      setResults(JSON.parse(raw)); setTab("linkedin");
-    } catch { setError("Failed. Please try again."); } finally { setLoading(false); }
+To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}${form.purpose === "referral" && form.jobDesc ? `, Referral for: ${form.jobDesc.slice(0,200)}` : ""}`, 2500);
+      const parsed = safeParse(raw);
+      if (!parsed) {
+        setError("The AI response couldn't be read. Please try again.");
+      } else if (!parsed.linkedinMessage && !parsed.email) {
+        setError("The response came back incomplete. Please try again in a moment.");
+      } else {
+        setResults(parsed); setTab("linkedin");
+        setDraft(null); // clear so the effect re-seeds editable fields from new results
+        setEmailTo("");
+      }
+    } catch (e) {
+      setError("Couldn't reach the networking service. Check your connection and try again.");
+    } finally { setLoading(false); }
   };
 
   return (
@@ -1575,7 +1637,10 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
           {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>}
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
-        <Btn onClick={generate} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Btn onClick={generate} disabled={loading} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
+          {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); }}>New Message</Btn>}
+        </div>
       </Card>
       {loading && <Spinner steps={["Personalizing messages…","Writing LinkedIn outreach…","Crafting email…","Adding icebreakers…"]} currentStep={1} />}
       {results && (
@@ -1585,49 +1650,56 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               <button key={id} style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</button>
             ))}
           </div>
-          {tab === "linkedin" && (
+          {tab === "linkedin" && draft && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>CONNECTION REQUEST (MAX 280 CHARS)</Label><CopyBtn text={results.linkedinMessage} label="📋 Copy" /></div>
-                <ContentDisplay content={results.linkedinMessage} />
-                <div style={{ fontSize: 12, color: results.linkedinMessage?.length > 280 ? C.red : C.textMuted, marginTop: 8 }}>{results.linkedinMessage?.length}/280 characters</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>CONNECTION REQUEST (MAX 280 CHARS)</Label><CopyBtn text={draft.linkedinMessage} label="📋 Copy LinkedIn Message" /></div>
+                <textarea value={draft.linkedinMessage} onChange={e => updateDraft("linkedinMessage", e.target.value)} style={{ width: "100%", minHeight: 90, background: "#fff", border: `1.5px solid ${(draft.linkedinMessage?.length || 0) > 280 ? C.red : C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "12px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                <div style={{ fontSize: 12, color: (draft.linkedinMessage?.length || 0) > 280 ? C.red : C.textMuted, marginTop: 8 }}>{draft.linkedinMessage?.length || 0}/280 characters</div>
               </Card>
               <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>INMAIL / FULL MESSAGE</Label><CopyBtn text={results.linkedinNote} label="📋 Copy" /></div>
-                <ContentDisplay content={results.linkedinNote} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>INMAIL / FULL MESSAGE</Label><CopyBtn text={draft.linkedinNote} label="📋 Copy" /></div>
+                <textarea value={draft.linkedinNote} onChange={e => updateDraft("linkedinNote", e.target.value)} style={{ width: "100%", minHeight: 160, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </Card>
               <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-                <Label>🎯 YOUR SPECIFIC ASK</Label>
-                <div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{results.callToAction}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>🎯 YOUR SPECIFIC ASK</Label><CopyBtn text={draft.callToAction} label="Copy" /></div>
+                <textarea value={draft.callToAction} onChange={e => updateDraft("callToAction", e.target.value)} style={{ width: "100%", minHeight: 60, background: "#fff", border: `1.5px solid ${C.green}30`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "12px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
             </div>
           )}
-          {tab === "email" && results.email && (
+          {tab === "email" && draft && (
             <Card>
-              <div style={{ marginBottom: 16 }}>
-                <Label>SUBJECT LINE</Label>
-                <div style={{ background: C.bgSoft, borderRadius: 9, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{results.email.subject}</span>
-                  <CopyBtn text={results.email.subject} label="Copy" />
-                </div>
+              <div style={{ marginBottom: 14 }}>
+                <Label>TO (recipient email)</Label>
+                <input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="name@company.com" style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>EMAIL BODY</Label><CopyBtn text={results.email.body} label="📋 Copy Email" /></div>
-              <ContentDisplay content={results.email.body} />
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>SUBJECT LINE</Label><CopyBtn text={draft.emailSubject} label="Copy Subject" /></div>
+                <input value={draft.emailSubject} onChange={e => updateDraft("emailSubject", e.target.value)} placeholder="Email subject" style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 15, fontWeight: 600, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>EMAIL BODY (edit before sending)</Label><CopyBtn text={draft.emailBody} label="📋 Copy Email" /></div>
+              <textarea value={draft.emailBody} onChange={e => updateDraft("emailBody", e.target.value)} style={{ width: "100%", minHeight: 240, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+              <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }}>
+                  <Btn variant="primary">📤 Send Email</Btn>
+                </a>
+                <span style={{ fontSize: 12, color: C.textMuted }}>Opens your email app with your edits prefilled. You review and send it yourself.</span>
+              </div>
             </Card>
           )}
-          {tab === "followup" && (
+          {tab === "followup" && draft && (
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <div><Label>FOLLOW-UP MESSAGE</Label><div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Send after 7 days of no reply</div></div>
-                <CopyBtn text={results.followUp} label="📋 Copy" />
+                <CopyBtn text={draft.followUp} label="📋 Copy" />
               </div>
-              <ContentDisplay content={results.followUp} />
+              <textarea value={draft.followUp} onChange={e => updateDraft("followUp", e.target.value)} style={{ width: "100%", minHeight: 140, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               <div style={{ marginTop: 20 }}>
-                <Label>💬 CONVERSATION ICEBREAKERS</Label>
-                {results.icebreakers?.map((ic, i) => (
-                  <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0 }}>{i+1}.</span>
-                    <span style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>{ic}</span>
+                <Label>💬 CONVERSATION ICEBREAKERS (editable)</Label>
+                {(draft.icebreakers || []).map((ic, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                    <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0, paddingTop: 12 }}>{i+1}.</span>
+                    <textarea value={ic} onChange={e => updateIcebreaker(i, e.target.value)} style={{ flex: 1, minHeight: 50, background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "10px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                 ))}
               </div>
