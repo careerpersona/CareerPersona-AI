@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -807,61 +807,270 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
+const INTERVIEW_STORAGE_KEY = "cp_interview_session_v1";
+
 function InterviewPage() {
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
+  const [error, setError] = useState("");
+  const [resume, setResume] = useState("");
+  const [showResume, setShowResume] = useState(false);
+  const resumeFileRef = useRef();
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState("");
+  const [savedFeedback, setSavedFeedback] = useState({}); // {questionId: feedbackObj}
+  const [mode, setMode] = useState("browse"); // browse | mock
+  const [mockIdx, setMockIdx] = useState(0);
+  const [mockAnswers, setMockAnswers] = useState({}); // {qId: {answer, feedback}}
+  const [mockSummary, setMockSummary] = useState(null);
+  const [mockLoading, setMockLoading] = useState(false);
+  const [answerTab, setAnswerTab] = useState("strong");
+  const [restored, setRestored] = useState(false);
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
 
-  const generate = async () => {
-    if (!jobDesc.trim()) return; setLoading(true); setQuestions([]);
+  // ── Session persistence: load on mount ──
+  useEffect(() => {
     try {
-      const raw = await askClaude(`Generate 12 interview questions. Return ONLY JSON array:
-[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<question>","whyAsked":"<why>","tipToAnswer":"<tip>","strongAnswer":"<strong answer>","weakAnswer":"<weak answer to avoid>","aiRecommendedAnswer":"<best answer>"}]
-JOB:${jobDesc.slice(0,500)}`, 2500);
-      setQuestions(JSON.parse(raw));
-    } catch {} finally { setLoading(false); }
+      const raw = localStorage.getItem(INTERVIEW_STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.questions?.length) {
+          setQuestions(s.questions);
+          setJobDesc(s.jobDesc || "");
+          setResume(s.resume || "");
+          setResumeFileName(s.resumeFileName || "");
+          setSavedFeedback(s.savedFeedback || {});
+          setMockAnswers(s.mockAnswers || {});
+          setMockSummary(s.mockSummary || null);
+          setRestored(true);
+        }
+      }
+    } catch { /* ignore corrupt storage */ }
+  }, []);
+
+  // ── Session persistence: save on change ──
+  useEffect(() => {
+    if (!questions.length) return;
+    try {
+      localStorage.setItem(INTERVIEW_STORAGE_KEY, JSON.stringify({
+        questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary,
+      }));
+    } catch { /* quota or disabled — non-fatal */ }
+  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary]);
+
+  const clearSession = () => {
+    try { localStorage.removeItem(INTERVIEW_STORAGE_KEY); } catch {}
+    setQuestions([]); setJobDesc(""); setActiveQ(null); setFeedback(null);
+    setSavedFeedback({}); setMockAnswers({}); setMockSummary(null); setMode("browse");
+    setMockIdx(0); setRestored(false); setError("");
+  };
+
+  // ── Resume upload (PDF/DOCX/TXT) — local to Interview page ──
+  const extractResumeFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (file.size > 5 * 1024 * 1024) { setError("File too large. Maximum size is 5MB."); return; }
+    setError(""); setUploadingResume(true);
+    try {
+      if (ext === "pdf") {
+        if (!window.pdfjsLib) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+          });
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        const buf = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        let text = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const pageObj = await pdf.getPage(i);
+          const content = await pageObj.getTextContent();
+          text += content.items.map(it => it.str).join(" ") + "\n";
+        }
+        if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
+        else setError("Could not extract text from this PDF. It may be scanned — please paste instead.");
+      } else if (["docx","doc","txt"].includes(ext)) {
+        const text = await file.text();
+        let clean = (ext === "txt") ? text : String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
+        else setError("Could not read this file. Please paste your resume text instead.");
+      } else setError("Unsupported file type. Please upload PDF, DOCX, or TXT.");
+    } catch { setError("Could not read the file. Please paste your resume text instead."); }
+    finally { setUploadingResume(false); }
+  };
+  const handleResumeUpload = async (e) => { await extractResumeFile(e.target.files[0]); e.target.value = ""; };
+  const handleResumeDrop = async (e) => { e.preventDefault(); e.stopPropagation(); await extractResumeFile(e.dataTransfer.files?.[0]); };
+
+  // ── Safe JSON parse helper ──
+  const safeParse = (raw) => {
+    try { return JSON.parse(raw); }
+    catch {
+      // attempt to recover JSON substring
+      const start = raw.indexOf("[") >= 0 ? raw.indexOf("[") : raw.indexOf("{");
+      const end = raw.lastIndexOf("]") >= 0 ? raw.lastIndexOf("]") : raw.lastIndexOf("}");
+      if (start >= 0 && end > start) {
+        try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+      }
+      return null;
+    }
+  };
+
+  // ── Generate questions (with full JD, resume context, STAR) ──
+  const generate = async () => {
+    if (!jobDesc.trim()) { setError("Please paste a job description first."); return; }
+    setLoading(true); setQuestions([]); setError("");
+    try {
+      const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1500)}` : "";
+      const raw = await askClaude(`You are an expert interview coach. Generate 12 interview questions tailored to the job below. Include a mix of Behavioral, Technical, Situational, and Culture Fit. For Behavioral questions, the tipToAnswer MUST explicitly use the STAR framework (Situation, Task, Action, Result). Return ONLY a JSON array, no markdown:
+[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<question>","whyAsked":"<why interviewer asks>","tipToAnswer":"<how to answer; for Behavioral use STAR explicitly>","strongAnswer":"<strong example answer>","weakAnswer":"<weak answer to avoid>","aiRecommendedAnswer":"<best possible answer>","star":<true if behavioral else false>}]
+JOB DESCRIPTION:
+${jobDesc.slice(0, 4000)}${resumeBlock}`, 4000);
+      const parsed = safeParse(raw);
+      if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
+        setError("Could not generate questions (the AI response was invalid). Please try again.");
+      } else {
+        setQuestions(parsed);
+        setRestored(false);
+      }
+    } catch (e) {
+      setError(`Generation failed: ${e.message || "please try again."}`);
+    } finally { setLoading(false); }
+  };
+
+  // ── Feedback for a single answer (now includes JD + resume context) ──
+  const getFeedbackFor = async (question, ans) => {
+    const resumeBlock = resume.trim() ? `\nCANDIDATE BACKGROUND:${resume.slice(0, 600)}` : "";
+    const jdBlock = jobDesc.trim() ? `\nJOB CONTEXT:${jobDesc.slice(0, 600)}` : "";
+    const raw = await askClaude(`You are an interview coach. Rate this practice answer for the given question and role. Return ONLY JSON:
+{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<stronger version using STAR if behavioral>"}
+QUESTION:${question.question}${jdBlock}${resumeBlock}
+CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
+    const parsed = safeParse(raw);
+    if (!parsed) throw new Error("invalid feedback");
+    return parsed;
   };
 
   const getFeedback = async () => {
-    if (!answer.trim()) return; setFbLoading(true); setFeedback(null);
+    if (!answer.trim()) return;
+    setFbLoading(true); setFeedback(null); setError("");
     try {
-      const raw = await askClaude(`Rate answer. Return ONLY JSON:
-{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<better version>"}
-Q:${activeQ.question}
-A:${answer.slice(0,400)}`, 1000);
-      setFeedback(JSON.parse(raw));
-    } catch {} finally { setFbLoading(false); }
+      const fb = await getFeedbackFor(activeQ, answer);
+      setFeedback(fb);
+      setSavedFeedback(prev => ({ ...prev, [activeQ.id]: { answer, feedback: fb } }));
+    } catch {
+      setError("Could not analyze your answer. Please try again.");
+    } finally { setFbLoading(false); }
+  };
+
+  // ── Mock interview mode ──
+  const startMock = () => { setMode("mock"); setMockIdx(0); setMockSummary(null); setError(""); };
+  const mockQuestions = questions;
+  const [mockAnswerDraft, setMockAnswerDraft] = useState("");
+
+  const submitMockAnswer = async () => {
+    if (!mockAnswerDraft.trim()) return;
+    const q = mockQuestions[mockIdx];
+    setMockLoading(true); setError("");
+    try {
+      const fb = await getFeedbackFor(q, mockAnswerDraft);
+      setMockAnswers(prev => ({ ...prev, [q.id]: { answer: mockAnswerDraft, feedback: fb } }));
+      setMockAnswerDraft("");
+      if (mockIdx + 1 < mockQuestions.length) {
+        setMockIdx(mockIdx + 1);
+      } else {
+        await buildMockSummary({ ...mockAnswers, [q.id]: { answer: mockAnswerDraft, feedback: fb } });
+      }
+    } catch {
+      setError("Could not score that answer. Please try again.");
+    } finally { setMockLoading(false); }
+  };
+
+  const skipMock = () => {
+    if (mockIdx + 1 < mockQuestions.length) { setMockIdx(mockIdx + 1); setMockAnswerDraft(""); }
+    else buildMockSummary(mockAnswers);
+  };
+
+  const buildMockSummary = async (answersMap) => {
+    const scores = Object.values(answersMap).map(a => a.feedback?.score).filter(n => typeof n === "number");
+    const avg = scores.length ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10 : 0;
+    setMockSummary({
+      answered: Object.keys(answersMap).length,
+      total: mockQuestions.length,
+      avgScore: avg,
+    });
   };
 
   const cats = ["All","Behavioral","Technical","Situational","Culture Fit"];
   const filtered = questions.filter(q => filterCat === "All" || q.category === filterCat);
-  const [answerTab, setAnswerTab] = useState("strong");
 
+  // ── RENDER ──
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Interview Prep</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Interview Prep</h1>
+          <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
+        </div>
+        {questions.length > 0 && <Btn variant="secondary" onClick={clearSession}>🗑 Clear Session</Btn>}
+      </div>
+
+      {restored && questions.length > 0 && (
+        <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 9, padding: "10px 14px", color: C.purple, fontSize: 13, marginBottom: 16 }}>
+          ↻ Restored your previous session ({questions.length} questions). <span style={{ textDecoration: "underline", cursor: "pointer" }} onClick={clearSession}>Start fresh</span>
+        </div>
+      )}
+
+      {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+
+      {/* SETUP */}
       {!questions.length && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
           <Card style={{ width: "100%" }}>
-          <Textarea label="Job Description *" placeholder="Paste the full job description here to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 260, width: "100%" }} />
-        </Card>
-          <div style={{ display: "flex", gap: 10 }}><Btn onClick={generate} disabled={!jobDesc.trim()} style={{ padding: "13px 28px" }}>🎤 Generate 12 Questions</Btn><Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn></div>
+            <Textarea label="Job Description *" placeholder="Paste the full job description here to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 220, width: "100%" }} />
+            <div style={{ marginTop: 14 }}>
+              <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? "Resume Added ✓" : "Add Resume (optional, personalizes questions)"}</Btn>
+            </div>
+            {showResume && (
+              <div style={{ marginTop: 14 }}>
+                <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
+                <div
+                  onClick={() => resumeFileRef.current.click()}
+                  onDragOver={e => { e.preventDefault(); }}
+                  onDrop={handleResumeDrop}
+                  style={{ border: `1.5px solid ${resumeFileName ? C.green : C.border}`, background: resumeFileName ? C.greenLight : C.bgSoft, borderRadius: 9, padding: "22px", textAlign: "center", cursor: "pointer", marginBottom: 12, boxSizing: "border-box" }}
+                >
+                  {uploadingResume ? <span style={{ color: C.purple, fontWeight: 600 }}>⏳ Extracting…</span>
+                    : resumeFileName ? <span><span style={{ background: C.green, color: "#fff", padding: "4px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600 }}>✓ Resume Loaded</span> <span style={{ display: "block", marginTop: 8, color: C.text, fontWeight: 600 }}>📄 {resumeFileName}</span></span>
+                    : <span><span style={{ color: C.purple, fontWeight: 700, fontSize: 15 }}>⬆️ Upload Resume</span><br/><span style={{ color: C.textMuted, fontSize: 13 }}>Drag & drop or click · PDF / DOCX / TXT</span></span>}
+                </div>
+                <textarea style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="…or paste your resume here" value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
+              </div>
+            )}
+          </Card>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn onClick={generate} disabled={!jobDesc.trim() || loading} style={{ padding: "13px 28px" }}>🎤 Generate 12 Questions</Btn>
+            <Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn>
+          </div>
         </div>
       )}
+
       {loading && <Spinner steps={["Analyzing job requirements…","Generating behavioral questions…","Creating technical questions…","Adding sample answers…"]} currentStep={1} />}
-      {questions.length > 0 && !activeQ && (
+
+      {/* MODE SWITCH */}
+      {questions.length > 0 && !activeQ && mode === "browse" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontWeight: 700, color: C.text, fontSize: 16 }}>{questions.length} Questions Generated</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <button key={c} style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }} onClick={() => setFilterCat(c)}>{c}</button>)}</div>
-            <Btn variant="secondary" onClick={() => { setQuestions([]); setJobDesc(""); }}>← New Session</Btn>
+            <Btn onClick={startMock} style={{ padding: "8px 18px" }}>▶ Start Mock Interview</Btn>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((q, i) => (
-              <Card key={q.id} style={{ cursor: "pointer", transition: "box-shadow 0.15s" }} onClick={() => { setActiveQ(q); setAnswer(""); setFeedback(null); setAnswerTab("strong"); }}>
+              <Card key={q.id} style={{ cursor: "pointer" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}><Badge color={C.purple}>{q.category}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge></div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{q.category}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>STAR</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>✓ Practiced ({savedFeedback[q.id].feedback?.score}/10)</Badge>}</div>
                     <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6, fontWeight: 500 }}>Q{i+1}. {q.question}</div>
                   </div>
                   <span style={{ color: C.textMuted, fontSize: 22, marginLeft: 12 }}>›</span>
@@ -871,18 +1080,65 @@ A:${answer.slice(0,400)}`, 1000);
           </div>
         </div>
       )}
+
+      {/* MOCK INTERVIEW MODE */}
+      {questions.length > 0 && mode === "mock" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); }}>← Exit Mock</Btn>
+            {!mockSummary && <div style={{ fontWeight: 700, color: C.text }}>Question {mockIdx + 1} of {mockQuestions.length}</div>}
+          </div>
+
+          {!mockSummary && (
+            <Card>
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Badge color={C.purple}>{mockQuestions[mockIdx].category}</Badge><Badge color={diffColor[mockQuestions[mockIdx].difficulty]}>{mockQuestions[mockIdx].difficulty}</Badge></div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1.4, marginBottom: 8 }}>{mockQuestions[mockIdx].question}</div>
+              <div style={{ height: 6, background: C.bgSoft, borderRadius: 4, marginBottom: 20, overflow: "hidden" }}><div style={{ width: `${((mockIdx) / mockQuestions.length) * 100}%`, height: "100%", background: C.purple }} /></div>
+              <Textarea label="Your answer" placeholder="Answer as if you're in a real interview…" value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim() || mockLoading}>{mockLoading ? "Scoring…" : (mockIdx + 1 < mockQuestions.length ? "Submit & Next →" : "Submit & Finish")}</Btn>
+                <Btn variant="secondary" onClick={skipMock} disabled={mockLoading}>Skip</Btn>
+              </div>
+            </Card>
+          )}
+
+          {mockSummary && (
+            <Card style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Mock Interview Complete 🎉</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red, marginBottom: 4 }}>{mockSummary.avgScore}/10</div>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 20 }}>Average score across {mockSummary.answered} answered question{mockSummary.answered !== 1 ? "s" : ""}</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                <Btn onClick={() => { setMode("browse"); setMockSummary(null); }}>Review Answers</Btn>
+                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); }}>Retry Mock</Btn>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* SINGLE QUESTION DETAIL */}
       {activeQ && (
         <div>
           <Btn variant="secondary" style={{ marginBottom: 18 }} onClick={() => { setActiveQ(null); setFeedback(null); }}>← Back to Questions</Btn>
           <Card>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Badge color={C.purple}>{activeQ.category}</Badge><Badge color={diffColor[activeQ.difficulty]}>{activeQ.difficulty}</Badge></div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}><Badge color={C.purple}>{activeQ.category}</Badge><Badge color={diffColor[activeQ.difficulty]}>{activeQ.difficulty}</Badge>{activeQ.star && <Badge color={C.blue}>STAR</Badge>}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1.4, marginBottom: 20 }}>{activeQ.question}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }} className="two-col">
               <div style={{ background: C.blueLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.blue, fontWeight: 700, marginBottom: 8 }}>WHY THEY ASK THIS</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.whyAsked}</div></div>
-              <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>💡 HOW TO ANSWER</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.tipToAnswer}</div></div>
+              <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>💡 HOW TO ANSWER {activeQ.star ? "(STAR)" : ""}</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.tipToAnswer}</div></div>
             </div>
 
-            {/* Answer Examples */}
+            {activeQ.star && (
+              <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>⭐ STAR FRAMEWORK</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
+                  {[["S — Situation","Set the scene; describe the context."],["T — Task","Explain your responsibility or goal."],["A — Action","Detail the specific steps you took."],["R — Result","Share the measurable outcome."]].map(([h, d]) => (
+                    <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 14 }}>
                 {[["strong","💪 Strong Answer"],["weak","❌ Weak Answer"],["ai","✨ AI Recommended"]].map(([id, lbl]) => (
@@ -894,10 +1150,9 @@ A:${answer.slice(0,400)}`, 1000);
               {answerTab === "ai" && <div><div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: "16px 20px" }}><div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>✨ AI-OPTIMIZED ANSWER THAT STANDS OUT</div><div style={{ fontSize: 14, lineHeight: 1.8, color: C.text, whiteSpace: "pre-wrap" }}>{activeQ.aiRecommendedAnswer}</div></div><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.aiRecommendedAnswer} label="📋 Copy AI Answer" /></div></div>}
             </div>
 
-            {/* Practice */}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>🎯 Practice Your Answer</div>
-              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 200, marginBottom: 16, width: "100%" }} />
+              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
               <Btn onClick={getFeedback} disabled={!answer.trim() || fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
             </div>
 
