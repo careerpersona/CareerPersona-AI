@@ -300,8 +300,34 @@ function ResumePage({ onSave, onNavigate }) {
       };
       reader.readAsDataURL(file);
     } else if (['pdf'].includes(ext)) {
-      // PDF: inform user to paste text (PDF binary cannot be read as text)
-      setError("PDF upload: Please open your PDF, select all text (Ctrl+A), copy (Ctrl+C), then paste it in the resume box. Or save your resume as a .txt file and upload that.");
+      // PDF: extract text in-browser using PDF.js
+      setError(""); setLoading(false);
+      try {
+        if (!window.pdfjsLib) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+          });
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        const buf = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        let text = "";
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const pageObj = await pdf.getPage(i);
+          const content = await pageObj.getTextContent();
+          text += content.items.map(it => it.str).join(" ") + "\n";
+        }
+        if (text.trim()) {
+          setResume(text.trim());
+        } else {
+          setError("Could not extract text from this PDF. It may be scanned/image-based — please paste your resume instead.");
+        }
+      } catch {
+        setError("Could not read this PDF. Please paste your resume text instead.");
+      }
     } else if (['doc','docx'].includes(ext)) {
       // DOCX: try to read as text (works for simple .docx)
       const reader = new FileReader();
@@ -667,14 +693,15 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
             onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
             onDrop={handleResumeDrop}
             style={{
-              border: `2px dashed ${dragActive ? C.purple : C.borderStrong}`,
+              border: `1.5px solid ${dragActive ? C.purple : C.border}`,
               background: dragActive ? C.purpleLight : (resumeFileName ? C.greenLight : C.bgSoft),
-              borderRadius: 12,
+              borderRadius: 9,
               padding: "28px 20px",
               textAlign: "center",
               cursor: "pointer",
               transition: "all 0.15s ease",
               marginBottom: 14,
+              boxSizing: "border-box",
             }}
           >
             {uploadingResume ? (
