@@ -476,16 +476,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
   const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
   const resumeFileRef = useRef();
   const [uploadingResume, setUploadingResume] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
-  // Extract text from uploaded resume file (PDF / DOCX / TXT)
-  const handleResumeUpload = async (e) => {
-    const file = e.target.files[0];
+  // Shared extraction core — accepts a File object
+  const extractResumeFile = async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
+    if (file.size > 5 * 1024 * 1024) { setError("File too large. Maximum size is 5MB."); return; }
     setError(""); setUploadingResume(true);
     try {
       if (ext === "pdf") {
-        // Load PDF.js from CDN once
         if (!window.pdfjsLib) {
           await new Promise((resolve, reject) => {
             const s = document.createElement("script");
@@ -503,21 +504,16 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
           const content = await pageObj.getTextContent();
           text += content.items.map(it => it.str).join(" ") + "\n";
         }
-        if (text.trim()) { setResume(text.trim()); }
+        if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
         else { setError("Could not extract text from this PDF. It may be scanned/image-based — please paste your resume instead."); }
       } else if (ext === "docx" || ext === "doc" || ext === "txt") {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          let text = ev.target.result;
-          if (ext === "docx" || ext === "doc") {
-            // Strip XML tags from raw docx text fallback
-            text = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-          }
-          if (text && text.trim()) setResume(text.trim());
-          else setError("Could not read this file. Please paste your resume text instead.");
-        };
-        if (ext === "txt") reader.readAsText(file);
-        else reader.readAsText(file);
+        const text = await file.text();
+        let clean = text;
+        if (ext === "docx" || ext === "doc") {
+          clean = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        }
+        if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
+        else { setError("Could not read this file. Please paste your resume text instead."); }
       } else {
         setError("Unsupported file type. Please upload PDF, DOCX, or TXT.");
       }
@@ -525,8 +521,20 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
       setError("Could not read the file. Please paste your resume text instead.");
     } finally {
       setUploadingResume(false);
-      e.target.value = ""; // reset so same file can be re-selected
     }
+  };
+
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files[0];
+    await extractResumeFile(file);
+    e.target.value = "";
+  };
+
+  const handleResumeDrop = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    await extractResumeFile(file);
   };
 
   // Worker URL — same as Claude proxy, new /api/jobs route
@@ -647,14 +655,49 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
           </div>
         </div>
         {showResume && <div style={{ marginTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Your Resume (for AI match scoring)</span>
-            <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
-            <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => resumeFileRef.current.click()} disabled={uploadingResume}>{uploadingResume ? "Extracting…" : "📎 Upload PDF / DOCX / TXT"}</Btn>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 10 }}>Your Resume (for AI match scoring)</div>
+
+          <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
+
+          {/* Centered drag & drop upload area */}
+          <div
+            onClick={() => resumeFileRef.current.click()}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+            onDrop={handleResumeDrop}
+            style={{
+              border: `2px dashed ${dragActive ? C.purple : C.borderStrong}`,
+              background: dragActive ? C.purpleLight : (resumeFileName ? C.greenLight : C.bgSoft),
+              borderRadius: 12,
+              padding: "28px 20px",
+              textAlign: "center",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              marginBottom: 14,
+            }}
+          >
+            {uploadingResume ? (
+              <div style={{ color: C.purple, fontWeight: 600, fontSize: 15 }}>⏳ Extracting text…</div>
+            ) : resumeFileName ? (
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.green, color: "#fff", padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>✓ Resume Loaded</div>
+                <div style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>📄 {resumeFileName}</div>
+                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>Click or drop to replace</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 26, marginBottom: 6 }}>⬆️</div>
+                <div style={{ color: C.purple, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Upload Resume</div>
+                <div style={{ color: C.textMuted, fontSize: 13 }}>Drag & drop or click to browse · PDF / DOCX / TXT (Max 5MB)</div>
+              </div>
+            )}
           </div>
-          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume, or upload a file above, to see how well you match each job…" value={resume} onChange={e => setResume(e.target.value)} />
-          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words extracted` : "PDF and TXT extract best. For DOCX, paste text if extraction looks off."}</div>
-          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Resume Saved</Btn>}
+
+          {/* Resume textarea */}
+          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume, or upload a file above, to see how well you match each job…" value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words` : "PDF and TXT extract best. For DOCX, paste text if extraction looks off."}</div>
+          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Save & Close</Btn>}
         </div>}
       </Card>
 
