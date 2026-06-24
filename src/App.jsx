@@ -13,6 +13,12 @@ const useStorage = (key, initial) => {
   return [val, set];
 };
 
+// Unique ID generator — crypto.randomUUID with a safe fallback
+const uid = () => {
+  try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 const useAuth = () => {
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
@@ -78,8 +84,8 @@ function Label({ children }) {
   return <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: 7 }}>{children}</div>;
 }
 
-function Input({ label, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<input style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} {...props} /></div>;
+function Input({ label, style = {}, ...props }) {
+  return <div>{label && <Label>{label}</Label>}<input style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", ...style }} {...props} /></div>;
 }
 
 function Textarea({ label, style = {}, ...props }) {
@@ -180,7 +186,7 @@ function AuthPage({ onLogin }) {
     if (mode === "signup" && !form.name) { setError("Name is required"); return; }
     setLoading(true); setError("");
     await new Promise(r => setTimeout(r, 600));
-    onLogin({ id: Date.now().toString(), email: form.email, full_name: form.name || form.email.split("@")[0], plan: "free" });
+    onLogin({ id: uid(), email: form.email, full_name: form.name || form.email.split("@")[0], plan: "free" });
     setLoading(false);
   };
 
@@ -364,7 +370,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     finally { clearInterval(iv); setLoading(false); }
   };
 
-  const handleSave = () => { if (!results) return; onSave({ id: Date.now(), company: results.company || "Company", jobTitle: results.jobTitle || "Role", status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
+  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || "Company", jobTitle: results.jobTitle || "Role", status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   return (
     <div>
@@ -649,7 +655,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 
   const toggleSave = (job) => { const s = savedJobs.find(j => j.job_id === job.id); if (s) { setSavedJobs(p => p.filter(j => j.job_id !== job.id)); } else { setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]); } };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
-  const addTracker = (job) => setApplications(p => [{ id: Date.now(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
+  const addTracker = (job) => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
   const fmtSalary = (min, max) => { if (!min && !max) return "Salary not listed"; const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : `Up to ${f(max)}`; };
   const matchColor = s => s >= 85 ? C.green : s >= 70 ? C.yellow : C.red;
 
@@ -1259,16 +1265,65 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
 }
 
 // ─── TRACKER PAGE ──────────────────────────────────────────
-const STATUSES = ["Saved","Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Ghosted"];
-const SCOLOR = { Saved: C.textMuted, Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Ghosted: C.textMuted };
+const STATUSES = ["Saved","Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Withdrawn","Ghosted"];
+const SCOLOR = { Saved: C.textMuted, Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: "#9333EA", Ghosted: C.textMuted };
 
 function TrackerPage({ applications, setApplications }) {
   const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useState("All"); const [viewApp, setViewApp] = useState(null);
-  const save = () => { if (!form.company || !form.jobTitle) return; if (editId) { setApplications(p => p.map(a => a.id === editId ? { ...a, ...form } : a)); setEditId(null); } else { setApplications(p => [{ ...form, id: Date.now() }, ...p]); } setForm({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); setShowForm(false); };
-  const del = id => setApplications(p => p.filter(a => a.id !== id));
-  const edit = app => { setForm({ ...app }); setEditId(app.id); setShowForm(true); setViewApp(null); };
-  const filtered = applications.filter(a => filterStatus === "All" || a.status === filterStatus);
+  const [formErrors, setFormErrors] = useState({});
+  const [search, setSearch] = useState("");
+
+  const blankForm = { company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" };
+
+  const save = () => {
+    const errors = {};
+    if (!form.company.trim()) errors.company = "Company is required.";
+    if (!form.jobTitle.trim()) errors.jobTitle = "Job title is required.";
+    let atsClean = form.atsScore;
+    if (form.atsScore !== "" && form.atsScore !== null) {
+      const n = Number(form.atsScore);
+      if (isNaN(n)) errors.atsScore = "ATS score must be a number.";
+      else if (n < 0 || n > 100) errors.atsScore = "ATS score must be between 0 and 100.";
+      else atsClean = String(Math.round(n));
+    }
+    if (form.date && form.followUpDate && form.followUpDate < form.date) {
+      errors.followUpDate = "Follow-up date can't be before the application date.";
+    }
+    const dupe = applications.find(a =>
+      a.id !== editId &&
+      (a.company || "").trim().toLowerCase() === form.company.trim().toLowerCase() &&
+      (a.jobTitle || "").trim().toLowerCase() === form.jobTitle.trim().toLowerCase()
+    );
+    if (dupe) errors.company = `You already have an application for "${form.jobTitle}" at "${form.company}".`;
+
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
+    setFormErrors({});
+
+    const cleanForm = { ...form, atsScore: atsClean };
+    if (editId) {
+      setApplications(p => p.map(a => a.id === editId ? { ...a, ...cleanForm } : a));
+      setEditId(null);
+    } else {
+      setApplications(p => [{ ...cleanForm, id: uid() }, ...p]);
+    }
+    setForm(blankForm);
+    setShowForm(false);
+  };
+
+  const del = id => { setApplications(p => p.filter(a => a.id !== id)); if (viewApp?.id === id) setViewApp(null); };
+  const edit = app => { setForm({ ...blankForm, ...app }); setEditId(app.id); setShowForm(true); setViewApp(null); setFormErrors({}); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setFormErrors({}); setForm(blankForm); };
+
+  const filtered = applications.filter(a => {
+    const statusOk = filterStatus === "All" || a.status === filterStatus;
+    const q = search.trim().toLowerCase();
+    const searchOk = !q || (a.company || "").toLowerCase().includes(q) || (a.jobTitle || "").toLowerCase().includes(q);
+    return statusOk && searchOk;
+  });
+
   const stats = STATUSES.reduce((acc, s) => { acc[s] = applications.filter(a => a.status === s).length; return acc; }, {});
+  const decided = (stats["Offer"] || 0) + (stats["Rejected"] || 0) + (stats["Withdrawn"] || 0);
+  const successRate = decided > 0 ? Math.round(((stats["Offer"] || 0) / decided) * 100) : null;
 
   return (
     <div>
@@ -1277,8 +1332,15 @@ function TrackerPage({ applications, setApplications }) {
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>+ Add Application</Btn>
       </div>
       {applications.length > 0 && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 20, overflowX: "auto", paddingBottom: 4 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
+          <div style={{ background: `${C.purple}12`, border: `1.5px solid ${C.purple}30`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.purple }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Total</div></div>
           {STATUSES.filter(s => stats[s] > 0).map(s => <div key={s} style={{ background: `${SCOLOR[s]}12`, border: `1.5px solid ${SCOLOR[s]}30`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: SCOLOR[s] }}>{stats[s]}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{s}</div></div>)}
+          {successRate !== null && <div style={{ background: `${C.green}12`, border: `1.5px solid ${C.green}40`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{successRate}%</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Success Rate</div></div>}
+        </div>
+      )}
+      {applications.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search by company or job title…" style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
         </div>
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -1287,35 +1349,40 @@ function TrackerPage({ applications, setApplications }) {
       {showForm && (
         <Card style={{ marginBottom: 20, border: `1.5px solid ${C.purple}30` }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{editId ? "Edit" : "Add"} Application</div>
+          {Object.keys(formErrors).length > 0 && (
+            <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "10px 14px", marginBottom: 14, color: C.red, fontSize: 13 }}>
+              {Object.values(formErrors).map((e, i) => <div key={i}>• {e}</div>)}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
-            <Input label="Company *" placeholder="Google, Meta, Stripe…" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} />
-            <Input label="Job Title *" placeholder="Senior Engineer" value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} />
+            <div><Input label="Company *" placeholder="Google, Meta, Stripe…" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} style={formErrors.company ? { borderColor: C.red } : {}} />{formErrors.company && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.company}</div>}</div>
+            <div><Input label="Job Title *" placeholder="Senior Engineer" value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} style={formErrors.jobTitle ? { borderColor: C.red } : {}} />{formErrors.jobTitle && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.jobTitle}</div>}</div>
             <Select label="Status" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>{STATUSES.map(s => <option key={s}>{s}</option>)}</Select>
             <Input label="Date Applied" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-            <Input label="Follow-up Date" type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} />
-            <Input label="ATS Score (0-100)" type="number" placeholder="82" value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} />
+            <div><Input label="Follow-up Date" type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} style={formErrors.followUpDate ? { borderColor: C.red } : {}} />{formErrors.followUpDate && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.followUpDate}</div>}</div>
+            <div><Input label="ATS Score (0-100)" type="number" min="0" max="100" placeholder="82" value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} style={formErrors.atsScore ? { borderColor: C.red } : {}} />{formErrors.atsScore && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.atsScore}</div>}</div>
             <Input label="Contact Name" placeholder="Recruiter name" value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} />
             <Input label="Contact Email" placeholder="recruiter@company.com" value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
             <div style={{ gridColumn: "1 / -1" }}><Input label="Job URL" placeholder="https://linkedin.com/jobs/…" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
           <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
-          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>💾 Save Application</Btn><Btn variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Btn></div>
+          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>💾 Save Application</Btn><Btn variant="secondary" onClick={closeForm}>Cancel</Btn></div>
         </Card>
       )}
-      {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>No applications yet</div><div style={{ fontSize: 14, color: C.textMuted }}>Add one manually or save from Resume Tailor</div></Card>}
+      {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{applications.length === 0 ? "No applications yet" : "No matches found"}</div><div style={{ fontSize: 14, color: C.textMuted }}>{applications.length === 0 ? "Add one manually or save from Resume Tailor" : "Try a different search or filter"}</div></Card>}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filtered.map(app => (
           <div key={app.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 180 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{app.jobTitle}</div>
-                <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{app.company} · Applied {app.date}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{app.jobTitle || "Untitled Role"}</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{app.company || "Unknown Company"}{app.date ? ` · Applied ${app.date}` : ""}</div>
                 {app.followUpDate && <div style={{ fontSize: 12, color: C.yellow, marginTop: 3, fontWeight: 500 }}>⏰ Follow up: {app.followUpDate}</div>}
                 {app.contactName && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>👤 {app.contactName}{app.contactEmail ? ` · ${app.contactEmail}` : ""}</div>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
-                <Badge color={SCOLOR[app.status]}>{app.status}</Badge>
+                <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status || "Unknown"}</Badge>
                 {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>📄 View</Btn>}
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.blue, padding: "5px 10px", border: `1px solid ${C.border}`, borderRadius: 7, textDecoration: "none" }}>🔗 Job</a>}
                 <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>Edit</Btn>
@@ -1557,7 +1624,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 // ─── SAVED JOBS ────────────────────────────────────────────
 function SavedJobsPage({ savedJobs, setSavedJobs, setApplications }) {
   const remove = id => setSavedJobs(p => p.filter(j => j.job_id !== id));
-  const addTracker = job => setApplications(p => [{ id: Date.now(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
+  const addTracker = job => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
   const fmtSalary = (min, max) => { if (!min && !max) return "Salary not listed"; const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : `Up to ${f(max)}`; };
 
   return (
