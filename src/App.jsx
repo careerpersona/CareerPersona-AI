@@ -667,14 +667,15 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
             onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
             onDrop={handleResumeDrop}
             style={{
-              border: `2px dashed ${dragActive ? C.purple : C.borderStrong}`,
+              border: `1.5px solid ${dragActive ? C.purple : C.border}`,
               background: dragActive ? C.purpleLight : (resumeFileName ? C.greenLight : C.bgSoft),
-              borderRadius: 12,
+              borderRadius: 9,
               padding: "28px 20px",
               textAlign: "center",
               cursor: "pointer",
               transition: "all 0.15s ease",
               marginBottom: 14,
+              boxSizing: "border-box",
             }}
           >
             {uploadingResume ? (
