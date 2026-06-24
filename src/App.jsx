@@ -21,7 +21,8 @@ const useAuth = () => {
 };
 
 async function askClaude(prompt, maxTokens = 2500) {
-  const res = await fetch("https://proxy.dawn-voice-2790.workers.dev", {
+  const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
+  const res = await fetch(WORKER_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
@@ -78,15 +79,34 @@ function Label({ children }) {
 }
 
 function Input({ label, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<input style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }} {...props} /></div>;
+  return <div>{label && <Label>{label}</Label>}<input style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} {...props} /></div>;
 }
 
-function Textarea({ label, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<textarea style={{ width: "100%", minHeight: 200, background: "white", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }} {...props} /></div>;
+function Textarea({ label, style = {}, ...props }) {
+  const baseStyle = {
+    width: "100%",
+    minHeight: 220,
+    background: "#FFFFFF",
+    border: "1.5px solid #E2E8F0",
+    borderRadius: 10,
+    color: "#0F172A",
+    fontSize: 14,
+    lineHeight: 1.8,
+    padding: "16px",
+    resize: "vertical",
+    outline: "none",
+    fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
+    boxSizing: "border-box",
+    display: "block",
+    fontWeight: 400,
+    letterSpacing: "normal",
+    ...style
+  };
+  return <div style={{ width: "100%" }}>{label && <Label>{label}</Label>}<textarea style={baseStyle} {...props} /></div>;
 }
 
 function Select({ label, children, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<select style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }} {...props}>{children}</select></div>;
+  return <div>{label && <Label>{label}</Label>}<select style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} {...props}>{children}</select></div>;
 }
 
 function Badge({ children, color = C.purple }) {
@@ -248,16 +268,56 @@ function ResumePage({ onSave, onNavigate }) {
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
+    
     if (['png','jpg','jpeg'].includes(ext)) {
+      // Image: convert to base64 and send to Claude for OCR
       const reader = new FileReader();
       reader.onload = async (ev) => {
         try {
-          const raw = await askClaude(`Extract all text from this image exactly as it appears. Return only the extracted text, nothing else.`);
-          setResume(raw);
-        } catch { setError("Could not extract text from image."); }
+          const base64 = ev.target.result.split(',')[1];
+          const mediaType = file.type || 'image/jpeg';
+          const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
+          const res = await fetch(WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: 2000,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+                  { type: "text", text: "Extract all text from this resume image exactly as it appears. Return only the extracted text, preserving the layout as much as possible." }
+                ]
+              }]
+            }),
+          });
+          const data = await res.json();
+          const text = data.content?.[0]?.text || '';
+          if (text) setResume(text);
+          else setError("Could not extract text from image.");
+        } catch { setError("Could not extract text from image. Please paste your resume instead."); }
       };
       reader.readAsDataURL(file);
+    } else if (['pdf'].includes(ext)) {
+      // PDF: inform user to paste text (PDF binary cannot be read as text)
+      setError("PDF upload: Please open your PDF, select all text (Ctrl+A), copy (Ctrl+C), then paste it in the resume box. Or save your resume as a .txt file and upload that.");
+    } else if (['doc','docx'].includes(ext)) {
+      // DOCX: try to read as text (works for simple .docx)
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result;
+        // Check if readable text was extracted
+        const readableChars = (text.match(/[a-zA-Z\s.,!?]/g) || []).length;
+        if (readableChars > 50) {
+          setResume(text);
+        } else {
+          setError("Could not read this DOCX file. Please copy and paste your resume text directly into the box.");
+        }
+      };
+      reader.readAsText(file);
     } else {
+      // TXT and other text files
       const reader = new FileReader();
       reader.onload = (ev) => { setResume(ev.target.result); };
       reader.readAsText(file);
@@ -269,10 +329,10 @@ function ResumePage({ onSave, onNavigate }) {
     setError(""); setLoading(true); setResults(null); setLoadStep(0);
     const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 3)), 2000);
     try {
-      const raw = await askClaude(`You are an expert ATS resume coach. Return ONLY a JSON object, no markdown:
-{"atsScore":<current 0-100>,"potentialAtsScore":<potential after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume text>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
-RESUME: ${resume}
-JOB DESCRIPTION: ${jobDesc}`, 3500);
+      const raw = await askClaude(`You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
+{"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
+RESUME:${resume}
+JOB DESCRIPTION:${jobDesc}`, 4000);
       setResults(JSON.parse(raw)); setTab("resume");
     } catch { setError("Analysis failed. Please try again."); } 
     finally { clearInterval(iv); setLoading(false); }
@@ -413,33 +473,90 @@ JOB DESCRIPTION: ${jobDesc}`, 3500);
 // ─── JOB SEARCH ────────────────────────────────────────────
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
   const [filters, setFilters] = useState({ title: "", country: "United States", city: "", remote: false, employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
-  const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false);
-  const JOBS_PER_PAGE = 10;
+  const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
+
+  // Worker URL — same as Claude proxy, new /api/jobs route
+  const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
 
   const search = async (loadMore = false) => {
-    if (!filters.title) { setError("Enter a job title to search"); return; }
-    setError(""); setLoading(true);
-    if (!loadMore) { setJobs([]); setSearched(true); setPage(1); }
+    if (!filters.title.trim()) { setError("Enter a job title to search"); return; }
+    setError("");
+    setLoading(true);
+    const nextPage = loadMore ? page + 1 : 1;
+    if (!loadMore) { setJobs([]); setSearched(true); setPage(1); setSourceCounts(null); setMatchResults({}); }
+
     try {
-      const offset = loadMore ? jobs.length : 0;
-      const raw = await askClaude(`Generate 20 DIFFERENT realistic job listings for "${filters.title}" in ${filters.country}${filters.city ? ", " + filters.city : ""}${filters.remote ? " (remote)" : ""}. These are listings ${offset+1} to ${offset+20}. Use varied companies and realistic 2026 posting dates. Return ONLY a JSON array:
-[{"id":"job_${offset}_<n>","title":"<specific job title>","company":"<real well-known company>","location":"<city, state/country>","salaryMin":<realistic number>,"salaryMax":<realistic number>,"currency":"USD","employmentType":"<Full-time|Part-time|Contract>","remote":<true|false>,"description":"<3 sentence description with key requirements and responsibilities>","applyUrl":"https://linkedin.com/jobs","datePosted":"<random date in last 30 days 2026>","source":"<LinkedIn|Indeed|Glassdoor|ZipRecruiter|Company Site>","experienceLevel":"<Entry|Mid|Senior>","skills":["<skill1>","<skill2>","<skill3>","<skill4>"],"matchScore":<random 65-98>}]
-${filters.employmentType !== "Any" ? "Employment: " + filters.employmentType : ""} ${filters.experienceLevel !== "Any" ? "Experience: " + filters.experienceLevel : ""} ${filters.salaryMin ? "Min salary: $" + filters.salaryMin : ""}`, 4000);
-      const newJobs = JSON.parse(raw);
+      const res = await fetch(`${WORKER_URL}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: filters.title.trim(),
+          country: filters.country,
+          city: filters.city.trim(),
+          remote: filters.remote,
+          employmentType: filters.employmentType,
+          experienceLevel: filters.experienceLevel,
+          salaryMin: filters.salaryMin,
+          page: nextPage,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+      const newJobs = data.jobs || [];
+
       setJobs(prev => loadMore ? [...prev, ...newJobs] : newJobs);
-    } catch { setError("Search failed. Please try again."); } finally { setLoading(false); }
+      setPage(nextPage);
+      setHasMore(newJobs.length >= 10); // if we got results, there may be more
+      if (data.sources) setSourceCounts(data.sources);
+
+      // Auto AI-match all jobs if resume is provided
+      if (resume.trim() && newJobs.length > 0) {
+        autoMatchAll(newJobs);
+      }
+    } catch (e) {
+      setError(`Search failed: ${e.message}. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // AI match a single job against resume
   const analyzeMatch = async (job) => {
-    if (!resume) { setShowResume(true); return; }
+    if (!resume.trim()) { setShowResume(true); return; }
     setAnalyzing(job.id);
     try {
-      const raw = await askClaude(`Analyze match. Return ONLY JSON:
-{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<2 sentence assessment>"}
-RESUME: ${resume}
-JOB: ${job.title} at ${job.company} - ${job.description}`, 1200);
+      const raw = await askClaude(`Analyze resume-job match. Return ONLY valid JSON, no markdown:
+{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
+
+RESUME (first 600 chars):
+${resume.slice(0, 600)}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}
+Description: ${(job.description || "").slice(0, 400)}
+Skills required: ${(job.skills || []).join(", ")}`, 600);
       setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
-    } catch {} finally { setAnalyzing(null); }
+    } catch (e) {
+      console.error("AI match failed:", e);
+    } finally {
+      setAnalyzing(null);
+    }
+  };
+
+  // Auto-match up to 5 jobs silently when resume is present
+  const autoMatchAll = async (newJobs) => {
+    const toMatch = newJobs.slice(0, 5);
+    for (const job of toMatch) {
+      try {
+        const raw = await askClaude(`Match score only. Return ONLY JSON:
+{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
+RESUME:${resume.slice(0, 300)}
+JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
+        setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
+      } catch { /* silent fail per job */ }
+    }
   };
 
   const toggleSave = (job) => { const s = savedJobs.find(j => j.job_id === job.id); if (s) { setSavedJobs(p => p.filter(j => j.job_id !== job.id)); } else { setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]); } };
@@ -475,16 +592,23 @@ JOB: ${job.title} at ${job.company} - ${job.description}`, 1200);
             <Btn onClick={() => search(false)} style={{ padding: "12px 28px" }}>🔍 Search Jobs</Btn>
           </div>
         </div>
-        {showResume && <div style={{ marginTop: 16 }}><Textarea label="Your Resume (for AI match scoring)" placeholder="Paste your resume to see how well you match each job…" value={resume} onChange={e => setResume(e.target.value)} style={{ minHeight: 120 }} />{resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Resume Saved</Btn>}</div>}
+        {showResume && <div style={{ marginTop: 16 }}><Textarea label="Your Resume (for AI match scoring)" placeholder="Paste your resume to see how well you match each job…" value={resume} onChange={e => setResume(e.target.value)} style={{ minHeight: 180 }} />{resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Resume Saved</Btn>}</div>}
       </Card>
 
-      {loading && jobs.length === 0 && <Spinner steps={["Searching LinkedIn, Indeed, Glassdoor…", "Ranking results by relevance…", "Calculating match scores…"]} currentStep={1} />}
+      {loading && jobs.length === 0 && <Spinner steps={["Searching Adzuna & JSearch…", "Merging and deduplicating results…", "Ranking by relevance…"]} currentStep={1} />}
       {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>No results found</div><div style={{ color: C.textMuted, marginTop: 6 }}>Try different keywords or broaden your filters</div></Card>}
 
       {jobs.length > 0 && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>{jobs.length}+ jobs found for "<strong style={{ color: C.text }}>{filters.title}</strong>"</div>
+            <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>
+              {jobs.length} jobs found for "<strong style={{ color: C.text }}>{filters.title}</strong>"
+              {sourceCounts && <span style={{ marginLeft: 10, fontSize: 12 }}>
+                <span style={{ color: C.blue }}>Adzuna: {sourceCounts.adzuna}</span>
+                {" · "}
+                <span style={{ color: C.purple }}>JSearch: {sourceCounts.rapidapi}</span>
+              </span>}
+            </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {jobs.map(job => {
@@ -537,9 +661,11 @@ JOB: ${job.title} at ${job.company} - ${job.description}`, 1200);
             })}
           </div>
           <div style={{ textAlign: "center", marginTop: 24 }}>
-            <Btn variant="secondary" onClick={() => search(true)} disabled={loading} style={{ padding: "13px 32px", fontSize: 14 }}>
-              {loading ? "Loading more…" : "Load More Jobs →"}
-            </Btn>
+            {hasMore && (
+              <Btn variant="secondary" onClick={() => search(true)} disabled={loading} style={{ padding: "13px 32px", fontSize: 14 }}>
+                {loading ? "Loading more…" : "Load More Jobs →"}
+              </Btn>
+            )}
           </div>
         </div>
       )}
@@ -555,9 +681,9 @@ function InterviewPage() {
   const generate = async () => {
     if (!jobDesc.trim()) return; setLoading(true); setQuestions([]);
     try {
-      const raw = await askClaude(`Generate 12 tailored interview questions. Return ONLY a JSON array:
-[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<specific question>","whyAsked":"<reason interviewer asks this>","tipToAnswer":"<specific strategy to answer well>","strongAnswer":"<excellent sample answer using STAR method>","weakAnswer":"<common weak answer to avoid>","aiRecommendedAnswer":"<AI-optimized answer that stands out>"}]
-JOB: ${jobDesc}`, 4000);
+      const raw = await askClaude(`Generate 12 interview questions. Return ONLY JSON array:
+[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<question>","whyAsked":"<why>","tipToAnswer":"<tip>","strongAnswer":"<strong answer>","weakAnswer":"<weak answer to avoid>","aiRecommendedAnswer":"<best answer>"}]
+JOB:${jobDesc.slice(0,500)}`, 2500);
       setQuestions(JSON.parse(raw));
     } catch {} finally { setLoading(false); }
   };
@@ -565,9 +691,10 @@ JOB: ${jobDesc}`, 4000);
   const getFeedback = async () => {
     if (!answer.trim()) return; setFbLoading(true); setFeedback(null);
     try {
-      const raw = await askClaude(`Rate this answer. Return ONLY JSON:
-{"score":<1-10>,"strengths":["<s1>","<s2>","<s3>"],"improvements":["<i1>","<i2>","<i3>"],"revisedAnswer":"<significantly improved version>"}
-Q: ${activeQ.question}\nA: ${answer}`, 1500);
+      const raw = await askClaude(`Rate answer. Return ONLY JSON:
+{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<better version>"}
+Q:${activeQ.question}
+A:${answer.slice(0,400)}`, 1000);
       setFeedback(JSON.parse(raw));
     } catch {} finally { setFbLoading(false); }
   };
@@ -582,7 +709,9 @@ Q: ${activeQ.question}\nA: ${answer}`, 1500);
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
       {!questions.length && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
-          <Card><Textarea label="Job Description *" placeholder="Paste the job description to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 260 }} /></Card>
+          <Card style={{ width: "100%" }}>
+          <Textarea label="Job Description *" placeholder="Paste the full job description here to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 260, width: "100%" }} />
+        </Card>
           <div style={{ display: "flex", gap: 10 }}><Btn onClick={generate} disabled={!jobDesc.trim()} style={{ padding: "13px 28px" }}>🎤 Generate 12 Questions</Btn><Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn></div>
         </div>
       )}
@@ -635,7 +764,7 @@ Q: ${activeQ.question}\nA: ${answer}`, 1500);
             {/* Practice */}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>🎯 Practice Your Answer</div>
-              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 260, marginBottom: 12 }} />
+              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 200, marginBottom: 16, width: "100%" }} />
               <Btn onClick={getFeedback} disabled={!answer.trim() || fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
             </div>
 
@@ -700,7 +829,7 @@ function TrackerPage({ applications, setApplications }) {
             <Input label="Contact Email" placeholder="recruiter@company.com" value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
             <div style={{ gridColumn: "1 / -1" }}><Input label="Job URL" placeholder="https://linkedin.com/jobs/…" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
-          <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 260 }} /></div>
+          <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
           <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>💾 Save Application</Btn><Btn variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Btn></div>
         </Card>
       )}
@@ -752,9 +881,9 @@ function SalaryPage() {
     if (!form.jobTitle || !form.location) { setError("Job title and location are required."); return; }
     setError(""); setLoading(true); setResults(null);
     try {
-      const raw = await askClaude(`Provide accurate 2026 salary intelligence. Return ONLY JSON:
-{"salaryRange":{"low":<number>,"median":<number>,"high":<number>},"totalComp":{"low":<number>,"median":<number>,"high":<number>},"equityRange":"<equity range>","bonusRange":"<bonus range>","topPayingCompanies":[{"name":"<company>","avgComp":"<comp>"}],"salaryByExperience":[{"level":"<level>","salary":<number>}],"negotiationTips":["<tip1>","<tip2>","<tip3>","<tip4>"],"marketOutlook":"<detailed outlook paragraph>","skillPremiums":[{"skill":"<skill>","premium":"<premium amount>"}],"benchmarkInsight":"<key insight sentence>","demandLevel":"<High|Medium|Low>","jobOpenings":"<estimated openings>"}
-Role: ${form.jobTitle}, Location: ${form.location}, Experience: ${form.experience || "not specified"}, Skills: ${form.skills || "not specified"}, Company type: ${form.company || "any"}`, 2500);
+      const raw = await askClaude(`2026 salary data. Return ONLY JSON:
+{"salaryRange":{"low":<n>,"median":<n>,"high":<n>},"totalComp":{"median":<n>},"equityRange":"<range>","bonusRange":"<range>","topPayingCompanies":[{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"}],"salaryByExperience":[{"level":"Entry","salary":<n>},{"level":"Mid","salary":<n>},{"level":"Senior","salary":<n>}],"negotiationTips":["<t1>","<t2>","<t3>"],"marketOutlook":"<2 sentence outlook>","skillPremiums":[{"skill":"<s>","premium":"<p>"},{"skill":"<s>","premium":"<p>"}],"benchmarkInsight":"<1 sentence>","demandLevel":"<High|Medium|Low>","jobOpenings":"<estimate>"}
+${form.jobTitle} in ${form.location}, ${form.experience} exp, skills: ${form.skills}`, 1500);
       setResults(JSON.parse(raw));
     } catch { setError("Failed to get salary data. Please try again."); } finally { setLoading(false); }
   };
@@ -859,9 +988,9 @@ function NetworkingPage() {
     if (!form.targetCompany || !form.yourBackground) { setError("Please fill in your background and the target company."); return; }
     setError(""); setLoading(true); setResults(null);
     try {
-      const raw = await askClaude(`Write personalized, human-sounding networking outreach. Return ONLY JSON:
-{"linkedinMessage":"<max 280 chars, specific and warm>","linkedinNote":"<3 paragraphs, professional InMail>","email":{"subject":"<compelling subject line>","body":"<150-200 word professional email>"},"followUp":"<7-day follow up, brief and friendly>","icebreakers":["<conversation starter 1>","<conversation starter 2>","<conversation starter 3>"],"doList":["<do this>","<do this>","<do this>"],"dontList":["<avoid this>","<avoid this>","<avoid this>"],"callToAction":"<the specific ask>"}
-Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"} at ${form.targetCompany}), My background: ${form.yourBackground}, Purpose: ${form.purpose}${form.jobDesc ? ", Job: " + form.jobDesc : ""}`, 2500);
+      const raw = await askClaude(`Networking outreach. Return ONLY JSON:
+{"linkedinMessage":"<280 chars max>","linkedinNote":"<2 para InMail>","email":{"subject":"<subject>","body":"<100 word email>"},"followUp":"<follow up>","icebreakers":["<i1>","<i2>"],"doList":["<d1>","<d2>"],"dontList":["<dont1>","<dont2>"],"callToAction":"<ask>"}
+To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}`, 1500);
       setResults(JSON.parse(raw)); setTab("linkedin");
     } catch { setError("Failed. Please try again."); } finally { setLoading(false); }
   };
@@ -876,8 +1005,8 @@ Target: ${form.targetName || "the contact"} (${form.targetRole || "professional"
           <Input label="Their Role" placeholder="Engineering Manager" value={form.targetRole} onChange={e => setForm(f => ({ ...f, targetRole: e.target.value }))} />
           <Input label="Company *" placeholder="Stripe, Google, Amazon…" value={form.targetCompany} onChange={e => setForm(f => ({ ...f, targetCompany: e.target.value }))} />
           <Select label="Purpose" value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>{purposes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</Select>
-          <div style={{ gridColumn: "1 / -1" }}><Textarea label="Your Background *" placeholder="e.g. 4-year software engineer with React experience at a fintech startup, currently exploring senior roles at larger companies…" value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 260 }} /></div>
-          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 260 }} /></div>}
+          <div style={{ gridColumn: "1 / -1" }}><Textarea label="Your Background *" placeholder="e.g. 4-year software engineer with React experience at a fintech startup, currently exploring senior roles at larger companies…" value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>
+          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>}
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <Btn onClick={generate} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
@@ -1059,6 +1188,7 @@ export default function App() {
   const [applications, setApplications] = useStorage("cp_apps", []);
   const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
   const [page, setPage] = useState("resume");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogin = (u) => { login(u); setProfile(u); };
   const handleLogout = () => { logout(); setProfile(null); };
@@ -1087,14 +1217,23 @@ export default function App() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         input:focus, textarea:focus, select:focus { border-color: ${C.purple} !important; box-shadow: 0 0 0 3px ${C.purple}15 !important; }
         ::placeholder { color: ${C.textMuted}; opacity: 0.55; }
-        textarea { background: white !important; color: #0F172A !important; border-color: #E2E8F0 !important; }
-        input:not([type=checkbox]) { background: white !important; color: #0F172A !important; }
-        select { background: white !important; color: #0F172A !important; }
+        textarea { background: #ffffff !important; color: #0F172A !important; border-color: #E2E8F0 !important; font-size: 14px !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
+        input:not([type=checkbox]) { background: #ffffff !important; color: #0F172A !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
+        select { background: #ffffff !important; color: #0F172A !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
         @keyframes spin { to { transform: rotate(360deg); } } textarea { background: white !important; color: #0F172A !important; } input[type=text], input[type=email], input[type=password], input[type=number] { background: white !important; color: #0F172A !important; }
         button:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
         button:active:not(:disabled) { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
-        @media (max-width: 700px) { .two-col, .three-col { grid-template-columns: 1fr !important; } .nav-label { display: none; } }
+        @media (max-width: 700px) { 
+  .two-col, .three-col { grid-template-columns: 1fr !important; } 
+  .nav-label { display: none; }
+  .desktop-nav { display: none !important; }
+  .hamburger-btn { display: block !important; }
+}
+@media (min-width: 701px) {
+  .hamburger-btn { display: none !important; }
+  .desktop-nav { display: flex !important; }
+}
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
       `}</style>
@@ -1103,17 +1242,27 @@ export default function App() {
           <Logo size={36} />
           <AppName size={18} />
         </div>
-        <nav style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px", overflowX: "auto" }}>
+        <nav className="desktop-nav" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
           {nav.map(n => (
-            <button key={n.id} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none", transition: "all 0.15s" }} onClick={() => setPage(n.id)}>
+            <button key={n.id} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
               <span>{n.icon}</span><span className="nav-label">{n.label}</span>
             </button>
           ))}
         </nav>
+        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 22 }}>☰</button>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Badge color={C.purple}>{(profile?.plan || "FREE").toUpperCase()}</Badge>
         </div>
       </header>
+      {mobileMenuOpen && (
+        <div style={{ position: "fixed", top: 62, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
+          {nav.map(n => (
+            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
+              <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
+            </button>
+          ))}
+        </div>
+      )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
@@ -1129,4 +1278,4 @@ export default function App() {
   );
 }
 
-
+// v4.1 - fast prompts update
