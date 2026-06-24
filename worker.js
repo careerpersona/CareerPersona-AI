@@ -127,8 +127,7 @@ async function fetchAdzuna(params, env, page = 1) {
   const appKey = env.ADZUNA_APP_KEY;
 
   if (!appId || !appKey) {
-    console.log("Adzuna keys missing");
-    return [];
+    return { jobs: [], debug: { url: null, status: null, body: "Adzuna keys missing" } };
   }
 
   const url = new URL(
@@ -136,28 +135,35 @@ async function fetchAdzuna(params, env, page = 1) {
   );
   url.searchParams.set("app_id", appId);
   url.searchParams.set("app_key", appKey);
-  url.searchParams.set("what", title);
+  url.searchParams.set("what", title.trim());
   url.searchParams.set("results_per_page", "20");
-  url.searchParams.set("content-type", "application/json");
 
-  if (city) url.searchParams.set("where", city);
+  if (city && city.trim()) url.searchParams.set("where", city.trim());
   if (remote) url.searchParams.set("what_and", "remote");
-  if (salaryMin) url.searchParams.set("salary_min", salaryMin);
+  if (salaryMin && !isNaN(Number(salaryMin))) {
+    url.searchParams.set("salary_min", String(Math.floor(Number(salaryMin))));
+  }
 
   const empType = EMP_TYPE_MAP[employmentType];
   if (empType) url.searchParams.set("contract_time", empType);
 
+  const debug = { url: url.toString().replace(appKey, "***").replace(appId, "***"), status: null, body: null };
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), {
+      headers: { "Accept": "application/json" },
+    });
+    debug.status = res.status;
+    const text = await res.text();
+    debug.body = text.slice(0, 500);
     if (!res.ok) {
-      console.log("Adzuna error:", res.status, await res.text());
-      return [];
+      return { jobs: [], debug };
     }
-    const data = await res.json();
-    return (data.results || []).map(normalizeAdzuna);
+    const data = JSON.parse(text);
+    const resultsArray = Array.isArray(data.results) ? data.results : [];
+    return { jobs: resultsArray.map(normalizeAdzuna), debug };
   } catch (e) {
-    console.log("Adzuna fetch failed:", e.message);
-    return [];
+    debug.body = "EXCEPTION: " + e.message;
+    return { jobs: [], debug };
   }
 }
 
@@ -167,8 +173,7 @@ async function fetchRapid(params, env, page = 1) {
   const rapidKey = env.RAPIDAPI_KEY;
 
   if (!rapidKey) {
-    console.log("RapidAPI key missing");
-    return [];
+    return { jobs: [], debug: { url: null, status: null, body: "RAPIDAPI_KEY missing" } };
   }
 
   // Build query string
@@ -177,7 +182,7 @@ async function fetchRapid(params, env, page = 1) {
   else if (country && country !== "Remote Worldwide") query += ` in ${country}`;
   if (remote) query += " remote";
 
-  const url = new URL("https://jsearch.p.rapidapi.com/search");
+  const url = new URL("https://jsearch.p.rapidapi.com/search-v2");
   url.searchParams.set("query", query);
   url.searchParams.set("page", String(page));
   url.searchParams.set("num_pages", "1");
@@ -213,6 +218,7 @@ async function fetchRapid(params, env, page = 1) {
     }
   }
 
+  const debug = { url: url.toString(), status: null, body: null };
   try {
     const res = await fetch(url.toString(), {
       headers: {
@@ -220,23 +226,34 @@ async function fetchRapid(params, env, page = 1) {
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
       },
     });
-    if (!res.ok) {
-      console.log("RapidAPI error:", res.status, await res.text());
-      return [];
-    }
-    const data = await res.json();
-    let jobs = (data.data || []).map(normalizeRapid);
+    debug.status = res.status;
+    const responseText = await res.text();
+    debug.body = responseText.slice(0, 500);
 
-    // Client-side salary filter (JSearch doesn't support server-side min salary)
-    if (salaryMin) {
+    if (!res.ok) {
+      return { jobs: [], debug };
+    }
+
+    const data = JSON.parse(responseText);
+
+    // search-v2 nests jobs at data.data.jobs (confirmed via live response)
+    const jobsArray =
+      Array.isArray(data.data?.jobs) ? data.data.jobs :
+      Array.isArray(data.data) ? data.data :
+      Array.isArray(data.jobs) ? data.jobs :
+      [];
+
+    let jobs = jobsArray.map(normalizeRapid);
+
+    if (salaryMin && !isNaN(Number(salaryMin))) {
       const min = Number(salaryMin);
       jobs = jobs.filter(j => !j.salaryMin || j.salaryMin >= min);
     }
 
-    return jobs;
+    return { jobs, debug };
   } catch (e) {
-    console.log("RapidAPI fetch failed:", e.message);
-    return [];
+    debug.body = "EXCEPTION: " + e.message;
+    return { jobs: [], debug };
   }
 }
 
@@ -245,15 +262,14 @@ async function handleJobSearch(request, env) {
   const params = await request.json();
   const page = params.page || 1;
 
-  console.log("Job search params:", JSON.stringify(params));
-
   // Fetch from both sources in parallel
-  const [adzunaJobs, rapidJobs] = await Promise.all([
+  const [adzunaResult, rapidResult] = await Promise.all([
     fetchAdzuna(params, env, page),
     fetchRapid(params, env, page),
   ]);
 
-  console.log(`Adzuna: ${adzunaJobs.length} jobs, RapidAPI: ${rapidJobs.length} jobs`);
+  const adzunaJobs = adzunaResult.jobs || [];
+  const rapidJobs = rapidResult.jobs || [];
 
   // Merge and deduplicate
   const merged = deduplicate([...adzunaJobs, ...rapidJobs]);
@@ -273,6 +289,10 @@ async function handleJobSearch(request, env) {
     sources: {
       adzuna: adzunaJobs.length,
       rapidapi: rapidJobs.length,
+    },
+    _debug: {
+      adzuna: adzunaResult.debug,
+      rapidapi: rapidResult.debug,
     },
   });
 }
