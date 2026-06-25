@@ -1782,7 +1782,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <div style={{ position: "relative", display: "inline-block" }}>
-                              <button onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)} style={{ padding: "5px 14px", borderRadius: 20, border: `1.5px solid ${(statusColors[c.status] || C.border) + "60"}`, fontSize: 12, fontWeight: 700, cursor: "pointer", background: (statusColors[c.status] || C.textMuted) + "18", color: C.text, transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <button onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)} style={{ padding: "5px 14px", borderRadius: 20, border: `1.5px solid ${C.border}`, fontSize: 12, fontWeight: 700, cursor: "pointer", background: "#fff", color: C.text, transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 5 }}>
                                 {statusEmoji[c.status] || "⚪"} {c.status} ▾
                               </button>
                               {openStatusMenu === c.id && (
@@ -1836,7 +1836,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                     {(draft.icebreakers || []).map((ic, i) => (
                       <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
                         <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0, paddingTop: 12 }}>{i+1}.</span>
-                        <textarea value={ic} onChange={e => updateIcebreaker(i, e.target.value)} style={{ flex: 1, minHeight: 50, background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "10px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                        <textarea value={ic} onChange={e => updateIcebreaker(i, e.target.value)} style={{ flex: 1, minHeight: 50, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "10px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                       </div>
                     ))}
                   </div>
