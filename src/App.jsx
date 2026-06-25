@@ -2002,13 +2002,93 @@ function ProfilePage({ profile, updateProfile, logout }) {
   );
 }
 
+
+// ─── SETTINGS PAGE ─────────────────────────────────────────
+function SettingsPage({ profile, updateProfile, logout, setPage }) {
+  const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+
+  const planName = (profile?.plan || "free").toUpperCase();
+  const planColor = { FREE: C.textMuted, PRO: C.purple };
+
+  const handleDelete = () => {
+    if (deleteText.toLowerCase() === "delete my account") {
+      localStorage.clear();
+      logout();
+    }
+  };
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 24 }}>Settings</h1>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Subscription</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 14, color: C.textMid }}>Current Plan</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <Badge color={planColor[planName] || C.textMuted}>{planName}</Badge>
+              {planName === "FREE" && <span style={{ fontSize: 13, color: C.textMuted }}>Basic features included</span>}
+              {planName === "PRO" && <span style={{ fontSize: 13, color: C.purple }}>All features unlocked</span>}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {planName === "FREE" && <Btn onClick={() => setPage("pricing")}>Upgrade to PRO</Btn>}
+          {planName === "PRO" && <Btn variant="secondary" onClick={() => alert("Stripe subscription management coming soon.")}>Manage Subscription</Btn>}
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Security</div>
+        <Btn variant="secondary" onClick={() => alert("Password change will be available when authentication is connected to Supabase.")}>Change Password</Btn>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Notifications</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Email Notifications</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>Receive updates about new features and tips</div>
+          </div>
+          <button onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s" }}>
+            <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 3, left: notifyEmail ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+          </button>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Account</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Btn variant="secondary" onClick={logout}>Sign Out</Btn>
+          <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete Account</Btn>
+        </div>
+        {showDeleteConfirm && (
+          <div style={{ marginTop: 16, background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 12, padding: 18 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 8 }}>⚠️ Delete Account Permanently</div>
+            <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>This will permanently delete your account and all data. This action cannot be undone.</div>
+            <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>Type <strong>delete my account</strong> to confirm:</div>
+            <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="delete my account" style={{ width: "100%", border: `1.5px solid ${C.red}40`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box", fontFamily: "inherit" }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="danger" onClick={handleDelete} disabled={deleteText.toLowerCase() !== "delete my account"}>Permanently Delete</Btn>
+              <Btn variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
   const { user, login, logout } = useAuth();
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useStorage("cp_apps", []);
   const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
-  const validPages = new Set(["resume","jobs","saved","interview","tracker","salary","network","pricing","profile"]);
+  const validPages = new Set(["resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -2057,8 +2137,10 @@ export default function App() {
     { id: "salary", icon: "💰", label: "Salary" },
     { id: "network", icon: "🤝", label: "Network" },
     { id: "pricing", icon: "💎", label: "Pricing" },
-    { id: "profile", icon: "👤", label: profile?.full_name?.split(" ")[0] || "Profile" },
   ];
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const planName = (profile?.plan || "free").toUpperCase();
 
   if (!user) return <AuthPage onLogin={handleLogin} />;
 
@@ -2100,6 +2182,32 @@ export default function App() {
               <span>{n.icon}</span><span className="nav-label">{n.label}</span>
             </button>
           ))}
+
+          {/* Language placeholder */}
+          <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+            <span>🌐</span><span className="nav-label">Language</span>
+          </button>
+
+          {/* Plan badge */}
+          <span style={{ padding: "4px 10px", borderRadius: 12, background: planName === "PRO" ? C.purpleLight : C.bgSoft, color: planName === "PRO" ? C.purple : C.textMuted, fontSize: 11, fontWeight: 700 }}>{planName}</span>
+
+          {/* User dropdown */}
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: (page === "profile" || page === "settings") ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
+              <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
+            </button>
+            {userMenuOpen && (
+              <div>
+                <div onClick={() => setUserMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+                <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
+                  <button onClick={() => { setPage("profile"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
+                  <button onClick={() => { setPage("settings"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
+                  <div style={{ borderTop: `1px solid ${C.border}` }} />
+                  <button onClick={() => { handleLogout(); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
+                </div>
+              </div>
+            )}
+          </div>
         </nav>
         <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 22 }}>☰</button>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2113,6 +2221,16 @@ export default function App() {
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
             </button>
           ))}
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
+            <span style={{ fontSize: 20 }}>👤</span>Profile
+          </button>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "settings" ? C.purpleLight : "#fff", color: page === "settings" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("settings"); setMobileMenuOpen(false); }}>
+            <span style={{ fontSize: 20 }}>⚙️</span>Settings
+          </button>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: "#fff", color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
+            <span style={{ fontSize: 20 }}>🚪</span>Sign Out
+          </button>
         </div>
       )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
@@ -2124,6 +2242,7 @@ export default function App() {
         {page === "salary" && <SalaryPage profile={profile} />}
         {page === "network" && <NetworkingPage profile={profile} />}
         {page === "pricing" && <PricingPage profile={profile} />}
+        {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} logout={handleLogout} />}
       </main>
     </div>
