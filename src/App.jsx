@@ -1550,6 +1550,7 @@ function NetworkingPage() {
   const [results, setResults] = useStorage("cp_network_results", null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
   const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
+  const [emailSent, setEmailSent] = useStorage("cp_network_emailsent", false);
   const [draft, setDraft] = useStorage("cp_network_draft", null);
   const [savedContacts, setSavedContacts] = useStorage("cp_network_contacts", []);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
@@ -1692,7 +1693,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Btn onClick={generate} disabled={loading} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
-          {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); }}>New Message</Btn>}
+          {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); setEmailSent(false); setShowSavePrompt(false); }}>New Message</Btn>}
         </div>
       </Card>
       {loading && <Spinner steps={["Personalizing messages…","Writing LinkedIn outreach…","Crafting email…","Adding icebreakers…"]} currentStep={1} />}
@@ -1733,8 +1734,8 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>EMAIL BODY (edit before sending)</Label><CopyBtn text={draft.emailBody} label="📋 Copy Email" /></div>
               <textarea value={draft.emailBody} onChange={e => updateDraft("emailBody", e.target.value)} style={{ width: "100%", minHeight: 240, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={handleSendEmail}>
-                  <Btn variant="primary">📤 Send Email</Btn>
+                <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={() => { handleSendEmail(); setEmailSent(true); }}>
+                  <Btn variant={emailSent ? "green" : "primary"}>{emailSent ? "✔ Sent" : "📤 Send Email"}</Btn>
                 </a>
                 <span style={{ fontSize: 12, color: C.textMuted }}>Opens your email app with your edits prefilled. You review and send it yourself.</span>
               </div>
@@ -1777,7 +1778,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                             <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>📅 {c.dateSaved}</div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            <select value={c.status} onChange={e => updateContactStatus(c.id, e.target.value)} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 12, color: c.status === "Replied" ? C.green : c.status === "Waiting for Reply" ? C.yellow : C.textMid, fontWeight: 600, cursor: "pointer" }}>
+                            <select value={c.status} onChange={e => updateContactStatus(c.id, e.target.value)} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${({"Waiting for Reply":C.yellow,"Replied":C.green,"Met":"#7C3AED","Connected":C.blue,"No Response":C.red})[c.status] || C.border}`, fontSize: 12, color: ({"Waiting for Reply":C.yellow,"Replied":C.green,"Met":"#7C3AED","Connected":C.blue,"No Response":C.red})[c.status] || C.textMid, fontWeight: 600, cursor: "pointer", background: "#fff" }}>
                               {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)}>✍️ Generate Follow-up</Btn>
@@ -1946,8 +1947,39 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useStorage("cp_apps", []);
   const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
-  const [page, setPage] = useStorage("cp_active_page", "resume");
+  const validPages = new Set(["resume","jobs","saved","interview","tracker","salary","network","pricing","profile"]);
+
+  // Read initial page from URL hash, then localStorage fallback
+  const getInitialPage = () => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash && validPages.has(hash)) return hash;
+    try { const stored = localStorage.getItem("cp_active_page"); if (stored) { const p = JSON.parse(stored); if (validPages.has(p)) return p; } } catch {}
+    return "resume";
+  };
+
+  const [page, setPageRaw] = useState(getInitialPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Navigate: update state + localStorage + browser history
+  const setPage = useCallback((p) => {
+    setPageRaw(p);
+    localStorage.setItem("cp_active_page", JSON.stringify(p));
+    if (window.location.hash !== "#" + p) {
+      window.history.pushState({ page: p }, "", "#" + p);
+    }
+  }, []);
+
+  // Handle browser Back/Forward
+  useEffect(() => {
+    const onPop = (e) => {
+      const p = e.state?.page || window.location.hash.replace("#", "") || "resume";
+      if (validPages.has(p)) { setPageRaw(p); localStorage.setItem("cp_active_page", JSON.stringify(p)); }
+    };
+    window.addEventListener("popstate", onPop);
+    // Set initial history entry
+    if (!window.location.hash) window.history.replaceState({ page: page }, "", "#" + page);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const handleLogin = (u) => { login(u); setProfile(u); };
   const handleLogout = () => { logout(); setProfile(null); };
