@@ -1772,7 +1772,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {savedContacts.map(c => (
-                      <div key={c.id} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px" }}>
+                      <div key={c.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
                           <div style={{ minWidth: 160 }}>
                             {c.name && <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>👤 {c.name}</div>}
@@ -1806,7 +1806,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 
                         {/* Generated follow-up for this contact */}
                         {fuContact?.id === c.id && (
-                          <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                          <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12, background: "#fff" }}>
                             {fuLoading && <div style={{ color: C.purple, fontSize: 13, fontWeight: 600 }}>⏳ Generating follow-up…</div>}
                             {!fuLoading && fuDraft && (
                               <div>
