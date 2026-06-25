@@ -1901,7 +1901,6 @@ function PricingPage({ profile }) {
   const plans = [
     { id: "free", name: "Free", price: "$0", sub: "Forever free", color: C.textMuted, features: ["3 resume analyses/month","10 job searches/day","Basic application tracker","3 interview sessions/month","Basic salary insights"], cta: "Current Plan", disabled: true },
     { id: "pro", name: "Pro", price: "$19", sub: "per month", color: C.purple, popular: true, features: ["Unlimited resume analyses","Unlimited job searches","Full interview prep + AI coaching","Advanced salary benchmarks","Networking assistant","AI job match scoring","PDF & DOCX downloads","Priority AI processing"], cta: "Start Pro Free Trial", disabled: false },
-    { id: "premium", name: "Premium", price: "$49", sub: "per month", color: C.blue, features: ["Everything in Pro","Auto-apply to jobs (coming soon)","Chrome extension (coming soon)","LinkedIn integration (coming soon)","Email follow-up automation (soon)","Resume version management","White-label reports"], cta: "Start Premium Trial", disabled: false },
   ];
 
   return (
@@ -1910,7 +1909,7 @@ function PricingPage({ profile }) {
         <h1 style={{ fontSize: 30, fontWeight: 800, color: C.text, letterSpacing: "-0.5px", marginBottom: 10 }}>Simple, Transparent Pricing</h1>
         <p style={{ color: C.textMuted, fontSize: 15 }}>Start free. Upgrade when you're ready to land your dream job faster.</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 18, maxWidth: 960, margin: "0 auto" }} className="three-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }} className="two-col">
         {plans.map(plan => (
           <Card key={plan.id} style={{ position: "relative", border: plan.popular ? `2px solid ${C.purple}` : `1px solid ${C.border}` }}>
             {plan.popular && <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 16px", borderRadius: 20, whiteSpace: "nowrap" }}>MOST POPULAR</div>}
@@ -1919,7 +1918,7 @@ function PricingPage({ profile }) {
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
-              <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1, ...(plan.id === "premium" ? { background: C.blue } : {}) }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(`Connect Stripe to enable ${plan.name} payments`); }}>
+              <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1 }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(`Connect Stripe to enable ${plan.name} payments`); }}>
                 {profile?.plan === plan.id ? "✓ Current Plan" : plan.cta}
               </Btn>
             </div>
