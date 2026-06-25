@@ -1790,7 +1790,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                                 <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
                                 <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
                                   {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => (
-                                    <button key={s} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }} style={{ width: "100%", padding: "10px 14px", border: "none", background: c.status === s ? (statusColors[s] || C.textMuted) + "18" : "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
+                                    <button key={s} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }} style={{ width: "100%", padding: "10px 14px", border: "none", background: c.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
                                       {statusEmoji[s]} {s}
                                     </button>
                                   ))}
