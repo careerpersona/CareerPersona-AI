@@ -1554,6 +1554,9 @@ function NetworkingPage() {
   const [draft, setDraft] = useStorage("cp_network_draft", null);
   const [savedContacts, setSavedContacts] = useStorage("cp_network_contacts", []);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [openStatusMenu, setOpenStatusMenu] = useState(null); // contact id whose status menu is open
+  const statusColors = {"Waiting for Reply": C.yellow, "Replied": C.green, "Met": "#7C3AED", "Connected": C.blue, "No Response": C.red};
+  const statusEmoji = {"Waiting for Reply": "🟡", "Replied": "🟢", "Met": "🟣", "Connected": "🔵", "No Response": "🔴"};
   const [fuContact, setFuContact] = useState(null); // selected contact for follow-up generation
   const [fuDraft, setFuDraft] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
@@ -1735,7 +1738,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               <textarea value={draft.emailBody} onChange={e => updateDraft("emailBody", e.target.value)} style={{ width: "100%", minHeight: 240, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={() => { handleSendEmail(); setEmailSent(true); }}>
-                  <Btn variant={emailSent ? "green" : "primary"}>{emailSent ? "✔ Sent" : "📤 Send Email"}</Btn>
+                  <Btn variant="primary">{emailSent ? "✔ Sent" : "📤 Send Email"}</Btn>
                 </a>
                 <span style={{ fontSize: 12, color: C.textMuted }}>Opens your email app with your edits prefilled. You review and send it yourself.</span>
               </div>
@@ -1778,9 +1781,23 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                             <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>📅 {c.dateSaved}</div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            <select value={c.status} onChange={e => updateContactStatus(c.id, e.target.value)} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${({"Waiting for Reply":C.yellow,"Replied":C.green,"Met":"#7C3AED","Connected":C.blue,"No Response":C.red})[c.status] || C.border}`, fontSize: 12, color: ({"Waiting for Reply":C.yellow,"Replied":C.green,"Met":"#7C3AED","Connected":C.blue,"No Response":C.red})[c.status] || C.textMid, fontWeight: 600, cursor: "pointer", background: "#fff" }}>
-                              {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            <div style={{ position: "relative", display: "inline-block" }}>
+                              <button onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)} style={{ padding: "5px 14px", borderRadius: 20, border: `1.5px solid ${(statusColors[c.status] || C.border) + "60"}`, fontSize: 12, fontWeight: 700, cursor: "pointer", background: (statusColors[c.status] || C.textMuted) + "18", color: statusColors[c.status] || C.textMid, transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                {statusEmoji[c.status] || "⚪"} {c.status} ▾
+                              </button>
+                              {openStatusMenu === c.id && (
+                                <div>
+                                <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
+                                <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
+                                  {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => (
+                                    <button key={s} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }} style={{ width: "100%", padding: "10px 14px", border: "none", background: c.status === s ? (statusColors[s] || C.textMuted) + "18" : "transparent", color: statusColors[s] || C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
+                                      {statusEmoji[s]} {s}
+                                    </button>
+                                  ))}
+                                </div>
+                                </div>
+                              )}
+                            </div>
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)}>✍️ Generate Follow-up</Btn>
                             {c.email && <a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}`} style={{ textDecoration: "none" }}><Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }}>📤 Email</Btn></a>}
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, color: C.red }} onClick={() => deleteContact(c.id)}>✕</Btn>
