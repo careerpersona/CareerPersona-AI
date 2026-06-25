@@ -1551,6 +1551,59 @@ function NetworkingPage() {
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
   const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
   const [draft, setDraft] = useStorage("cp_network_draft", null);
+  const [savedContacts, setSavedContacts] = useStorage("cp_network_contacts", []);
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [fuContact, setFuContact] = useState(null); // selected contact for follow-up generation
+  const [fuDraft, setFuDraft] = useState("");
+  const [fuLoading, setFuLoading] = useState(false);
+
+  const handleSendEmail = () => {
+    // Trigger save prompt after user clicks Send Email (the mailto fires via the <a> tag)
+    setTimeout(() => setShowSavePrompt(true), 500);
+  };
+
+  const saveContact = () => {
+    const contact = {
+      id: uid(),
+      name: form.targetName || "",
+      company: form.targetCompany || "",
+      role: form.targetRole || "",
+      email: emailTo || "",
+      method: "email",
+      subject: draft?.emailSubject || "",
+      originalMessage: draft?.emailBody || "",
+      linkedinMessage: draft?.linkedinMessage || "",
+      linkedinNote: draft?.linkedinNote || "",
+      dateSaved: new Date().toISOString().split("T")[0],
+      status: "Waiting for Reply",
+    };
+    // Duplicate prevention by email (or name+company if no email)
+    const key = contact.email ? contact.email.toLowerCase() : `${contact.name}|${contact.company}`.toLowerCase();
+    const exists = savedContacts.some(c => {
+      const ck = c.email ? c.email.toLowerCase() : `${c.name}|${c.company}`.toLowerCase();
+      return ck === key;
+    });
+    if (!exists) setSavedContacts(p => [contact, ...p]);
+    setShowSavePrompt(false);
+  };
+
+  const deleteContact = (id) => setSavedContacts(p => p.filter(c => c.id !== id));
+  const updateContactStatus = (id, status) => setSavedContacts(p => p.map(c => c.id === id ? { ...c, status } : c));
+
+  const generateFollowUp = async (contact) => {
+    setFuContact(contact); setFuDraft(""); setFuLoading(true);
+    try {
+      const raw = await askClaude(`Write a professional follow-up message. Context:
+Original outreach to ${contact.name || "contact"}${contact.company ? " at " + contact.company : ""}.
+Original subject: ${contact.subject || "N/A"}
+Original message: ${(contact.originalMessage || contact.linkedinMessage || "").slice(0, 400)}
+Method: ${contact.method}
+It has been about 7 days since the original outreach.
+Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it brief, professional, and warm. 2-3 paragraphs max.`, 800);
+      setFuDraft(cleanPlaceholders(raw) || "Could not generate follow-up. Please try again.");
+    } catch { setFuDraft("Could not generate follow-up. Please try again."); }
+    finally { setFuLoading(false); }
+  };
 
   // Replace template placeholders with the user's actual data
   const cleanPlaceholders = (s) => {
@@ -1680,30 +1733,98 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>EMAIL BODY (edit before sending)</Label><CopyBtn text={draft.emailBody} label="📋 Copy Email" /></div>
               <textarea value={draft.emailBody} onChange={e => updateDraft("emailBody", e.target.value)} style={{ width: "100%", minHeight: 240, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }}>
+                <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={handleSendEmail}>
                   <Btn variant="primary">📤 Send Email</Btn>
                 </a>
                 <span style={{ fontSize: 12, color: C.textMuted }}>Opens your email app with your edits prefilled. You review and send it yourself.</span>
               </div>
+
+              {/* Save Outreach Popup */}
+              {showSavePrompt && (
+                <div style={{ marginTop: 16, background: C.purpleLight, border: `1.5px solid ${C.purple}40`, borderRadius: 12, padding: 20 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.purple, marginBottom: 12 }}>📬 Save This Outreach?</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+                    {form.targetName && <div style={{ fontSize: 14, color: C.text }}>👤 {form.targetName}</div>}
+                    {form.targetCompany && <div style={{ fontSize: 14, color: C.text }}>🏢 {form.targetCompany}</div>}
+                    {emailTo && <div style={{ fontSize: 14, color: C.text }}>📧 {emailTo}</div>}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textMid, marginBottom: 14 }}>Save this contact for easy follow-up later?</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <Btn onClick={saveContact}>✅ Save Contact</Btn>
+                    <Btn variant="secondary" onClick={() => setShowSavePrompt(false)}>❌ Not Now</Btn>
+                  </div>
+                </div>
+              )}
             </Card>
           )}
-          {tab === "followup" && draft && (
-            <Card>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <div><Label>FOLLOW-UP MESSAGE</Label><div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Send after 7 days of no reply</div></div>
-                <CopyBtn text={draft.followUp} label="📋 Copy" />
-              </div>
-              <textarea value={draft.followUp} onChange={e => updateDraft("followUp", e.target.value)} style={{ width: "100%", minHeight: 140, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-              <div style={{ marginTop: 20 }}>
-                <Label>💬 CONVERSATION ICEBREAKERS (editable)</Label>
-                {(draft.icebreakers || []).map((ic, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
-                    <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0, paddingTop: 12 }}>{i+1}.</span>
-                    <textarea value={ic} onChange={e => updateIcebreaker(i, e.target.value)} style={{ flex: 1, minHeight: 50, background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "10px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+          {tab === "followup" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* SAVED CONTACTS */}
+              {savedContacts.length > 0 && (
+                <Card>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <Label>📬 SAVED CONTACTS ({savedContacts.length})</Label>
                   </div>
-                ))}
-              </div>
-            </Card>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {savedContacts.map(c => (
+                      <div key={c.id} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                          <div style={{ minWidth: 160 }}>
+                            {c.name && <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>👤 {c.name}</div>}
+                            {c.company && <div style={{ fontSize: 13, color: C.textMid, marginTop: 2 }}>🏢 {c.company}</div>}
+                            {c.email && <div style={{ fontSize: 13, color: C.textMid, marginTop: 2 }}>📧 {c.email}</div>}
+                            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>📅 {c.dateSaved}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <select value={c.status} onChange={e => updateContactStatus(c.id, e.target.value)} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 12, color: c.status === "Replied" ? C.green : c.status === "Waiting for Reply" ? C.yellow : C.textMid, fontWeight: 600, cursor: "pointer" }}>
+                              {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)}>✍️ Generate Follow-up</Btn>
+                            {c.email && <a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}`} style={{ textDecoration: "none" }}><Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }}>📤 Email</Btn></a>}
+                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, color: C.red }} onClick={() => deleteContact(c.id)}>✕</Btn>
+                          </div>
+                        </div>
+
+                        {/* Generated follow-up for this contact */}
+                        {fuContact?.id === c.id && (
+                          <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                            {fuLoading && <div style={{ color: C.purple, fontSize: 13, fontWeight: 600 }}>⏳ Generating follow-up…</div>}
+                            {!fuLoading && fuDraft && (
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>FOLLOW-UP MESSAGE</Label><CopyBtn text={fuDraft} label="📋 Copy" /></div>
+                                <textarea value={fuDraft} onChange={e => setFuDraft(e.target.value)} style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                                {c.email && <div style={{ marginTop: 10 }}><a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}&body=${encodeURIComponent(fuDraft)}`} style={{ textDecoration: "none" }}><Btn variant="primary" style={{ fontSize: 13 }}>📤 Send Follow-up</Btn></a></div>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* GENERATED FOLLOW-UP FROM CURRENT OUTREACH */}
+              {draft && (
+                <Card>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div><Label>FOLLOW-UP TEMPLATE</Label><div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>For your current outreach — send after 7 days of no reply</div></div>
+                    <CopyBtn text={draft.followUp} label="📋 Copy" />
+                  </div>
+                  <textarea value={draft.followUp} onChange={e => updateDraft("followUp", e.target.value)} style={{ width: "100%", minHeight: 140, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  <div style={{ marginTop: 20 }}>
+                    <Label>💬 CONVERSATION ICEBREAKERS (editable)</Label>
+                    {(draft.icebreakers || []).map((ic, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                        <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0, paddingTop: 12 }}>{i+1}.</span>
+                        <textarea value={ic} onChange={e => updateIcebreaker(i, e.target.value)} style={{ flex: 1, minHeight: 50, background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "10px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
           )}
           {tab === "tips" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="two-col">
