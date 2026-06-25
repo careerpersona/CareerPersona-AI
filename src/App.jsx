@@ -503,8 +503,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 }
 
 // ─── JOB SEARCH ────────────────────────────────────────────
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications }) {
-  const [filters, setFilters] = useState({ title: "", country: "United States", city: "", remote: false, employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
+  const [filters, setFilters] = useState({ title: profile?.preferred_job_title || "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
   const resumeFileRef = useRef();
   const [uploadingResume, setUploadingResume] = useState(false);
@@ -815,7 +815,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 // ─── INTERVIEW PAGE ────────────────────────────────────────
 const INTERVIEW_STORAGE_KEY = "cp_interview_session_v1";
 
-function InterviewPage() {
+function InterviewPage({ profile }) {
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
   const [error, setError] = useState("");
   const [resume, setResume] = useState("");
@@ -1408,8 +1408,8 @@ function TrackerPage({ applications, setApplications }) {
 }
 
 // ─── SALARY PAGE ───────────────────────────────────────────
-function SalaryPage() {
-  const [form, setForm] = useStorage("cp_salary_form", { jobTitle: "", location: "", experience: "", skills: "", company: "" });
+function SalaryPage({ profile }) {
+  const [form, setForm] = useStorage("cp_salary_form", { jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
   const [results, setResults] = useStorage("cp_salary_results", null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
   const fmt = n => (n !== undefined && n !== null && n !== "" && !isNaN(Number(n))) ? `$${Number(n).toLocaleString()}` : "—";
@@ -1545,8 +1545,8 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 }
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
-function NetworkingPage() {
-  const [form, setForm] = useStorage("cp_network_form", { targetName: "", targetRole: "", targetCompany: "", yourBackground: "", purpose: "coffee-chat", jobDesc: "" });
+function NetworkingPage({ profile }) {
+  const [form, setForm] = useStorage("cp_network_form", { targetName: "", targetRole: "", targetCompany: "", yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "", purpose: "coffee-chat", jobDesc: "" });
   const [results, setResults] = useStorage("cp_network_results", null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
   const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
@@ -1931,27 +1931,72 @@ function PricingPage({ profile }) {
 
 // ─── PROFILE PAGE ──────────────────────────────────────────
 function ProfilePage({ profile, updateProfile, logout }) {
-  const [form, setForm] = useState({ full_name: profile?.full_name || "", phone: "", location: "", linkedin_url: "", job_title: "", years_experience: "" });
+  const [form, setForm] = useState({
+    full_name: profile?.full_name || "",
+    email_address: profile?.email_address || "",
+    phone: profile?.phone || "",
+    location: profile?.location || "",
+    job_title: profile?.job_title || "",
+    years_experience: profile?.years_experience || "",
+    preferred_job_title: profile?.preferred_job_title || "",
+    work_type: profile?.work_type || "",
+  });
   const [saved, setSaved] = useState(false);
-  const save = () => { updateProfile(form); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const [error, setError] = useState("");
+
+  const save = () => {
+    if (!form.full_name.trim()) { setError("Full Name is required."); return; }
+    setError("");
+    updateProfile(form);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const planColor = { FREE: C.textMuted, PRO: C.purple };
+  const planName = (profile?.plan || "free").toUpperCase();
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Profile</h1><p style={{ color: C.textMuted, fontSize: 14 }}>{profile?.email}</p></div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}><Badge color={C.purple}>{(profile?.plan || "FREE").toUpperCase()}</Badge><Btn variant="danger" onClick={logout}>Sign Out</Btn></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Career Profile</h1>
+          <p style={{ color: C.textMuted, fontSize: 13 }}>Logged in as: {profile?.email || "—"}</p>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Badge color={planColor[planName] || C.textMuted}>{planName}</Badge>
+          <Btn variant="danger" onClick={logout}>Sign Out</Btn>
+        </div>
       </div>
+
+      {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
+      {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>✓ Profile saved successfully!</div>}
+
       <Card>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Personal Information</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
-          <Input label="Full Name" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+          <Input label="Full Name *" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Your full name" />
+          <Input label="Email Address" value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} placeholder="your@email.com" />
           <Input label="Phone" placeholder="+1 (415) 555-0123" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           <Input label="Location" placeholder="San Francisco, CA" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-          <Input label="LinkedIn URL" placeholder="linkedin.com/in/yourname" value={form.linkedin_url} onChange={e => setForm(f => ({ ...f, linkedin_url: e.target.value }))} />
-          <Input label="Current Job Title" placeholder="Software Engineer" value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
-          <Input label="Years of Experience" placeholder="4 years" value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
         </div>
-        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? "✓ Saved!" : "Save Profile"}</Btn>
+      </Card>
+
+      <Card style={{ marginTop: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Career Information</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
+          <Input label="Current Job Title" placeholder="Software Engineer" value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
+          <Input label="Years of Experience" placeholder="4" value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
+          <Input label="Preferred Job Title" placeholder="Senior Software Engineer" value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} />
+          <div>
+            <Label>Preferred Work Type</Label>
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              {["Remote", "Hybrid", "On-site"].map(wt => (
+                <button key={wt} onClick={() => setForm(f => ({ ...f, work_type: f.work_type === wt ? "" : wt }))} style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${form.work_type === wt ? C.purple : C.border}`, background: form.work_type === wt ? C.purpleLight : "#fff", color: form.work_type === wt ? C.purple : C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{wt}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? "✓ Saved!" : "💾 Save Profile"}</Btn>
       </Card>
     </div>
   );
@@ -2072,12 +2117,12 @@ export default function App() {
       )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
-        {page === "interview" && <InterviewPage />}
+        {page === "interview" && <InterviewPage profile={profile} />}
         {page === "tracker" && <TrackerPage applications={applications} setApplications={setApplications} />}
-        {page === "salary" && <SalaryPage />}
-        {page === "network" && <NetworkingPage />}
+        {page === "salary" && <SalaryPage profile={profile} />}
+        {page === "network" && <NetworkingPage profile={profile} />}
         {page === "pricing" && <PricingPage profile={profile} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} logout={handleLogout} />}
       </main>
