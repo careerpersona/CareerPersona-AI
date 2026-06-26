@@ -321,11 +321,11 @@ ${context}`, 600);
           </h1>
           <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 15, lineHeight: 1.6 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
         </div>
-        <div className="plan-card" style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", minWidth: 160, maxWidth: 180, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 2 }}>Current Plan</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, marginBottom: 2 }}>{(profile?.plan || "free").toUpperCase()}</div>
-          <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All features unlocked" : "Unlock unlimited AI features"}</div>
-          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
+        <div className="plan-card" style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", minWidth: 130, maxWidth: 150, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+          <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Current Plan</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, margin: "1px 0" }}>{(profile?.plan || "free").toUpperCase()}</div>
+          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 5 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All features unlocked" : "Unlock unlimited AI features"}</div>
+          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "6px", fontSize: 11 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
         </div>
       </div>
 
@@ -2443,7 +2443,13 @@ export default function App() {
   }, []);
 
   // Scroll to top on every page change
-  useEffect(() => { window.scrollTo(0, 0); }, [page]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // Beat browser scroll restoration on refresh
+    if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+    const t = setTimeout(() => window.scrollTo(0, 0), 50);
+    return () => clearTimeout(t);
+  }, [page]);
 
   // Handle browser Back/Forward
   useEffect(() => {
@@ -2502,7 +2508,7 @@ export default function App() {
   .hamburger-btn { display: block !important; }
   .mobile-logo-row { justify-content: flex-start !important; padding: 14px 72px 12px 20px !important; }
   .hero-section { flex-direction: column !important; gap: 12px !important; margin-bottom: 20px !important; }
-  .hero-section .plan-card { max-width: 100% !important; min-width: 100% !important; }
+  .hero-section .plan-card { max-width: 200px !important; min-width: auto !important; align-self: flex-start !important; }
   .hero-greeting { font-size: 24px !important; }
   .hero-subtitle { font-size: 13px !important; }
   .hero-left { min-width: auto !important; }
