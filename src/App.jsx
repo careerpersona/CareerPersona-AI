@@ -313,8 +313,21 @@ ${context}`, 600);
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>AI Command Center</h1>
-      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>Your personalized career intelligence dashboard</p>
+      {/* WELCOME HERO */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 8 }}>
+            {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
+          </h1>
+          <p style={{ color: C.textMuted, fontSize: 15, lineHeight: 1.6 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 24px", minWidth: 220, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+          <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, marginBottom: 4 }}>Current Plan</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, marginBottom: 4 }}>{(profile?.plan || "free").toUpperCase()}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All AI features unlocked" : "Unlock unlimited AI features"}</div>
+          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
+        </div>
+      </div>
 
       {/* TOP ROW: Briefing + Daily Plan */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
