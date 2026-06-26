@@ -223,16 +223,283 @@ function AuthPage({ onLogin }) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage() {
+function DashboardPage({ profile, applications, savedJobs, setPage }) {
+  const [briefing, setBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [dailyPlan, setDailyPlan] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef();
+
+  // Read additional data from localStorage
+  const readLS = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
+  const interviewSession = readLS("cp_interview_session_v1", null);
+  const salaryResults = readLS("cp_salary_results", null);
+  const networkContacts = readLS("cp_network_contacts", []);
+  const apps = applications || [];
+  const saved = savedJobs || [];
+
+  // Computed stats
+  const totalApps = apps.length;
+  const interviews = apps.filter(a => ["Interview","Final Interview","Phone Screen"].includes(a.status)).length;
+  const offers = apps.filter(a => a.status === "Offer").length;
+  const profileFields = ["full_name","email_address","phone","location","job_title","years_experience","preferred_job_title","work_type"];
+  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
+  const questionsCount = interviewSession?.questions?.length || 0;
+
+  // AI Activity log (from localStorage)
+  const [aiActivity, setAiActivity] = useStorage("cp_ai_activity", []);
+  const logActivity = (action) => {
+    const entry = { action, time: new Date().toLocaleString(), id: Date.now() };
+    setAiActivity(prev => [entry, ...prev].slice(0, 10));
+  };
+
+  // Generate AI Briefing
+  const generateBriefing = async () => {
+    setBriefingLoading(true);
+    try {
+      const context = `User: ${profile?.full_name || "New user"}. Job title: ${profile?.job_title || "Not set"}. Target: ${profile?.preferred_job_title || "Not set"}. Applications: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved jobs: ${saved.length}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Profile completion: ${profileComplete}%.`;
+      const raw = await askClaude(`You are CareerPersona AI. Generate a brief daily career briefing (4-5 bullet points, each 1 sentence). Be specific and actionable based on this data. If user is new with little data, give encouraging onboarding guidance. Return ONLY a JSON array of strings, no markdown: ["point1","point2","point3","point4"]
+${context}`, 600);
+      try {
+        const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
+        if (start >= 0 && end > start) setBriefing(JSON.parse(raw.slice(start, end + 1)));
+        else setBriefing(["Welcome to CareerPersona AI! Start by completing your profile, uploading a resume, and searching for jobs."]);
+      } catch { setBriefing(["Your AI briefing is ready. Complete your profile to get personalized insights."]); }
+      logActivity("Daily briefing generated");
+    } catch { setBriefing(["Could not generate briefing. Please try again."]); }
+    finally { setBriefingLoading(false); }
+  };
+
+  // Generate Daily Plan
+  const generatePlan = async () => {
+    setPlanLoading(true);
+    try {
+      const context = `Profile complete: ${profileComplete}%. Apps: ${totalApps}. Saved: ${saved.length}. Interviews: ${interviews}. Questions practiced: ${questionsCount}. Target role: ${profile?.preferred_job_title || "not set"}.`;
+      const raw = await askClaude(`You are CareerPersona AI career coach. Generate today's 4-5 action items for this job seeker. Each should be specific and achievable today. Return ONLY JSON array: [{"task":"<task>","priority":"high|medium|low"}]
+${context}`, 600);
+      try {
+        const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
+        if (start >= 0 && end > start) setDailyPlan(JSON.parse(raw.slice(start, end + 1)));
+        else setDailyPlan([{task:"Complete your career profile",priority:"high"}]);
+      } catch { setDailyPlan([{task:"Set up your profile to get started",priority:"high"}]); }
+      logActivity("Daily plan generated");
+    } catch { setDailyPlan([{task:"Could not generate plan. Try again.",priority:"medium"}]); }
+    finally { setPlanLoading(false); }
+  };
+
+  // Chat
+  const sendChat = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", text: userMsg }]);
+    setChatLoading(true);
+    try {
+      const context = `You are CareerPersona AI career assistant. User: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "N/A"}. Target: ${profile?.preferred_job_title || "N/A"}. Apps: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved: ${saved.length}. Profile: ${profileComplete}% complete. Answer concisely (2-3 sentences) using this context.`;
+      const raw = await askClaude(`${context}\nUser question: ${userMsg}`, 400);
+      setChatMessages(prev => [...prev, { role: "ai", text: raw }]);
+      logActivity("Chat: " + userMsg.slice(0, 30));
+    } catch {
+      setChatMessages(prev => [...prev, { role: "ai", text: "Sorry, I couldn't process that. Please try again." }]);
+    } finally { setChatLoading(false); }
+  };
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  const priorityColor = { high: C.red, medium: C.yellow, low: C.green };
+
   return (
-    <div style={{ textAlign: "center", padding: "80px 20px" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 8 }}>Dashboard</h1>
-      <p style={{ color: C.textMuted, fontSize: 16 }}>Your AI-powered career command center is coming soon.</p>
-      <p style={{ color: C.textMuted, fontSize: 14, marginTop: 8 }}>Track your progress, get insights, and manage your job search — all in one place.</p>
+    <div>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>AI Command Center</h1>
+      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>Your personalized career intelligence dashboard</p>
+
+      {/* TOP ROW: Briefing + Daily Plan */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
+        {/* Daily Briefing */}
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>AI Daily Briefing</span></div>
+            <Btn variant="secondary" style={{ padding: "4px 12px", fontSize: 11 }} onClick={generateBriefing} disabled={briefingLoading}>{briefingLoading ? "..." : "↻"}</Btn>
+          </div>
+          {!briefing && !briefingLoading && (
+            <div style={{ textAlign: "center", padding: "20px 0", color: C.textMuted, fontSize: 14 }}>
+              <div>Click <strong>↻</strong> to generate your personalized daily briefing</div>
+            </div>
+          )}
+          {briefingLoading && <div style={{ color: C.purple, fontSize: 13, padding: "16px 0" }}>Analyzing your career data...</div>}
+          {briefing && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {briefing.map((b, i) => <div key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "6px 0", borderBottom: i < briefing.length - 1 ? `1px solid ${C.border}` : "none" }}>• {b}</div>)}
+            </div>
+          )}
+        </Card>
+
+        {/* Daily Plan */}
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Today's Action Plan</div>
+            <Btn variant="secondary" style={{ padding: "4px 12px", fontSize: 11 }} onClick={generatePlan} disabled={planLoading}>{planLoading ? "..." : "↻"}</Btn>
+          </div>
+          {!dailyPlan && !planLoading && (
+            <div style={{ textAlign: "center", padding: "20px 0", color: C.textMuted, fontSize: 14 }}>
+              <div>Click <strong>↻</strong> to get today's recommended actions</div>
+            </div>
+          )}
+          {planLoading && <div style={{ color: C.purple, fontSize: 13, padding: "16px 0" }}>Creating your action plan...</div>}
+          {dailyPlan && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {dailyPlan.map((t, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < dailyPlan.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: priorityColor[t.priority] || C.textMuted, background: (priorityColor[t.priority] || C.textMuted) + "18", padding: "2px 8px", borderRadius: 6, flexShrink: 0, marginTop: 2 }}>{(t.priority || "").toUpperCase()}</span>
+                  <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{t.task}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* SECOND ROW: Resume + Job + Market Intelligence */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
+        {/* Resume Intelligence */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Resume Intelligence</div>
+          {totalApps > 0 || profileComplete > 50 ? (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>Profile Strength</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
+              <PBar val={profileComplete} color={C.purple} />
+              <div style={{ marginTop: 12, fontSize: 13, color: C.textMuted }}>Upload your resume for ATS scoring, keyword analysis, and AI-powered improvements.</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Complete your profile and upload a resume to unlock AI-powered resume intelligence.</div>
+          )}
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("resume")}>Go to Resume →</Btn>
+        </Card>
+
+        {/* Job Intelligence */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Job Intelligence</div>
+          {saved.length > 0 ? (
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{saved.length}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>Saved Jobs</div>
+              {saved.slice(0, 3).map((j, i) => (
+                <div key={j.id || i} style={{ fontSize: 12, color: C.text, padding: "4px 0", borderBottom: `1px solid ${C.border}` }}>{j.title || j.jobTitle} — {j.company}</div>
+              ))}
+              {saved.length > 3 && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>+{saved.length - 3} more</div>}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Search for jobs to see AI-powered match scoring and recommendations here.</div>
+          )}
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>Go to Job Search →</Btn>
+        </Card>
+
+        {/* Market Intelligence */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Market Intelligence</div>
+          {salaryResults ? (
+            <div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Median Salary</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>${salaryResults.salaryRange?.median?.toLocaleString() || "—"}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>Demand: <strong>{salaryResults.demandLevel || "—"}</strong></div>
+              {salaryResults.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, marginTop: 6, lineHeight: 1.5 }}>{salaryResults.marketOutlook.slice(0, 120)}...</div>}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Run a salary analysis to see market data, trends, and compensation benchmarks.</div>
+          )}
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("salary")}>Go to Salary →</Btn>
+        </Card>
+      </div>
+
+      {/* THIRD ROW: Recommendations + Progress + Activity */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
+        {/* AI Recommendations */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>AI Recommendations</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>Complete your profile ({profileComplete}% done)</div>}
+            {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>Search and save jobs to track opportunities</div>}
+            {totalApps === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.greenLight, borderRadius: 8 }}>Submit your first application</div>}
+            {questionsCount === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.yellowLight, borderRadius: 8 }}>Practice interview questions</div>}
+            {networkContacts.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.redLight, borderRadius: 8 }}>Build your network — reach out to someone</div>}
+            {profileComplete === 100 && saved.length > 0 && totalApps > 0 && questionsCount > 0 && networkContacts.length > 0 && (
+              <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Great progress! Keep applying and following up.</div>
+            )}
+          </div>
+        </Card>
+
+        {/* Career Progress */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Career Progress</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              ["Profile", `${profileComplete}%`, profileComplete, C.purple],
+              ["Saved Jobs", saved.length, Math.min(saved.length * 10, 100), C.blue],
+              ["Applications", totalApps, Math.min(totalApps * 10, 100), C.green],
+              ["Interviews", interviews, Math.min(interviews * 20, 100), C.yellow],
+              ["Offers", offers, Math.min(offers * 50, 100), C.green],
+            ].map(([label, value, pct, color]) => (
+              <div key={label}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                  <span style={{ color: C.textMid }}>{label}</span>
+                  <span style={{ fontWeight: 700, color }}>{value}</span>
+                </div>
+                <PBar val={pct} color={color} />
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* AI Activity */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>AI Activity</div>
+          {aiActivity.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+              {aiActivity.map(a => (
+                <div key={a.id} style={{ fontSize: 12, color: C.text, padding: "6px 0", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span>{a.action}</span>
+                  <span style={{ color: C.textMuted, flexShrink: 0, fontSize: 11 }}>{a.time}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Your AI activity will appear here as you use CareerPersona.</div>
+          )}
+        </Card>
+      </div>
+
+      {/* BOTTOM: AI Chat Assistant */}
+      <Card>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 CareerPersona AI Assistant</div>
+        <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          {chatMessages.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 14 }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
+              Ask me anything about your career, resume, interviews, salary negotiation, or job search strategy.
+            </div>
+          )}
+          {chatMessages.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: 12, background: m.role === "user" ? C.purple : "#fff", color: m.role === "user" ? "#fff" : C.text, fontSize: 14, lineHeight: 1.6, boxShadow: m.role === "ai" ? "0 1px 4px rgba(0,0,0,0.06)" : "none" }}>
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {chatLoading && <div style={{ color: C.purple, fontSize: 13 }}>Thinking...</div>}
+          <div ref={chatEndRef} />
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder="Ask CareerPersona AI anything..." style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+          <Btn onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ padding: "12px 20px" }}>Send</Btn>
+        </div>
+      </Card>
     </div>
   );
 }
+
 
 // ─── RESUME PAGE ───────────────────────────────────────────
 const SAMPLE_RESUME = `John Smith | john@email.com | San Francisco, CA | (415) 555-0123
@@ -2312,7 +2579,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
