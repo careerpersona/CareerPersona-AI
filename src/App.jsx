@@ -314,18 +314,18 @@ ${context}`, 600);
   return (
     <div>
       {/* WELCOME HERO */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
-        <div style={{ flex: 1, minWidth: 280 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 8 }}>
+      <div className="hero-section" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
+        <div className="hero-left" style={{ flex: 1, minWidth: 280 }}>
+          <h1 className="hero-greeting" style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 8 }}>
             {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
           </h1>
-          <p style={{ color: C.textMuted, fontSize: 15, lineHeight: 1.6 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
+          <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 15, lineHeight: 1.6 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
         </div>
-        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 24px", minWidth: 220, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, marginBottom: 4 }}>Current Plan</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, marginBottom: 4 }}>{(profile?.plan || "free").toUpperCase()}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All AI features unlocked" : "Unlock unlimited AI features"}</div>
-          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "10px", fontSize: 13 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
+        <div className="plan-card" style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", minWidth: 160, maxWidth: 180, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 2 }}>Current Plan</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, marginBottom: 2 }}>{(profile?.plan || "free").toUpperCase()}</div>
+          <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All features unlocked" : "Unlock unlimited AI features"}</div>
+          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "8px", fontSize: 12 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
         </div>
       </div>
 
@@ -2427,7 +2427,7 @@ export default function App() {
     const hash = window.location.hash.replace("#", "");
     if (hash && validPages.has(hash)) return hash;
     try { const stored = localStorage.getItem("cp_active_page"); if (stored) { const p = JSON.parse(stored); if (validPages.has(p)) return p; } } catch {}
-    return "resume";
+    return "dashboard";
   };
 
   const [page, setPageRaw] = useState(getInitialPage);
@@ -2442,6 +2442,9 @@ export default function App() {
     }
   }, []);
 
+  // Scroll to top on every page change
+  useEffect(() => { window.scrollTo(0, 0); }, [page]);
+
   // Handle browser Back/Forward
   useEffect(() => {
     const onPop = (e) => {
@@ -2454,7 +2457,7 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const handleLogin = (u) => { login(u); setProfile(u); };
+  const handleLogin = (u) => { login(u); setProfile(u); setPage("dashboard"); };
   const handleLogout = () => { logout(); setProfile(null); };
   const updateProfile = (updates) => { const updated = { ...profile, ...updates }; setProfile(updated); localStorage.setItem("cp_user", JSON.stringify(updated)); };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
@@ -2498,6 +2501,15 @@ export default function App() {
   .desktop-nav { display: none !important; }
   .hamburger-btn { display: block !important; }
   .mobile-logo-row { justify-content: flex-start !important; padding: 14px 72px 12px 20px !important; }
+  .hero-section { flex-direction: column !important; gap: 12px !important; margin-bottom: 20px !important; }
+  .hero-section .plan-card { max-width: 100% !important; min-width: 100% !important; }
+  .hero-greeting { font-size: 24px !important; }
+  .hero-subtitle { font-size: 13px !important; }
+  .hero-left { min-width: auto !important; }
+}
+@media (min-width: 701px) and (max-width: 1024px) {
+  .hero-greeting { font-size: 28px !important; }
+  .hero-section { gap: 12px !important; }
 }
 @media (min-width: 701px) {
   .hamburger-btn { display: none !important; }
