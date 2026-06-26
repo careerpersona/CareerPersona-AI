@@ -222,6 +222,18 @@ function AuthPage({ onLogin }) {
   );
 }
 
+// ─── DASHBOARD PAGE ─────────────────────────────────────────
+function DashboardPage() {
+  return (
+    <div style={{ textAlign: "center", padding: "80px 20px" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 8 }}>Dashboard</h1>
+      <p style={{ color: C.textMuted, fontSize: 16 }}>Your AI-powered career command center is coming soon.</p>
+      <p style={{ color: C.textMuted, fontSize: 14, marginTop: 8 }}>Track your progress, get insights, and manage your job search — all in one place.</p>
+    </div>
+  );
+}
+
 // ─── RESUME PAGE ───────────────────────────────────────────
 const SAMPLE_RESUME = `John Smith | john@email.com | San Francisco, CA | (415) 555-0123
 
@@ -1930,7 +1942,7 @@ function PricingPage({ profile }) {
 }
 
 // ─── PROFILE PAGE ──────────────────────────────────────────
-function ProfilePage({ profile, updateProfile, logout }) {
+function ProfilePage({ profile, updateProfile }) {
   const [form, setForm] = useState({
     full_name: profile?.full_name || "",
     email_address: profile?.email_address || "",
@@ -1939,7 +1951,9 @@ function ProfilePage({ profile, updateProfile, logout }) {
     job_title: profile?.job_title || "",
     years_experience: profile?.years_experience || "",
     preferred_job_title: profile?.preferred_job_title || "",
+    preferred_industry: profile?.preferred_industry || "",
     work_type: profile?.work_type || "",
+    desired_salary: profile?.desired_salary || "",
   });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -1952,26 +1966,30 @@ function ProfilePage({ profile, updateProfile, logout }) {
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const planColor = { FREE: C.textMuted, PRO: C.purple };
-  const planName = (profile?.plan || "free").toUpperCase();
-
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Career Profile</h1>
-          <p style={{ color: C.textMuted, fontSize: 13 }}>Logged in as: {profile?.email || "—"}</p>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <Badge color={planColor[planName] || C.textMuted}>{planName}</Badge>
-          <Btn variant="danger" onClick={logout}>Sign Out</Btn>
-        </div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Career Profile</h1>
+        <p style={{ color: C.textMuted, fontSize: 13 }}>Logged in as: {profile?.email || "—"}</p>
       </div>
 
       {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
       {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>✓ Profile saved successfully!</div>}
 
-      <Card>
+      {/* Profile Picture */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.purpleLight, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: C.purple, flexShrink: 0 }}>
+            {form.full_name ? form.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "👤"}
+          </div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{form.full_name || "Your Name"}</div>
+            <div style={{ fontSize: 14, color: C.textMuted, marginTop: 2 }}>{form.job_title || "Add your job title"}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Personal Information</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
           <Input label="Full Name *" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Your full name" />
@@ -1981,12 +1999,13 @@ function ProfilePage({ profile, updateProfile, logout }) {
         </div>
       </Card>
 
-      <Card style={{ marginTop: 16 }}>
+      <Card>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Career Information</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
           <Input label="Current Job Title" placeholder="Software Engineer" value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
           <Input label="Years of Experience" placeholder="4" value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
           <Input label="Preferred Job Title" placeholder="Senior Software Engineer" value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} />
+          <Input label="Preferred Industry" placeholder="Technology, Healthcare, Finance…" value={form.preferred_industry} onChange={e => setForm(f => ({ ...f, preferred_industry: e.target.value }))} />
           <div>
             <Label>Preferred Work Type</Label>
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -1995,8 +2014,9 @@ function ProfilePage({ profile, updateProfile, logout }) {
               ))}
             </div>
           </div>
+          <Input label="Desired Salary" placeholder="$120,000" value={form.desired_salary} onChange={e => setForm(f => ({ ...f, desired_salary: e.target.value }))} />
         </div>
-        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? "✓ Saved!" : "💾 Save Profile"}</Btn>
+        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? "✓ Saved!" : "💾 Save Changes"}</Btn>
       </Card>
     </div>
   );
@@ -2010,7 +2030,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
   const [deleteText, setDeleteText] = useState("");
 
   const planName = (profile?.plan || "free").toUpperCase();
-  const planColor = { FREE: C.textMuted, PRO: C.purple };
+  const isPro = planName === "PRO";
 
   const handleDelete = () => {
     if (deleteText.toLowerCase() === "delete my account") {
@@ -2023,35 +2043,64 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 24 }}>Settings</h1>
 
+      {/* SUBSCRIPTION */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Subscription</div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 14, color: C.textMid }}>Current Plan</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-              <Badge color={planColor[planName] || C.textMuted}>{planName}</Badge>
-              {planName === "FREE" && <span style={{ fontSize: 13, color: C.textMuted }}>Basic features included</span>}
-              {planName === "PRO" && <span style={{ fontSize: 13, color: C.purple }}>All features unlocked</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💳</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Subscription</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
+          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Current Plan</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: isPro ? C.purple : C.text }}>{planName}</div>
+          </div>
+          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Status</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>Active</div>
+          </div>
+          {isPro && <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Next Renewal</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>—</div>
+          </div>}
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {!isPro && <Btn onClick={() => setPage("pricing")}>Upgrade to PRO</Btn>}
+          {isPro && <Btn variant="secondary" onClick={() => alert("Stripe subscription management coming soon.")}>Cancel Subscription</Btn>}
+        </div>
+      </Card>
+
+      {/* BILLING */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💰</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Billing</span></div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>Payment Method</div>
+          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ color: C.textMuted, fontSize: 14 }}>No payment method on file</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("Stripe integration coming soon.")}>Add Card</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("Stripe integration coming soon.")}>Change Card</Btn>
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {planName === "FREE" && <Btn onClick={() => setPage("pricing")}>Upgrade to PRO</Btn>}
-          {planName === "PRO" && <Btn variant="secondary" onClick={() => alert("Stripe subscription management coming soon.")}>Manage Subscription</Btn>}
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>Billing History</div>
+          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16 }}>
+            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>No billing history yet</div>
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>When you subscribe to Pro, invoices will appear here with View, Download (PDF), and Print options.</div>
         </div>
       </Card>
 
+      {/* SECURITY */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Security</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔒</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Security</span></div>
         <Btn variant="secondary" onClick={() => alert("Password change will be available when authentication is connected to Supabase.")}>Change Password</Btn>
       </Card>
 
+      {/* NOTIFICATIONS */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Notifications</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔔</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Notifications</span></div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Email Notifications</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>Receive updates about new features and tips</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>Receive updates about new features and career tips</div>
           </div>
           <button onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s" }}>
             <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 3, left: notifyEmail ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
@@ -2059,12 +2108,10 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
         </div>
       </Card>
 
+      {/* ACCOUNT */}
       <Card>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>Account</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn variant="secondary" onClick={logout}>Sign Out</Btn>
-          <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete Account</Btn>
-        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Account</span></div>
+        <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete Account</Btn>
         {showDeleteConfirm && (
           <div style={{ marginTop: 16, background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 12, padding: 18 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 8 }}>⚠️ Delete Account Permanently</div>
@@ -2088,7 +2135,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useStorage("cp_apps", []);
   const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
-  const validPages = new Set(["resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
+  const validPages = new Set(["dashboard","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -2129,6 +2176,7 @@ export default function App() {
   const goHome = () => setPage("resume");
 
   const nav = [
+    { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "resume", icon: "⚡", label: "Resume" },
     { id: "jobs", icon: "🔍", label: "Job Search" },
     { id: "saved", icon: "♥", label: `Saved${savedJobs.length > 0 ? ` (${savedJobs.length})` : ""}` },
@@ -2171,51 +2219,45 @@ export default function App() {
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
       `}</style>
-      <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", height: 62 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={goHome}>
-          <Logo size={36} />
-          <AppName size={18} />
+      <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+        {/* Row 1: Logo only */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 24px 0", cursor: "pointer" }} onClick={goHome}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Logo size={32} /><AppName size={17} /></div>
         </div>
-        <nav className="desktop-nav" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
-          {nav.map(n => (
-            <button key={n.id} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
-              <span>{n.icon}</span><span className="nav-label">{n.label}</span>
-            </button>
-          ))}
-
-          {/* Language placeholder */}
-          <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
-            <span>🌐</span><span className="nav-label">Language</span>
-          </button>
-
-          {/* Plan badge */}
-          <span style={{ padding: "4px 10px", borderRadius: 12, background: planName === "PRO" ? C.purpleLight : C.bgSoft, color: planName === "PRO" ? C.purple : C.textMuted, fontSize: 11, fontWeight: 700 }}>{planName}</span>
-
-          {/* User dropdown */}
-          <div style={{ position: "relative" }}>
-            <button onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", boxShadow: (page === "profile" || page === "settings") ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
-              <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
-            </button>
-            {userMenuOpen && (
-              <div>
-                <div onClick={() => setUserMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-                <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
-                  <button onClick={() => { setPage("profile"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
-                  <button onClick={() => { setPage("settings"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
-                  <div style={{ borderTop: `1px solid ${C.border}` }} />
-                  <button onClick={() => { handleLogout(); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
+        {/* Row 2: Nav + Utility */}
+        <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
+          <nav style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
+            {nav.map(n => (
+              <button key={n.id} style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
+                <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
+            <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
+            <button style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
+              </button>
+              {userMenuOpen && (
+                <div>
+                  <div onClick={() => setUserMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
+                    <button onClick={() => { setPage("profile"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
+                    <button onClick={() => { setPage("settings"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
+                    <div style={{ borderTop: `1px solid ${C.border}` }} />
+                    <button onClick={() => { handleLogout(); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </nav>
-        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 22 }}>☰</button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Badge color={C.purple}>{(profile?.plan || "FREE").toUpperCase()}</Badge>
         </div>
+        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", position: "absolute", top: 12, right: 16, background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 22 }}>☰</button>
       </header>
       {mobileMenuOpen && (
-        <div style={{ position: "fixed", top: 62, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
+        <div style={{ position: "fixed", top: 75, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
           {nav.map(n => (
             <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
@@ -2234,6 +2276,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
+        {page === "dashboard" && <DashboardPage />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
@@ -2243,7 +2286,7 @@ export default function App() {
         {page === "network" && <NetworkingPage profile={profile} />}
         {page === "pricing" && <PricingPage profile={profile} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
-        {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} logout={handleLogout} />}
+        {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
     </div>
   );
