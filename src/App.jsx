@@ -271,9 +271,9 @@ Location: Remote-first`;
 
 const RESUME_STEPS = ["Analyzing Resume…", "Calculating ATS Score…", "Generating Tailored Resume…", "Creating Cover Letter…"];
 
-function ResumePage({ onSave, onNavigate }) {
+function ResumePage({ onSave, onNavigate, profile }) {
   const [resume, setResume] = useState("");
-  const [jobDesc, setJobDesc] = useState("");
+  const [jobDesc, setJobDesc] = useState(profile?.preferred_job_title ? `Looking for a ${profile.preferred_job_title} position` : "");
   const [loading, setLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
   const [results, setResults] = useState(null);
@@ -2084,7 +2084,12 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16 }}>
             <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>No billing history yet</div>
           </div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>When you subscribe to Pro, invoices will appear here with View, Download (PDF), and Print options.</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>View Invoice</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>Download PDF</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>Print Invoice</Btn>
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>When you subscribe to Pro, invoices will appear here.</div>
         </div>
       </Card>
 
@@ -2188,6 +2193,7 @@ export default function App() {
   ];
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const planName = (profile?.plan || "free").toUpperCase();
 
   if (!user) return <AuthPage onLogin={handleLogin} />;
@@ -2234,8 +2240,37 @@ export default function App() {
             ))}
           </nav>
           <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
-            <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
-            <button style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "transparent", color: C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: langMenuOpen ? "#fff" : "transparent", color: langMenuOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
+              {langMenuOpen && (
+                <div>
+                  <div onClick={() => setLangMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
+                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>Language</div>
+                    <div style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}><span>🇺🇸</span><span style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>English</span><span style={{ marginLeft: "auto", color: C.purple }}>✓</span></div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>More languages coming soon. Your AI responses will adapt to your selected language.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setNotifOpen(!notifOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: notifOpen ? "#fff" : "transparent", color: notifOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+              {notifOpen && (
+                <div>
+                  <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
+                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>Notifications</div>
+                    <div style={{ padding: "32px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>No notifications yet</div>
+                      <div style={{ fontSize: 12, color: C.textMuted }}>Job alerts, interview reminders, and AI insights will appear here.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <div style={{ position: "relative" }}>
               <button onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                 <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
@@ -2277,7 +2312,7 @@ export default function App() {
       )}
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
         {page === "interview" && <InterviewPage profile={profile} />}
