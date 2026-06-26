@@ -2217,6 +2217,7 @@ export default function App() {
   .nav-label { display: none; }
   .desktop-nav { display: none !important; }
   .hamburger-btn { display: block !important; }
+  .mobile-logo-row { justify-content: flex-start !important; padding: 12px 16px 10px !important; }
 }
 @media (min-width: 701px) {
   .hamburger-btn { display: none !important; }
@@ -2225,9 +2226,9 @@ export default function App() {
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
       `}</style>
-      <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+      <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", minHeight: 52 }}>
         {/* Row 1: Logo only */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 24px 0", cursor: "pointer" }} onClick={goHome}>
+        <div className="mobile-logo-row" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 24px 0", cursor: "pointer" }} onClick={goHome}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Logo size={32} /><AppName size={17} /></div>
         </div>
         {/* Row 2: Nav + Utility */}
@@ -2289,10 +2290,10 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", position: "absolute", top: 12, right: 16, background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 22 }}>☰</button>
+        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", position: "absolute", top: "50%", transform: "translateY(-50%)", right: 20, background: "none", border: "none", cursor: "pointer", padding: "10px", fontSize: 28, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
       </header>
       {mobileMenuOpen && (
-        <div style={{ position: "fixed", top: 75, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
+        <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
           {nav.map(n => (
             <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
