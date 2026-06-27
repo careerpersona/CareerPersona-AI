@@ -19,6 +19,17 @@ const uid = () => {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+// Persistent account store, separate from "who is currently logged in" —
+// so logging out doesn't erase a saved profile (cp_accounts is keyed by email).
+const getAccounts = () => { try { return JSON.parse(localStorage.getItem("cp_accounts") || "{}"); } catch { return {}; } };
+const saveAccount = (profile) => {
+  if (!profile?.email) return;
+  const accounts = getAccounts();
+  accounts[profile.email.toLowerCase()] = profile;
+  localStorage.setItem("cp_accounts", JSON.stringify(accounts));
+};
+const findAccount = (email) => (email ? getAccounts()[email.toLowerCase()] || null : null);
+
 const useAuth = () => {
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
@@ -186,7 +197,8 @@ function AuthPage({ onLogin }) {
     if (mode === "signup" && !form.name) { setError("Name is required"); return; }
     setLoading(true); setError("");
     await new Promise(r => setTimeout(r, 600));
-    onLogin({ id: uid(), email: form.email, full_name: form.name || form.email.split("@")[0], plan: "free" });
+    const existing = mode === "login" ? findAccount(form.email) : null;
+    onLogin(existing || { id: uid(), email: form.email, full_name: form.name || form.email.split("@")[0], plan: "free" });
     setLoading(false);
   };
 
@@ -212,7 +224,7 @@ function AuthPage({ onLogin }) {
             <Btn onClick={handle} disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
               {loading ? "Please wait..." : mode === "login" ? "Sign In" : "Create Account"}
             </Btn>
-            <button style={{ width: "100%", padding: "13px", border: `1.5px solid ${C.border}`, borderRadius: 10, background: "#fff", color: C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => onLogin({ id: "g_" + Date.now(), email: "user@gmail.com", full_name: "Google User", plan: "free" })}>
+            <button style={{ width: "100%", padding: "13px", border: `1.5px solid ${C.border}`, borderRadius: 10, background: "#fff", color: C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => onLogin(findAccount("user@gmail.com") || { id: "g_" + Date.now(), email: "user@gmail.com", full_name: "Google User", plan: "free" })}>
               <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> Continue with Google
             </button>
           </div>
@@ -307,7 +319,7 @@ ${context}`, 600);
     } finally { setChatLoading(false); }
   };
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+  useEffect(() => { if (chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
   const priorityColor = { high: C.red, medium: C.yellow, low: C.green };
 
@@ -2463,9 +2475,9 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const handleLogin = (u) => { login(u); setProfile(u); setPage("dashboard"); };
+  const handleLogin = (u) => { login(u); setProfile(u); saveAccount(u); setPage("dashboard"); window.scrollTo(0, 0); };
   const handleLogout = () => { logout(); setProfile(null); };
-  const updateProfile = (updates) => { const updated = { ...profile, ...updates }; setProfile(updated); localStorage.setItem("cp_user", JSON.stringify(updated)); };
+  const updateProfile = (updates) => { const updated = { ...profile, ...updates }; setProfile(updated); localStorage.setItem("cp_user", JSON.stringify(updated)); saveAccount(updated); };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => setPage("resume");
 
