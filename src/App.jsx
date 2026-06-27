@@ -2458,7 +2458,7 @@ export default function App() {
   // Handle browser Back/Forward
   useEffect(() => {
     const onPop = (e) => {
-      const p = e.state?.page || window.location.hash.replace("#", "") || "resume";
+      const p = e.state?.page || window.location.hash.replace("#", "") || "dashboard";
       if (validPages.has(p)) { setPageRaw(p); localStorage.setItem("cp_active_page", JSON.stringify(p)); }
     };
     window.addEventListener("popstate", onPop);
@@ -2471,7 +2471,7 @@ export default function App() {
   const handleLogout = () => { logout(); setProfile(null); };
   const updateProfile = (updates) => { const updated = { ...profile, ...updates }; setProfile(updated); localStorage.setItem("cp_user", JSON.stringify(updated)); saveAccount(updated); };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
-  const goHome = () => setPage("resume");
+  const goHome = () => setPage("dashboard");
 
   const nav = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
