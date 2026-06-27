@@ -64,19 +64,19 @@ function downloadDOCX(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-function Logo({ size = 36, onClick }) {
+function Logo({ size = 36, onClick, className }) {
   return (
-    <div onClick={onClick} style={{ width: size, height: size, background: `linear-gradient(135deg, ${C.purple}, ${C.purpleMid})`, borderRadius: size * 0.25, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: onClick ? "pointer" : "default" }}>
-      <span style={{ color: "#fff", fontWeight: 900, fontSize: size * 0.44, letterSpacing: "-1px" }}>CP</span>
+    <div className={className} onClick={onClick} style={{ width: size, height: size, background: `linear-gradient(135deg, ${C.purple}, ${C.purpleMid})`, borderRadius: size * 0.25, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: onClick ? "pointer" : "default" }}>
+      <span className={className ? `${className}-glyph` : undefined} style={{ color: "#fff", fontWeight: 900, fontSize: size * 0.44, letterSpacing: "-1px" }}>CP</span>
     </div>
   );
 }
 
-function AppName({ size = 18, onClick }) {
+function AppName({ size = 18, onClick, className }) {
   return (
-    <span onClick={onClick} style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.5px", cursor: onClick ? "pointer" : "default" }}>
+    <span className={className} onClick={onClick} style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.5px", cursor: onClick ? "pointer" : "default" }}>
       <span style={{ color: C.text }}>Career</span><span style={{ color: C.purple }}>Persona</span>
-      <span style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "1px 6px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>AI</span>
+      <span className={className ? `${className}-badge` : undefined} style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "1px 6px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>AI</span>
     </span>
   );
 }
@@ -326,19 +326,11 @@ ${context}`, 600);
   return (
     <div>
       {/* WELCOME HERO */}
-      <div className="hero-section" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
-        <div className="hero-left" style={{ flex: 1, minWidth: 280 }}>
-          <h1 className="hero-greeting" style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 8 }}>
-            {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
-          </h1>
-          <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 15, lineHeight: 1.6 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
-        </div>
-        <div className="plan-card" style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", minWidth: 130, maxWidth: 150, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Current Plan</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: (profile?.plan || "free").toUpperCase() === "PRO" ? C.purple : C.green, margin: "1px 0" }}>{(profile?.plan || "free").toUpperCase()}</div>
-          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 5 }}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "All features unlocked" : "Unlock unlimited AI features"}</div>
-          <Btn variant={(profile?.plan || "free").toUpperCase() === "PRO" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "6px", fontSize: 11 }} onClick={() => setPage("pricing")}>{(profile?.plan || "free").toUpperCase() === "PRO" ? "Manage Plan" : "Upgrade to Pro ✨"}</Btn>
-        </div>
+      <div className="hero-section" style={{ marginBottom: 14 }}>
+        <h1 className="hero-greeting" style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+          {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
+        </h1>
+        <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 13, lineHeight: 1.4 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
       </div>
 
       {/* TOP ROW: Briefing + Daily Plan */}
@@ -2513,44 +2505,61 @@ export default function App() {
         button:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
         button:active:not(:disabled) { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
-        @media (max-width: 700px) { 
-  .two-col, .three-col { grid-template-columns: 1fr !important; } 
+        @media (max-width: 700px) {
+  .two-col, .three-col { grid-template-columns: 1fr !important; }
   .nav-label { display: none; }
   .desktop-nav { display: none !important; }
-  .hamburger-btn { display: block !important; }
-  .mobile-logo-row { justify-content: flex-start !important; padding: 14px 72px 12px 20px !important; }
-  .hero-section { flex-direction: column !important; gap: 12px !important; margin-bottom: 20px !important; }
-  .hero-section .plan-card { max-width: 200px !important; min-width: auto !important; align-self: flex-start !important; }
-  .hero-greeting { font-size: 24px !important; }
-  .hero-subtitle { font-size: 13px !important; }
-  .hero-left { min-width: auto !important; }
+  .hamburger-btn { display: block !important; width: 50px !important; height: 50px !important; font-size: 30px !important; }
+  .subscription-badge { display: block !important; }
+  .brand-logo { width: 37px !important; height: 37px !important; border-radius: 9px !important; }
+  .brand-logo-glyph { font-size: 16px !important; }
+  .brand-name { font-size: 20px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; }
+  .brand-name-badge { font-size: 13px !important; }
+  .hero-section { margin-bottom: 10px !important; }
+  .hero-greeting { font-size: 22px !important; margin-bottom: 2px !important; }
+  .hero-subtitle { font-size: 12px !important; }
 }
 @media (min-width: 701px) and (max-width: 1024px) {
-  .hero-greeting { font-size: 28px !important; }
-  .hero-section { gap: 12px !important; }
+  .hero-greeting { font-size: 24px !important; margin-bottom: 4px !important; }
+  .hero-section { margin-bottom: 14px !important; }
+  .desktop-nav { padding: 8px 12px !important; gap: 6px !important; flex-wrap: nowrap !important; }
+  .nav-label { display: none !important; }
+  .nav-pills { gap: 4px !important; }
+  .nav-pills button { padding: 9px 10px !important; }
+  .nav-pills button span:first-child { font-size: 16px !important; }
+  .nav-utility { gap: 4px !important; margin-left: 4px !important; }
+  .nav-utility button { padding: 9px 11px !important; font-size: 16px !important; }
 }
 @media (min-width: 701px) {
   .hamburger-btn { display: none !important; }
+  .subscription-badge { display: none !important; }
   .desktop-nav { display: flex !important; }
 }
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
       `}</style>
       <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", minHeight: 52 }}>
-        {/* Row 1: Logo only */}
-        <div className="mobile-logo-row" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 24px 0", cursor: "pointer" }} onClick={goHome}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, whiteSpace: "nowrap" }}><Logo size={32} /><AppName size={17} /></div>
+        {/* Row 1: Hamburger (left) + Logo (center) + Subscription badge (right) — grid keeps the logo centered regardless of side-element width */}
+        <div className="mobile-logo-row" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 6, padding: "10px 16px 0" }}>
+          <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer" }} onClick={goHome}>
+            <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
+          </div>
+          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", justifySelf: "end", background: planName === "FREE" ? "#fff" : C.purpleLight, border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "4px 9px", cursor: "pointer", textAlign: "center", lineHeight: 1.25 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.purple, whiteSpace: "nowrap" }}>👑 {planName}</div>
+            {planName === "FREE" && <div style={{ fontSize: 9, fontWeight: 700, color: C.purpleMid }}>Upgrade</div>}
+          </button>
         </div>
         {/* Row 2: Nav + Utility */}
         <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
-          <nav style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
+          <nav className="nav-pills" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
             {nav.map(n => (
-              <button key={n.id} style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
+              <button key={n.id} title={n.label} style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
                 <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
               </button>
             ))}
           </nav>
-          <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
+          <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
             <div style={{ position: "relative" }}>
               <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: langMenuOpen ? "#fff" : "transparent", color: langMenuOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
               {langMenuOpen && (
@@ -2583,7 +2592,7 @@ export default function App() {
               )}
             </div>
             <div style={{ position: "relative" }}>
-              <button onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+              <button title={profile?.full_name?.split(" ")[0] || "User"} onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                 <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
               </button>
               {userMenuOpen && (
@@ -2600,7 +2609,6 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", position: "absolute", top: "50%", transform: "translateY(-50%)", right: 28, background: "none", border: "none", cursor: "pointer", padding: "10px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
       </header>
       {mobileMenuOpen && (
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
