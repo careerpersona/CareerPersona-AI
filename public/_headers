@@ -1,1 +1,2 @@
-Content-Security-Policy: default-src 'self' 'unsafe-eval' 'unsafe-inline' https://api.anthropic.com https://fonts.googleapis.com https://fonts.gstatic.com 
+/*
+  Content-Security-Policy: default-src 'self' 'unsafe-eval' 'unsafe-inline' https://api.anthropic.com https://proxy.dawn-voice-2790.workers.dev https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com
