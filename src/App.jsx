@@ -2535,6 +2535,12 @@ export default function App() {
   .subscription-badge { display: none !important; }
   .desktop-nav { display: flex !important; }
 }
+@media (min-width: 1025px) {
+  .logo-block { justify-content: flex-start !important; }
+  header { display: flex !important; align-items: center !important; }
+  .mobile-logo-row { width: auto !important; flex: 0 0 auto !important; }
+  .desktop-nav { flex: 1 1 auto !important; justify-content: space-between !important; }
+}
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
       `}</style>
@@ -2542,7 +2548,7 @@ export default function App() {
         {/* Row 1: Hamburger (left) + Logo (center) + Subscription badge (right) — grid keeps the logo centered regardless of side-element width */}
         <div className="mobile-logo-row" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 6, padding: "10px 16px 0" }}>
           <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", gridColumn: 1, justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
+          <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
           <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: planName === "FREE" ? "#fff" : C.purpleLight, border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "4px 9px", cursor: "pointer", textAlign: "center", lineHeight: 1.25 }}>
