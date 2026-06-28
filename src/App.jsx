@@ -2536,10 +2536,13 @@ export default function App() {
   .desktop-nav { display: flex !important; }
 }
 @media (min-width: 1025px) {
-  .logo-block { justify-content: flex-start !important; }
-  header { display: flex !important; align-items: center !important; }
-  .mobile-logo-row { width: auto !important; flex: 0 0 auto !important; }
-  .desktop-nav { flex: 1 1 auto !important; justify-content: space-between !important; }
+  header { display: flex !important; align-items: center !important; padding: 8px 14px !important; gap: 8px !important; }
+  .mobile-logo-row { display: contents !important; }
+  .logo-block { flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; }
+  .desktop-nav { display: contents !important; }
+  .nav-pills { flex: 1 1 auto !important; justify-content: center !important; min-width: 0 !important; overflow-x: auto !important; gap: 1px !important; }
+  .nav-pills button { padding: 6px 8px !important; }
+  .nav-utility { flex: 0 0 auto !important; }
 }
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
