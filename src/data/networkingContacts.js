@@ -1,0 +1,41 @@
+import { useSyncedList } from "./syncList";
+
+const TABLE = "networking_contacts";
+const LOCAL_KEY = "cp_network_contacts";
+
+const toRow = (c, userId) => ({
+  id: c.id,
+  user_id: userId,
+  name: c.name || "",
+  company: c.company || null,
+  email: c.email || null,
+  status: c.status || "Waiting for Reply",
+  subject: c.subject || null,
+  date_saved: c.dateSaved || null,
+  generated_messages: {
+    role: c.role || "",
+    method: c.method || "email",
+    originalMessage: c.originalMessage || "",
+    linkedinMessage: c.linkedinMessage || "",
+    linkedinNote: c.linkedinNote || "",
+  },
+});
+
+const fromRow = (r) => ({
+  id: r.id,
+  name: r.name || "",
+  company: r.company || "",
+  role: r.generated_messages?.role || "",
+  email: r.email || "",
+  method: r.generated_messages?.method || "email",
+  subject: r.subject || "",
+  originalMessage: r.generated_messages?.originalMessage || "",
+  linkedinMessage: r.generated_messages?.linkedinMessage || "",
+  linkedinNote: r.generated_messages?.linkedinNote || "",
+  dateSaved: r.date_saved || "",
+  status: r.status || "Waiting for Reply",
+});
+
+export function useNetworkingContacts(userId) {
+  return useSyncedList(TABLE, LOCAL_KEY, userId, toRow, fromRow, "id");
+}

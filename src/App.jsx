@@ -1,10 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { supabase } from "./lib/supabaseClient";
+import { fetchProfile, upsertProfile } from "./data/profile";
+import { useApplications, insertApplicationRow } from "./data/applications";
+import { useSavedJobs } from "./data/savedJobs";
+import { useResumes } from "./data/resumes";
+import { useSmartApplyQueue } from "./data/smartApply";
+import { useInterviewSession } from "./data/interviewSession";
+import { useSalaryResearch } from "./data/salaryResearch";
+import { useNetworkingContacts } from "./data/networkingContacts";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
   purple: "#6B21E8", purpleLight: "#F3EEFF", purpleMid: "#9B59F5", text: "#0F172A", textMid: "#334155",
   textMuted: "#64748B", green: "#059669", greenLight: "#ECFDF5", red: "#DC2626", redLight: "#FEF2F2",
   yellow: "#D97706", yellowLight: "#FFFBEB", blue: "#2563EB", blueLight: "#EFF6FF",
+  navText: "#3B2A1F", navHover: "#6B21E8",
 };
 
 const useStorage = (key, initial) => {
@@ -28,12 +38,30 @@ const saveAccount = (profile) => {
   accounts[profile.email.toLowerCase()] = profile;
   localStorage.setItem("cp_accounts", JSON.stringify(accounts));
 };
-const findAccount = (email) => (email ? getAccounts()[email.toLowerCase()] || null : null);
 
 const useAuth = () => {
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
-  const logout = () => { setUser(null); localStorage.removeItem("cp_user"); };
+  const logout = async () => {
+    try { await supabase.auth.signOut(); } catch {}
+    setUser(null);
+    localStorage.removeItem("cp_user");
+  };
+
+  // Real Supabase session — takes priority over the local fake-account fallback above.
+  useEffect(() => {
+    const syncFromSession = async (session) => {
+      if (!session?.user) return;
+      const merged = await fetchProfile(session.user.id, session.user.email);
+      login(merged);
+    };
+    supabase.auth.getSession().then(({ data }) => syncFromSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) syncFromSession(session);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   return { user, login, logout };
 };
 
@@ -76,15 +104,59 @@ function AppName({ size = 18, onClick, className }) {
   return (
     <span className={className} onClick={onClick} style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.5px", cursor: onClick ? "pointer" : "default" }}>
       <span style={{ color: C.text }}>Career</span><span style={{ color: C.purple }}>Persona</span>
-      <span className={className ? `${className}-badge` : undefined} style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "1px 6px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>AI</span>
+      <span className={className ? `${className}-badge` : undefined} style={{ display: "inline-flex", justifyContent: "center", alignItems: "center", letterSpacing: "normal", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "0 6px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>AI</span>
     </span>
   );
 }
 
-function Btn({ children, onClick, variant = "primary", disabled, style = {} }) {
-  const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 7, transition: "all 0.15s", ...style };
+function NavPills({ nav, page, setPage }) {
+  return (
+    <nav className="nav-pills" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
+      {nav.map(n => (
+        <button key={n.id} title={n.label} className="nav-pill" style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
+          <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function UserMenu({ profile, page, setPage, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const active = page === "profile" || page === "settings";
+  const name = profile?.full_name?.split(" ")[0] || "User";
+  return (
+    <div style={{ position: "relative", flex: "0 0 105px" }}>
+      <button title={name} onClick={() => setOpen(o => !o)} style={{ width: "100%", boxSizing: "border-box", minWidth: 0, padding: "6px 10px", borderRadius: 8, border: "none", background: active ? "#fff" : "transparent", color: active ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ flexShrink: 0 }}>👤</span>
+        <span className="nav-label" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        <span style={{ flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
+            <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
+            <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
+            <div style={{ borderTop: `1px solid ${C.border}` }} />
+            <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title }) {
+  const isDisabled = disabled || loading;
+  const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: isDisabled ? "not-allowed" : "pointer", opacity: disabled && !loading ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" };
   const variants = { primary: { background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff" }, secondary: { background: C.bgSoft, color: C.textMid, border: `1px solid ${C.border}` }, green: { background: C.green, color: "#fff" }, ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` }, danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}40` }, blue: { background: C.blue, color: "#fff" } };
-  return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
+  return (
+    <button className={className} title={title} style={{ ...base, ...variants[variant], ...style }} onClick={onClick} disabled={isDisabled}>
+      {loading && <span style={{ width: 13, height: 13, flexShrink: 0, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", opacity: 0.85, animation: "spin 0.8s linear infinite" }} />}
+      {children}
+    </button>
+  );
 }
 
 function Card({ children, style = {}, onClick, ...rest }) {
@@ -92,7 +164,7 @@ function Card({ children, style = {}, onClick, ...rest }) {
 }
 
 function Label({ children }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: 7 }}>{children}</div>;
+  return <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 7 }}>{children}</div>;
 }
 
 function Input({ label, style = {}, ...props }) {
@@ -172,9 +244,9 @@ function Spinner({ steps = [], currentStep = 0 }) {
   );
 }
 
-function CopyBtn({ text, label = "Copy" }) {
+function CopyBtn({ text, label = "Copy", variant = "ghost" }) {
   const [c, setC] = useState(false);
-  return <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 2000); }}>{c ? "✓ Copied!" : label}</Btn>;
+  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 2000); }}>{c ? "✓ Copied!" : label}</Btn>;
 }
 
 function ContentDisplay({ content }) {
@@ -186,20 +258,37 @@ function ContentDisplay({ content }) {
 }
 
 // ─── AUTH PAGE ─────────────────────────────────────────────
-function AuthPage({ onLogin }) {
+function AuthPage() {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [confirmPending, setConfirmPending] = useState(false);
 
   const handle = async () => {
     if (!form.email) { setError("Email is required"); return; }
+    if (!form.password) { setError("Password is required"); return; }
     if (mode === "signup" && !form.name) { setError("Name is required"); return; }
     setLoading(true); setError("");
-    await new Promise(r => setTimeout(r, 600));
-    const existing = mode === "login" ? findAccount(form.email) : null;
-    onLogin(existing || { id: uid(), email: form.email, full_name: form.name || form.email.split("@")[0], plan: "free" });
+    const { data, error: authError } =
+      mode === "login"
+        ? await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
+        : await supabase.auth.signUp({ email: form.email, password: form.password, options: { data: { full_name: form.name } } });
     setLoading(false);
+    if (authError) { setError(authError.message); return; }
+    if (mode === "signup" && !data.session) { setConfirmPending(true); return; }
+    // onAuthStateChange (in useAuth) picks up the new session and populates the profile;
+    // App re-renders past AuthPage once `user` is set.
+  };
+
+  const handleGoogle = async () => {
+    setLoading(true); setError("");
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (authError) { setLoading(false); setError(authError.message); }
+    // On success the browser redirects away — no further code runs here.
   };
 
   return (
@@ -211,23 +300,34 @@ function AuthPage({ onLogin }) {
           <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>Your AI-powered career platform</div>
         </div>
         <Card>
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 22 }}>
-            {["login","signup"].map(m => <button key={m} style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? "Sign In" : "Sign Up"}</button>)}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {mode === "signup" && <Input label="Full Name" placeholder="John Smith" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />}
-            <Input label="Email" type="email" placeholder="you@email.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
-            <Input label="Password" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
-          </div>
-          {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
-            <Btn onClick={handle} disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
-              {loading ? "Please wait..." : mode === "login" ? "Sign In" : "Create Account"}
-            </Btn>
-            <button style={{ width: "100%", padding: "13px", border: `1.5px solid ${C.border}`, borderRadius: 10, background: "#fff", color: C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => onLogin(findAccount("user@gmail.com") || { id: "g_" + Date.now(), email: "user@gmail.com", full_name: "Google User", plan: "free" })}>
-              <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> Continue with Google
-            </button>
-          </div>
+          {confirmPending ? (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check your email</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>We sent a confirmation link to <strong>{form.email}</strong>. Click it to activate your account, then sign in.</div>
+              <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setConfirmPending(false); setMode("login"); }}>Back to Sign In</Btn>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 22 }}>
+                {["login","signup"].map(m => <Btn key={m} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? "Sign In" : "Sign Up"}</Btn>)}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {mode === "signup" && <Input label="Full Name" placeholder="John Smith" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />}
+                <Input label="Email" type="email" placeholder="you@email.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
+                <Input label="Password" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
+              </div>
+              {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
+                <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
+                  {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+                </Btn>
+                <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={handleGoogle} loading={loading}>
+                  <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> Continue with Google
+                </Btn>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     </div>
@@ -327,7 +427,7 @@ ${context}`, 600);
     <div>
       {/* WELCOME HERO */}
       <div className="hero-section" style={{ marginBottom: 14 }}>
-        <h1 className="hero-greeting" style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+        <h1 className="hero-greeting" style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>
           {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
         </h1>
         <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 13, lineHeight: 1.4 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
@@ -338,18 +438,20 @@ ${context}`, 600);
         {/* Daily Briefing */}
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>AI Daily Briefing</span></div>
-            <Btn variant="secondary" style={{ padding: "4px 12px", fontSize: 11 }} onClick={generateBriefing} disabled={briefingLoading}>{briefingLoading ? "..." : "↻"}</Btn>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>AI Daily Briefing</span></div>
           </div>
-          {!briefing && !briefingLoading && (
-            <div style={{ textAlign: "center", padding: "20px 0", color: C.textMuted, fontSize: 14 }}>
-              <div>Click <strong>↻</strong> to generate your personalized daily briefing</div>
+          {!briefing && (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>Get a personalized daily briefing based on your career data.</div>
+              <Btn onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? "Analyzing…" : "✨ Generate Daily Briefing"}</Btn>
             </div>
           )}
-          {briefingLoading && <div style={{ color: C.purple, fontSize: 13, padding: "16px 0" }}>Analyzing your career data...</div>}
           {briefing && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {briefing.map((b, i) => <div key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "6px 0", borderBottom: i < briefing.length - 1 ? `1px solid ${C.border}` : "none" }}>• {b}</div>)}
+            <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                {briefing.map((b, i) => <div key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "6px 0", borderBottom: i < briefing.length - 1 ? `1px solid ${C.border}` : "none" }}>• {b}</div>)}
+              </div>
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? "Analyzing…" : "↻ Regenerate"}</Btn>
             </div>
           )}
         </Card>
@@ -357,23 +459,25 @@ ${context}`, 600);
         {/* Daily Plan */}
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Today's Action Plan</div>
-            <Btn variant="secondary" style={{ padding: "4px 12px", fontSize: 11 }} onClick={generatePlan} disabled={planLoading}>{planLoading ? "..." : "↻"}</Btn>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>Today's Action Plan</div>
           </div>
-          {!dailyPlan && !planLoading && (
-            <div style={{ textAlign: "center", padding: "20px 0", color: C.textMuted, fontSize: 14 }}>
-              <div>Click <strong>↻</strong> to get today's recommended actions</div>
+          {!dailyPlan && (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>Get today's recommended actions to move your job search forward.</div>
+              <Btn onClick={generatePlan} loading={planLoading}>{planLoading ? "Creating…" : "✨ Generate Action Plan"}</Btn>
             </div>
           )}
-          {planLoading && <div style={{ color: C.purple, fontSize: 13, padding: "16px 0" }}>Creating your action plan...</div>}
           {dailyPlan && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {dailyPlan.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < dailyPlan.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: priorityColor[t.priority] || C.textMuted, background: (priorityColor[t.priority] || C.textMuted) + "18", padding: "2px 8px", borderRadius: 6, flexShrink: 0, marginTop: 2 }}>{(t.priority || "").toUpperCase()}</span>
-                  <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{t.task}</span>
-                </div>
-              ))}
+            <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                {dailyPlan.map((t, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < dailyPlan.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: priorityColor[t.priority] || C.textMuted, background: (priorityColor[t.priority] || C.textMuted) + "18", padding: "2px 8px", borderRadius: 6, flexShrink: 0, marginTop: 2 }}>{(t.priority || "").toUpperCase()}</span>
+                    <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{t.task}</span>
+                  </div>
+                ))}
+              </div>
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generatePlan} loading={planLoading}>{planLoading ? "Creating…" : "↻ Regenerate"}</Btn>
             </div>
           )}
         </Card>
@@ -383,7 +487,7 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* Resume Intelligence */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Resume Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Resume Intelligence</div>
           {totalApps > 0 || profileComplete > 50 ? (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>Profile Strength</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
@@ -398,7 +502,7 @@ ${context}`, 600);
 
         {/* Job Intelligence */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Job Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Job Intelligence</div>
           {saved.length > 0 ? (
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{saved.length}</div>
@@ -416,7 +520,7 @@ ${context}`, 600);
 
         {/* Market Intelligence */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Market Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Market Intelligence</div>
           {salaryResults ? (
             <div>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Median Salary</div>
@@ -435,7 +539,7 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* AI Recommendations */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>AI Recommendations</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>AI Recommendations</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>Complete your profile ({profileComplete}% done)</div>}
             {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>Search and save jobs to track opportunities</div>}
@@ -450,7 +554,7 @@ ${context}`, 600);
 
         {/* Career Progress */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Career Progress</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Career Progress</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               ["Profile", `${profileComplete}%`, profileComplete, C.purple],
@@ -472,7 +576,7 @@ ${context}`, 600);
 
         {/* AI Activity */}
         <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>AI Activity</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>AI Activity</div>
           {aiActivity.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
               {aiActivity.map(a => (
@@ -490,7 +594,7 @@ ${context}`, 600);
 
       {/* BOTTOM: AI Chat Assistant */}
       <Card>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 CareerPersona AI Assistant</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 CareerPersona AI Assistant</div>
         <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           {chatMessages.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 14 }}>
@@ -510,7 +614,7 @@ ${context}`, 600);
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder="Ask CareerPersona AI anything..." style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-          <Btn onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ padding: "12px 20px" }}>Send</Btn>
+          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px" }}>Send</Btn>
         </div>
       </Card>
     </div>
@@ -564,13 +668,22 @@ function ResumePage({ onSave, onNavigate, profile }) {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("resume");
   const [saved, setSaved] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [savingResume, setSavingResume] = useState(false);
+  const [resumeSaved, setResumeSaved] = useState(false);
+  const [resumeError, setResumeError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
   const fileRef = useRef();
+  const { resumes, loading: resumesLoading, saveResume, deleteResume, downloadResume } = useResumes(profile?.id);
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setUploadedFile(file);
     const ext = file.name.split('.').pop().toLowerCase();
-    
+    setExtracting(true);
+
     if (['png','jpg','jpeg'].includes(ext)) {
       // Image: convert to base64 and send to Claude for OCR
       const reader = new FileReader();
@@ -599,6 +712,7 @@ function ResumePage({ onSave, onNavigate, profile }) {
           if (text) setResume(text);
           else setError("Could not extract text from image.");
         } catch { setError("Could not extract text from image. Please paste your resume instead."); }
+        finally { setExtracting(false); }
       };
       reader.readAsDataURL(file);
     } else if (['pdf'].includes(ext)) {
@@ -629,7 +743,7 @@ function ResumePage({ onSave, onNavigate, profile }) {
         }
       } catch {
         setError("Could not read this PDF. Please paste your resume text instead.");
-      }
+      } finally { setExtracting(false); }
     } else if (['doc','docx'].includes(ext)) {
       // DOCX: try to read as text (works for simple .docx)
       const reader = new FileReader();
@@ -642,12 +756,13 @@ function ResumePage({ onSave, onNavigate, profile }) {
         } else {
           setError("Could not read this DOCX file. Please copy and paste your resume text directly into the box.");
         }
+        setExtracting(false);
       };
       reader.readAsText(file);
     } else {
       // TXT and other text files
       const reader = new FileReader();
-      reader.onload = (ev) => { setResume(ev.target.result); };
+      reader.onload = (ev) => { setResume(ev.target.result); setExtracting(false); };
       reader.readAsText(file);
     }
   };
@@ -668,26 +783,81 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
   const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || "Company", jobTitle: results.jobTitle || "Role", status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
+  const handleSaveResume = async () => {
+    if (!resume.trim()) return;
+    setResumeError(""); setSavingResume(true);
+    try {
+      await saveResume(uploadedFile?.name || "My Resume", resume, uploadedFile);
+      setResumeSaved(true);
+      setTimeout(() => setResumeSaved(false), 3000);
+    } catch {
+      setResumeError("Could not save resume. Please try again.");
+    } finally {
+      setSavingResume(false);
+    }
+  };
+
+  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); };
+
+  const handleDeleteResume = async (r) => {
+    setDeletingId(r.id);
+    try { await deleteResume(r); } catch { setResumeError("Could not delete resume. Please try again."); }
+    finally { setDeletingId(null); }
+  };
+
+  const handleDownloadResume = async (r) => {
+    if (r.file_url) {
+      try {
+        const url = await downloadResume(r);
+        if (url) window.open(url, "_blank");
+      } catch { setResumeError("Could not generate download link."); }
+    } else {
+      downloadPDF(r.content, r.name.replace(/\.[^.]+$/, ""));
+    }
+  };
+
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, letterSpacing: "-0.5px", marginBottom: 6 }}>Resume Tailor</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Resume Tailor</h1>
         <p style={{ color: C.textMuted, fontSize: 15 }}>Paste or upload your resume and job description — AI optimizes your resume for ATS and writes your cover letter.</p>
       </div>
       {!results && (
         <>
+          {resumes.length > 0 && (
+            <Card style={{ marginBottom: 20 }}>
+              <Label>My Resumes</Label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                {resumes.map(r => (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 8, fontSize: 10, color: C.purple, fontWeight: 700 }}>DEFAULT</span>}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}{r.file_type ? ` · ${r.file_type.toUpperCase()}` : ""}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleLoadResume(r)}>Load</Btn>
+                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleDownloadResume(r)}>⬇ Download</Btn>
+                      <Btn variant="danger" style={{ padding: "5px 10px", fontSize: 12 }} loading={deletingId === r.id} onClick={() => handleDeleteResume(r)}>✕</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }} className="two-col">
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <Label>Your Resume</Label>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={handleFile} />
-                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => fileRef.current.click()}>📎 Upload File</Btn>
+                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={extracting} onClick={() => fileRef.current.click()}>{extracting ? "Extracting…" : "📎 Upload File"}</Btn>
+                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume}>{resumeSaved ? "✓ Saved" : savingResume ? "Saving…" : "💾 Save Resume"}</Btn>
                 </div>
               </div>
               <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>Supports: PDF, DOCX, DOC, PNG, JPG, or paste text</div>
               <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume here, or upload a file above…" value={resume} onChange={e => setResume(e.target.value)} />
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words` : "Plain text works best for ATS scoring"}</div>
+              {resumeError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginTop: 8 }}>{resumeError}</div>}
             </Card>
             <Card>
               <Label>Job Description</Label>
@@ -698,8 +868,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           </div>
           {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            <Btn onClick={analyze} style={{ padding: "13px 32px", fontSize: 15 }}>⚡ Analyze & Tailor Resume</Btn>
-            <Btn variant="secondary" onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }}>Try Sample</Btn>
+            <Btn onClick={analyze} loading={loading} style={{ padding: "13px 32px", fontSize: 15 }}>{loading ? "Analyzing…" : "⚡ Analyze & Tailor Resume"}</Btn>
+            <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }}>Try Sample</Btn>
           </div>
         </>
       )}
@@ -712,7 +882,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{results.jobTitle} at {results.company}</div>}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn variant="green" onClick={handleSave}>{saved ? "✓ Saved!" : "💾 Save to Tracker"}</Btn>
+              <Btn onClick={handleSave}>{saved ? "✓ Saved!" : "💾 Save to Tracker"}</Btn>
               <Btn variant="secondary" onClick={() => { setResults(null); setResume(""); setJobDesc(""); }}>← New Analysis</Btn>
             </div>
           </div>
@@ -758,7 +928,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {/* Tabs */}
           <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
             {[["resume","✨ Tailored Resume"],["suggestions","💡 Improvement Tips"],["cover","📄 Cover Letter"]].map(([id, lbl]) => (
-              <button key={id} style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</button>
+              <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
 
@@ -768,7 +938,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                 <Btn variant="secondary" onClick={() => downloadPDF(results.tailoredResume, "tailored-resume")}>📄 Download PDF</Btn>
                 <Btn variant="secondary" onClick={() => downloadDOCX(results.tailoredResume, "tailored-resume")}>📝 Download DOCX</Btn>
-                <CopyBtn text={results.tailoredResume} label="📋 Copy Resume" />
+                <CopyBtn text={results.tailoredResume} label="📋 Copy Resume" variant="secondary" />
               </div>
             </div>
           )}
@@ -788,7 +958,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                 <Btn variant="secondary" onClick={() => downloadPDF(results.coverLetter, "cover-letter")}>📄 Download PDF</Btn>
                 <Btn variant="secondary" onClick={() => downloadDOCX(results.coverLetter, "cover-letter")}>📝 Download DOCX</Btn>
-                <CopyBtn text={results.coverLetter} label="📋 Copy Cover Letter" />
+                <CopyBtn text={results.coverLetter} label="📋 Copy Cover Letter" variant="secondary" />
               </div>
             </div>
           )}
@@ -806,6 +976,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
   const [uploadingResume, setUploadingResume] = useState(false);
   const [resumeFileName, setResumeFileName] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [smartApplying, setSmartApplying] = useState(null);
+  const { enqueue: enqueueSmartApply, markReady: markSmartApplyReady, markFailed: markSmartApplyFailed } = useSmartApplyQueue(profile?.id);
 
   // Shared extraction core — accepts a File object
   const extractResumeFile = async (file) => {
@@ -935,6 +1107,38 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
     }
   };
 
+  // Smart Apply: AI prepares a full application package (tailored resume, cover
+  // letter, recruiter/networking messages, fit probabilities, likely application
+  // questions) and queues it for review — the user still clicks the real "Apply
+  // Now" link themselves, this just does the prep work.
+  const smartApply = async (job) => {
+    if (!resume.trim()) { setShowResume(true); return; }
+    if (!profile?.id) { setError("Please sign in to use Smart Apply."); return; }
+    setSmartApplying(job.id);
+    let queued;
+    try {
+      queued = await enqueueSmartApply(profile.id, job, null);
+      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"]}
+
+RESUME:
+${resume}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}
+Description: ${(job.description || "").slice(0, 1200)}`, 4000);
+      const result = JSON.parse(raw);
+      await markSmartApplyReady(queued.id, result);
+    } catch (e) {
+      console.error("Smart Apply failed:", e);
+      if (queued) await markSmartApplyFailed(queued.id);
+      setError("Smart Apply failed. Please try again.");
+    } finally {
+      setSmartApplying(null);
+    }
+  };
+
   // Auto-match up to 5 jobs silently when resume is present
   const autoMatchAll = async (newJobs) => {
     const toMatch = newJobs.slice(0, 5);
@@ -979,7 +1183,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? "Resume Added ✓" : "Add Resume for AI Match"}</Btn>
-            <Btn onClick={() => search(false)} style={{ padding: "12px 28px" }}>🔍 Search Jobs</Btn>
+            <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? "Searching…" : "🔍 Search Jobs"}</Btn>
           </div>
         </div>
         {showResume && <div style={{ marginTop: 16 }}>
@@ -1068,10 +1272,11 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
                       <div style={{ fontSize: 11, color: C.textMuted }}>Posted: {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "Recently"}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <a href={job.applyUrl} target="_blank" rel="noreferrer" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", borderRadius: 9, padding: "10px 18px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center" }}>Apply Now →</a>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} disabled={analyzing === job.id}>{analyzing === job.id ? "Analyzing…" : "🤖 AI Match"}</Btn>
-                      <button style={{ background: "none", border: `1.5px solid ${isSaved(job.id) ? C.red : C.border}`, borderRadius: 9, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", color: isSaved(job.id) ? C.red : C.textMuted }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? "♥ Saved" : "♡ Save Job"}</button>
-                      <button style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", color: C.textMuted }} onClick={() => addTracker(job)}>+ Track</button>
+                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>Apply Now →</a>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? "Analyzing…" : "🤖 AI Match"}</Btn>
+                      <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? "♥ Saved" : "♡ Save Job"}</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>+ Track</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? "Preparing…" : "🚀 Smart Apply"}</Btn>
                     </div>
                   </div>
                   {mr && (
@@ -1109,8 +1314,6 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
-const INTERVIEW_STORAGE_KEY = "cp_interview_session_v1";
-
 function InterviewPage({ profile }) {
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
   const [error, setError] = useState("");
@@ -1131,44 +1334,46 @@ function InterviewPage({ profile }) {
   const [restored, setRestored] = useState(false);
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
 
-  // ── Session persistence: load on mount ──
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(INTERVIEW_STORAGE_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
-        if (s.questions?.length) {
-          setQuestions(s.questions);
-          setJobDesc(s.jobDesc || "");
-          setResume(s.resume || "");
-          setResumeFileName(s.resumeFileName || "");
-          setSavedFeedback(s.savedFeedback || {});
-          setMockAnswers(s.mockAnswers || {});
-          setMockSummary(s.mockSummary || null);
-          setMode(s.mode || "browse");
-          setMockIdx(s.mockIdx || 0);
-          setMockAnswerDraft(s.mockAnswerDraft || "");
-          setActiveQ(s.activeQ || null);
-          setShowReview(s.showReview || false);
-          setRestored(true);
-        }
-      }
-    } catch { /* ignore corrupt storage */ }
-  }, []);
+  const { session, loading: sessionLoading, save: saveSession, clear: clearSessionRow } = useInterviewSession(profile?.id);
+  const [loadApplied, setLoadApplied] = useState(false);
+  const appliedForRef = useRef(undefined);
+  const saveTimerRef = useRef(null);
 
-  // ── Session persistence: save on change ──
+  // ── Session persistence: load once the Supabase fetch for this user resolves ──
   useEffect(() => {
-    if (!questions.length) return;
-    try {
-      localStorage.setItem(INTERVIEW_STORAGE_KEY, JSON.stringify({
-        questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary,
-        mode, mockIdx, mockAnswerDraft, activeQ, showReview,
-      }));
-    } catch { /* quota or disabled — non-fatal */ }
-  }, [questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview]);
+    if (sessionLoading) return;
+    if (appliedForRef.current === profile?.id) return;
+    appliedForRef.current = profile?.id;
+    if (session?.questions?.length) {
+      setQuestions(session.questions);
+      setJobDesc(session.jobDesc || "");
+      setResume(session.resume || "");
+      setResumeFileName(session.resumeFileName || "");
+      setSavedFeedback(session.savedFeedback || {});
+      setMockAnswers(session.mockAnswers || {});
+      setMockSummary(session.mockSummary || null);
+      setMode(session.mode || "browse");
+      setMockIdx(session.mockIdx || 0);
+      setMockAnswerDraft(session.mockAnswerDraft || "");
+      setActiveQ(session.activeQ || null);
+      setShowReview(session.showReview || false);
+      setRestored(true);
+    }
+    setLoadApplied(true);
+  }, [session, sessionLoading, profile?.id]);
+
+  // ── Session persistence: save on change (debounced to avoid a write per keystroke) ──
+  useEffect(() => {
+    if (!loadApplied || !questions.length) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview }).catch(() => {});
+    }, 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [loadApplied, questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, saveSession]);
 
   const clearSession = () => {
-    try { localStorage.removeItem(INTERVIEW_STORAGE_KEY); } catch {}
+    clearSessionRow().catch(() => {});
     setQuestions([]); setJobDesc(""); setActiveQ(null); setFeedback(null);
     setSavedFeedback({}); setMockAnswers({}); setMockSummary(null); setMode("browse"); setShowReview(false);
     setMockIdx(0); setRestored(false); setError("");
@@ -1391,8 +1596,8 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             )}
           </Card>
           <div style={{ display: "flex", gap: 10 }}>
-            <Btn onClick={generate} disabled={!jobDesc.trim() || loading} style={{ padding: "13px 28px" }}>🎤 Generate 8 Questions</Btn>
-            <Btn variant="secondary" onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn>
+            <Btn onClick={generate} disabled={!jobDesc.trim()} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Generating…" : "🎤 Generate 8 Questions"}</Btn>
+            <Btn variant="secondary" disabled={loading} onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn>
           </div>
         </div>
       )}
@@ -1404,7 +1609,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontWeight: 700, color: C.text, fontSize: 16 }}>{questions.length} Questions Generated</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <button key={c} style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }} onClick={() => setFilterCat(c)}>{c}</button>)}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <Btn key={c} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setFilterCat(c)}>{c}</Btn>)}</div>
             <Btn onClick={startMock} style={{ padding: "8px 18px" }}>▶ Start Mock Interview</Btn>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1439,7 +1644,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
               {isBehavioral(mockQuestions[mockIdx]) && <StarCard />}
               <Textarea label="Your answer" placeholder="Answer as if you're in a real interview…" value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
               <div style={{ display: "flex", gap: 10 }}>
-                <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim() || mockLoading}>{mockLoading ? "Scoring…" : (mockIdx + 1 < mockQuestions.length ? "Submit & Next →" : "Submit & Finish")}</Btn>
+                <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim()} loading={mockLoading}>{mockLoading ? "Scoring…" : (mockIdx + 1 < mockQuestions.length ? "Submit & Next →" : "Submit & Finish")}</Btn>
                 <Btn variant="secondary" onClick={skipMock} disabled={mockLoading}>Skip</Btn>
               </div>
             </Card>
@@ -1525,7 +1730,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 14 }}>
                 {[["strong","💪 Strong Answer"],["weak","❌ Weak Answer"],["ai","✨ AI Recommended"]].map(([id, lbl]) => (
-                  <button key={id} style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: answerTab === id ? "#fff" : "transparent", color: answerTab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer" }} onClick={() => setAnswerTab(id)}>{lbl}</button>
+                  <Btn key={id} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: answerTab === id ? "#fff" : "transparent", color: answerTab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setAnswerTab(id)}>{lbl}</Btn>
                 ))}
               </div>
               {answerTab === "strong" && <div><ContentDisplay content={activeQ.strongAnswer} /><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.strongAnswer} label="📋 Copy Strong Answer" /></div></div>}
@@ -1534,9 +1739,9 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             </div>
 
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>🎯 Practice Your Answer</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>🎯 Practice Your Answer</div>
               <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
-              <Btn onClick={getFeedback} disabled={!answer.trim() || fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
+              <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
             </div>
 
             {fbLoading && <Spinner steps={["Reading your answer…","Identifying strengths…","Generating improvements…"]} currentStep={1} />}
@@ -1640,7 +1845,7 @@ function TrackerPage({ applications, setApplications }) {
         </div>
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {["All", ...STATUSES].map(s => <button key={s} style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || C.purple : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || C.purple}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || C.purple : C.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer" }} onClick={() => setFilterStatus(s)}>{s}</button>)}
+        {["All", ...STATUSES].map(s => <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || C.purple : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || C.purple}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || C.purple : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>{s}</Btn>)}
       </div>
       {showForm && (
         <Card style={{ marginBottom: 20, border: `1.5px solid ${C.purple}30` }}>
@@ -1680,7 +1885,7 @@ function TrackerPage({ applications, setApplications }) {
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
                 <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status || "Unknown"}</Badge>
                 {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>📄 View</Btn>}
-                {app.url && <a href={app.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.blue, padding: "5px 10px", border: `1px solid ${C.border}`, borderRadius: 7, textDecoration: "none" }}>🔗 Job</a>}
+                {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>🔗 Job</a>}
                 <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>Edit</Btn>
                 <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => del(app.id)}>✕</Btn>
               </div>
@@ -1705,9 +1910,36 @@ function TrackerPage({ applications, setApplications }) {
 
 // ─── SALARY PAGE ───────────────────────────────────────────
 function SalaryPage({ profile }) {
-  const [form, setForm] = useStorage("cp_salary_form", { jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
-  const [results, setResults] = useStorage("cp_salary_results", null);
+  const [form, setForm] = useState({ jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
+  const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+
+  const { data: savedSearch, loading: searchLoading, save: saveSearch } = useSalaryResearch(profile?.id);
+  const [loadApplied, setLoadApplied] = useState(false);
+  const appliedForRef = useRef(undefined);
+  const saveTimerRef = useRef(null);
+
+  // ── Load once the Supabase fetch for this user resolves ──
+  useEffect(() => {
+    if (searchLoading) return;
+    if (appliedForRef.current === profile?.id) return;
+    appliedForRef.current = profile?.id;
+    if (savedSearch) {
+      setForm(f => ({ ...f, ...savedSearch.form }));
+      setResults(savedSearch.results);
+    }
+    setLoadApplied(true);
+  }, [savedSearch, searchLoading, profile?.id]);
+
+  // ── Save on change (debounced) — keeps the form and results in sync with Supabase ──
+  useEffect(() => {
+    if (!loadApplied || !form.jobTitle) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveSearch(form, results).catch(() => {});
+    }, 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [loadApplied, form, results, saveSearch]);
   const fmt = n => (n !== undefined && n !== null && n !== "" && !isNaN(Number(n))) ? `$${Number(n).toLocaleString()}` : "—";
   const txt = (v, fallback = "—") => (v !== undefined && v !== null && String(v).trim() !== "") ? v : fallback;
 
@@ -1757,7 +1989,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={analyze} disabled={loading} style={{ padding: "13px 28px" }}>💰 Get Salary Data</Btn>
+          <Btn onClick={analyze} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Calculating…" : "💰 Get Salary Data"}</Btn>
           {results && <Btn variant="secondary" onClick={() => { setResults(null); setError(""); }}>New Search</Btn>}
         </div>
       </Card>
@@ -1788,7 +2020,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </Card>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>📈 Salary by Experience</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>📈 Salary by Experience</div>
               {results.salaryByExperience?.map(({ level, salary }) => {
                 const vals = results.salaryByExperience.map(x => Number(x.salary) || 0);
                 const max = Math.max(...vals, 1);
@@ -1796,7 +2028,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               })}
             </Card>
             <Card>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>⚡ Skill Premiums</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>⚡ Skill Premiums</div>
               {results.skillPremiums?.map(({ skill, premium }) => (
                 <div key={skill} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <span style={{ fontSize: 14, color: C.text }}>{skill}</span>
@@ -1807,7 +2039,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>🏆 Top Paying Companies</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>🏆 Top Paying Companies</div>
               {results.topPayingCompanies?.map(({ name, avgComp }, i) => (
                 <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -1819,7 +2051,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               ))}
             </Card>
             <Card>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>🤝 Negotiation Tips</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>🤝 Negotiation Tips</div>
               {results.negotiationTips?.map((tip, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                   <span style={{ width: 20, height: 20, background: C.blueLight, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: C.blue, flexShrink: 0 }}>{i+1}</span>
@@ -1848,7 +2080,7 @@ function NetworkingPage({ profile }) {
   const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
   const [emailSent, setEmailSent] = useStorage("cp_network_emailsent", false);
   const [draft, setDraft] = useStorage("cp_network_draft", null);
-  const [savedContacts, setSavedContacts] = useStorage("cp_network_contacts", []);
+  const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(null); // contact id whose status menu is open
   const statusColors = {"Waiting for Reply": C.yellow, "Replied": C.green, "Met": "#7C3AED", "Connected": C.blue, "No Response": C.red};
@@ -1991,7 +2223,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={generate} disabled={loading} style={{ padding: "13px 28px" }}>✍️ Generate Outreach Messages</Btn>
+          <Btn onClick={generate} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Generating…" : "✍️ Generate Outreach Messages"}</Btn>
           {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); setEmailSent(false); setShowSavePrompt(false); }}>New Message</Btn>}
         </div>
       </Card>
@@ -2000,7 +2232,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
         <div>
           <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
             {[["linkedin","💼 LinkedIn"],["email","📧 Email"],["followup","🔁 Follow-up"],["tips","💡 Tips"]].map(([id, lbl]) => (
-              <button key={id} style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</button>
+              <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
           {tab === "linkedin" && draft && (
@@ -2078,23 +2310,23 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <div style={{ position: "relative", display: "inline-block" }}>
-                              <button onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)} style={{ padding: "5px 14px", borderRadius: 20, border: `1.5px solid ${C.border}`, fontSize: 12, fontWeight: 700, cursor: "pointer", background: "#fff", color: C.text, transition: "all 0.15s", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <Btn variant="secondary" style={{ borderRadius: 20, padding: "5px 14px", fontSize: 12 }} onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)}>
                                 {statusEmoji[c.status] || "⚪"} {c.status} ▾
-                              </button>
+                              </Btn>
                               {openStatusMenu === c.id && (
                                 <div>
                                 <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
                                 <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
                                   {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => (
-                                    <button key={s} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }} style={{ width: "100%", padding: "10px 14px", border: "none", background: c.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
+                                    <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: c.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }}>
                                       {statusEmoji[s]} {s}
-                                    </button>
+                                    </Btn>
                                   ))}
                                 </div>
                                 </div>
                               )}
                             </div>
-                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)}>✍️ Generate Follow-up</Btn>
+                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)} loading={fuLoading && fuContact?.id === c.id}>✍️ Generate Follow-up</Btn>
                             {c.email && <a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}`} style={{ textDecoration: "none" }}><Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }}>📤 Email</Btn></a>}
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, color: C.red }} onClick={() => deleteContact(c.id)}>✕</Btn>
                           </div>
@@ -2159,15 +2391,110 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 }
 
 // ─── SAVED JOBS ────────────────────────────────────────────
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications }) {
+function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{item.job_title}</div>
+            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : C.yellow}>{item.status}</Badge>
+          </div>
+          <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{item.company}</div>
+          {item.status === "ready" && (
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              {item.interview_probability != null && <Badge color={C.purple}>Interview: {item.interview_probability}%</Badge>}
+              {item.hiring_probability != null && <Badge color={C.green}>Hiring: {item.hiring_probability}%</Badge>}
+            </div>
+          )}
+        </div>
+        {item.status === "ready" && (
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? "Hide details" : "View details"}</Btn>
+            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>Skip</Btn>
+            <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>✓ Mark as Applied</Btn>
+          </div>
+        )}
+      </div>
+      {item.status === "queued" && <div style={{ fontSize: 13, color: C.textMuted, marginTop: 10 }}>⏳ AI is preparing this application…</div>}
+      {expanded && item.status === "ready" && (
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 14 }}>
+          {item.missing_skills?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>MISSING SKILLS</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
+            </div>
+          )}
+          {item.cover_letter && <div><Label>Cover Letter</Label><ContentDisplay content={item.cover_letter} /></div>}
+          {item.tailored_resume && <div><Label>Tailored Resume</Label><ContentDisplay content={item.tailored_resume} /></div>}
+          {item.recruiter_message && <div><Label>Recruiter Message</Label><ContentDisplay content={item.recruiter_message} /></div>}
+          {item.networking_message && <div><Label>Networking Message</Label><ContentDisplay content={item.networking_message} /></div>}
+          {item.application_questions?.length > 0 && (
+            <div>
+              <Label>Likely Application Questions</Label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                {item.application_questions.map((q, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, background: C.bgSoft, borderRadius: 8, padding: "8px 12px" }}>{q}</div>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
   const remove = id => setSavedJobs(p => p.filter(j => j.job_id !== id));
   const addTracker = job => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
   const fmtSalary = (min, max) => { if (!min && !max) return "Salary not listed"; const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : `Up to ${f(max)}`; };
+  const { queue, markApplied, skip } = useSmartApplyQueue(profile?.id);
+  const [applyingId, setApplyingId] = useState(null);
+  const [queueError, setQueueError] = useState("");
+  const visibleQueue = queue.filter(q => q.status !== "applied" && q.status !== "skipped");
+
+  const handleMarkApplied = async (item) => {
+    setApplyingId(item.id);
+    setQueueError("");
+    try {
+      const appId = uid();
+      const newApp = { id: appId, company: item.company, jobTitle: item.job_title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", resume: item.tailored_resume || "", coverLetter: item.cover_letter || "" };
+      // Insert directly and wait for it to land before pointing smart_apply_queue's
+      // FK at it — setApplications alone would sync in the background and could
+      // lose the race, causing a foreign-key violation on the next update.
+      await insertApplicationRow(profile.id, newApp);
+      setApplications(p => [newApp, ...p]);
+      await markApplied(item.id, appId);
+    } catch {
+      setQueueError("Could not mark this as applied. Please try again.");
+    } finally {
+      setApplyingId(null);
+    }
+  };
+
+  const handleSkip = async (item) => {
+    setQueueError("");
+    try { await skip(item.id); }
+    catch { setQueueError("Could not skip this item. Please try again."); }
+  };
 
   return (
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Saved Jobs</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{savedJobs.length} saved job{savedJobs.length !== 1 ? "s" : ""} — apply when you're ready.</p>
+
+      {visibleQueue.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>🚀 Smart Apply Queue</div>
+          {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 12 }}>{queueError}</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {visibleQueue.map(item => (
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onSkip={handleSkip} applying={applyingId === item.id} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {savedJobs.length === 0 && <Card style={{ textAlign: "center", padding: 64 }}><div style={{ fontSize: 48, marginBottom: 16 }}>♡</div><div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>No saved jobs yet</div><div style={{ fontSize: 14, color: C.textMuted }}>Heart any job in Job Search to bookmark it here</div></Card>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {savedJobs.map(job => (
@@ -2180,8 +2507,8 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications }) {
                 <div style={{ display: "flex", gap: 6 }}>{job.remote && <Badge color={C.green}>🌐 Remote</Badge>}{job.employmentType && <Badge color={C.textMuted}>{job.employmentType}</Badge>}{job.matchScore && <Badge color={C.purple}>{job.matchScore}% Match</Badge>}</div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 700, textDecoration: "none" }}>Apply Now →</a>
-                <Btn variant="green" onClick={() => addTracker(job)}>+ Track</Btn>
+                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>Apply Now →</a>
+                <Btn variant="secondary" onClick={() => addTracker(job)}>+ Track</Btn>
                 <Btn variant="danger" onClick={() => remove(job.job_id)}>✕ Remove</Btn>
               </div>
             </div>
@@ -2202,7 +2529,7 @@ function PricingPage({ profile }) {
   return (
     <div>
       <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: C.text, letterSpacing: "-0.5px", marginBottom: 10 }}>Simple, Transparent Pricing</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 10 }}>Simple, Transparent Pricing</h1>
         <p style={{ color: C.textMuted, fontSize: 15 }}>Start free. Upgrade when you're ready to land your dream job faster.</p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }} className="two-col">
@@ -2294,7 +2621,7 @@ function ProfilePage({ profile, updateProfile }) {
             <Label>Preferred Work Type</Label>
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
               {["Remote", "Hybrid", "On-site"].map(wt => (
-                <button key={wt} onClick={() => setForm(f => ({ ...f, work_type: f.work_type === wt ? "" : wt }))} style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${form.work_type === wt ? C.purple : C.border}`, background: form.work_type === wt ? C.purpleLight : "#fff", color: form.work_type === wt ? C.purple : C.textMid, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{wt}</button>
+                <Btn key={wt} variant="ghost" onClick={() => setForm(f => ({ ...f, work_type: f.work_type === wt ? "" : wt }))} style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${form.work_type === wt ? C.purple : C.border}`, background: form.work_type === wt ? C.purpleLight : "#fff", color: form.work_type === wt ? C.purple : C.textMid, fontSize: 13, fontWeight: 600 }}>{wt}</Btn>
               ))}
             </div>
           </div>
@@ -2391,9 +2718,9 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
             <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Email Notifications</div>
             <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>Receive updates about new features and career tips</div>
           </div>
-          <button onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s" }}>
+          <Btn variant="ghost" onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, padding: 0, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, position: "relative" }}>
             <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 3, left: notifyEmail ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
-          </button>
+          </Btn>
         </div>
       </Card>
 
@@ -2420,10 +2747,10 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
-  const { user, login, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
-  const [applications, setApplications] = useStorage("cp_apps", []);
-  const [savedJobs, setSavedJobs] = useStorage("cp_saved", []);
+  const [applications, setApplications] = useApplications(user?.id);
+  const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const validPages = new Set(["dashboard","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
 
   // Read initial page from URL hash, then localStorage fallback
@@ -2436,6 +2763,16 @@ export default function App() {
 
   const [page, setPageRaw] = useState(getInitialPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Keep `profile` in sync with whatever useAuth resolves (fake local account,
+  // or a real Supabase session synced via onAuthStateChange) and land on the
+  // dashboard the moment a logged-out user becomes logged-in.
+  const wasLoggedIn = useRef(!!profile);
+  useEffect(() => {
+    setProfile(user);
+    if (user && !wasLoggedIn.current) { setPage("dashboard"); window.scrollTo(0, 0); }
+    wasLoggedIn.current = !!user;
+  }, [user]);
 
   // Navigate: update state + localStorage + browser history
   const setPage = useCallback((p) => {
@@ -2467,9 +2804,14 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const handleLogin = (u) => { login(u); setProfile(u); saveAccount(u); setPage("dashboard"); window.scrollTo(0, 0); };
-  const handleLogout = () => { logout(); setProfile(null); };
-  const updateProfile = (updates) => { const updated = { ...profile, ...updates }; setProfile(updated); localStorage.setItem("cp_user", JSON.stringify(updated)); saveAccount(updated); };
+  const handleLogout = async () => { await logout(); setProfile(null); };
+  const updateProfile = (updates) => {
+    const updated = { ...profile, ...updates };
+    setProfile(updated);
+    localStorage.setItem("cp_user", JSON.stringify(updated));
+    saveAccount(updated);
+    if (updated.id) upsertProfile(updated.id, updates).catch(() => {});
+  };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => setPage("dashboard");
 
@@ -2484,12 +2826,11 @@ export default function App() {
     { id: "network", icon: "🤝", label: "Network" },
     { id: "pricing", icon: "💎", label: "Pricing" },
   ];
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const planName = (profile?.plan || "free").toUpperCase();
 
-  if (!user) return <AuthPage onLogin={handleLogin} />;
+  if (!user) return <AuthPage />;
 
   return (
     <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
@@ -2502,19 +2843,12 @@ export default function App() {
         input:not([type=checkbox]) { background: #ffffff !important; color: #0F172A !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
         select { background: #ffffff !important; color: #0F172A !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
         @keyframes spin { to { transform: rotate(360deg); } } textarea { background: white !important; color: #0F172A !important; } input[type=text], input[type=email], input[type=password], input[type=number] { background: white !important; color: #0F172A !important; }
-        button:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
-        button:active:not(:disabled) { transform: translateY(0); }
+        button:hover:not(:disabled), .btn-link:hover { opacity: 0.88; transform: translateY(-1px); }
+        .nav-pill:hover { color: ${C.navHover} !important; opacity: 1 !important; }
+        button:active:not(:disabled), .btn-link:active { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
         @media (max-width: 700px) {
   .two-col, .three-col { grid-template-columns: 1fr !important; }
-  .nav-label { display: none; }
-  .desktop-nav { display: none !important; }
-  .hamburger-btn { display: block !important; width: 50px !important; height: 50px !important; font-size: 30px !important; }
-  .subscription-badge { display: block !important; }
-  .brand-logo { width: 37px !important; height: 37px !important; border-radius: 9px !important; }
-  .brand-logo-glyph { font-size: 16px !important; }
-  .brand-name { font-size: 20px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; }
-  .brand-name-badge { font-size: 13px !important; }
   .hero-section { margin-bottom: 10px !important; }
   .hero-greeting { font-size: 22px !important; margin-bottom: 2px !important; }
   .hero-subtitle { font-size: 12px !important; }
@@ -2522,15 +2856,20 @@ export default function App() {
 @media (min-width: 701px) and (max-width: 1024px) {
   .hero-greeting { font-size: 24px !important; margin-bottom: 4px !important; }
   .hero-section { margin-bottom: 14px !important; }
-  .desktop-nav { padding: 8px 12px !important; gap: 6px !important; flex-wrap: nowrap !important; }
-  .nav-label { display: none !important; }
-  .nav-pills { gap: 4px !important; }
-  .nav-pills button { padding: 9px 10px !important; }
-  .nav-pills button span:first-child { font-size: 16px !important; }
-  .nav-utility { gap: 4px !important; margin-left: 4px !important; }
-  .nav-utility button { padding: 9px 11px !important; font-size: 16px !important; }
 }
-@media (min-width: 701px) {
+@media (max-width: 1024px) {
+  .nav-label { display: none; }
+  .desktop-nav { display: none !important; }
+  .mobile-logo-row { gap: 2px !important; padding: 10px 4px 0 !important; }
+  .hamburger-btn { display: block !important; width: 50px !important; height: 50px !important; font-size: 35px !important; line-height: 34px !important; }
+  .subscription-badge { display: block !important; border: none !important; padding: 4px 4px !important; }
+  .brand-logo { width: 43px !important; height: 43px !important; border-radius: 9px !important; }
+  .brand-logo-glyph { font-size: 18px !important; }
+  .brand-name { font-size: 24px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; }
+  .brand-name-badge { font-size: 15px !important; margin-left: 0 !important; }
+  .logo-block { gap: 5px !important; }
+}
+@media (min-width: 1025px) {
   .hamburger-btn { display: none !important; }
   .subscription-badge { display: none !important; }
   .desktop-nav { display: flex !important; }
@@ -2538,11 +2877,17 @@ export default function App() {
 @media (min-width: 1025px) {
   header { display: flex !important; align-items: center !important; padding: 8px 14px !important; gap: 8px !important; }
   .mobile-logo-row { display: contents !important; }
-  .logo-block { flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; }
+  .logo-block { flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
+  .brand-logo { width: 38px !important; height: 38px !important; }
+  .brand-logo-glyph { font-size: 17px !important; }
+  .brand-name { font-size: 20px !important; }
+  .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { flex: 1 1 auto !important; justify-content: center !important; min-width: 0 !important; overflow-x: auto !important; gap: 1px !important; }
-  .nav-pills button { padding: 6px 8px !important; }
-  .nav-utility { flex: 0 0 auto !important; }
+  .nav-pills { flex: 1 0 auto !important; justify-content: center !important; gap: 0 !important; padding: 2px !important; }
+  .nav-pills button { padding: 5px 6px !important; font-size: 11px !important; gap: 3px !important; }
+  .nav-pills button span:first-child { font-size: 12px !important; }
+  .nav-utility { flex: 0 0 auto !important; gap: 0 !important; }
+  .nav-utility button { padding: 6px 4px !important; }
 }
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
@@ -2554,20 +2899,21 @@ export default function App() {
           <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
-          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: planName === "FREE" ? "#fff" : C.purpleLight, border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "4px 9px", cursor: "pointer", textAlign: "center", lineHeight: 1.25 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: C.purple, whiteSpace: "nowrap" }}>👑 {planName}</div>
-            {planName === "FREE" && <div style={{ fontSize: 9, fontWeight: 700, color: C.purpleMid }}>Upgrade</div>}
+          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: planName === "FREE" ? "#fff" : C.purpleLight, border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "4px 9px", cursor: "pointer", textAlign: "center", lineHeight: 1.15 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.purple, whiteSpace: "nowrap", display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5 }}>
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }} aria-hidden="true"><path d="M2 11v2h12v-2l1-5-3.5 2.2L8 4 4.5 8.2 1 6z" /><circle cx="3" cy="5.3" r="1" /><circle cx="8" cy="3.2" r="1.2" /><circle cx="13" cy="5.3" r="1" /></svg>
+              <span style={{ lineHeight: 1 }}>{planName}</span>
+            </div>
+            {planName === "FREE" && (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 1 }}>
+                <span style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", letterSpacing: "normal", whiteSpace: "nowrap" }}>Upgrade</span>
+              </div>
+            )}
           </button>
         </div>
         {/* Row 2: Nav + Utility */}
         <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
-          <nav className="nav-pills" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
-            {nav.map(n => (
-              <button key={n.id} title={n.label} style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.textMuted, fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
-                <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
-              </button>
-            ))}
-          </nav>
+          <NavPills nav={nav} page={page} setPage={setPage} />
           <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
             <div style={{ position: "relative" }}>
               <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: langMenuOpen ? "#fff" : "transparent", color: langMenuOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
@@ -2600,22 +2946,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div style={{ position: "relative" }}>
-              <button title={profile?.full_name?.split(" ")[0] || "User"} onClick={() => setUserMenuOpen(!userMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: (page === "profile" || page === "settings") ? "#fff" : "transparent", color: (page === "profile" || page === "settings") ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-                <span>👤</span><span className="nav-label">{profile?.full_name?.split(" ")[0] || "User"} ▾</span>
-              </button>
-              {userMenuOpen && (
-                <div>
-                  <div onClick={() => setUserMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
-                    <button onClick={() => { setPage("profile"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
-                    <button onClick={() => { setPage("settings"); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
-                    <div style={{ borderTop: `1px solid ${C.border}` }} />
-                    <button onClick={() => { handleLogout(); setUserMenuOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <UserMenu profile={profile} page={page} setPage={setPage} onLogout={handleLogout} />
           </div>
         </div>
       </header>
@@ -2642,7 +2973,7 @@ export default function App() {
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "interview" && <InterviewPage profile={profile} />}
         {page === "tracker" && <TrackerPage applications={applications} setApplications={setApplications} />}
         {page === "salary" && <SalaryPage profile={profile} />}

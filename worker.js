@@ -3,16 +3,30 @@
 //   POST /          → Claude AI proxy (unchanged)
 //   POST /api/jobs  → Job search (Adzuna + RapidAPI, merged & deduped)
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:5180",
+  "https://careerpersonaai.com",
+];
 
-function corsResponse(body, status = 200) {
+function getCorsHeaders(request) {
+  const origin = request.headers.get("Origin") || "";
+  const headers = {
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Vary": "Origin",
+  };
+  const isLanDev = /^http:\/\/(\d{1,3}\.){3}\d{1,3}:5180$/.test(origin);
+  if (ALLOWED_ORIGINS.includes(origin) || isLanDev) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
+
+function corsResponse(request, body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", ...CORS },
+    headers: { "Content-Type": "application/json", ...getCorsHeaders(request) },
   });
 }
 
@@ -259,13 +273,27 @@ async function fetchRapid(params, env, page = 1) {
 
 // ── Main job search handler ───────────────────────────────────────────────────
 async function handleJobSearch(request, env) {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 200_000) {
+    return corsResponse(request, { error: "Request too large" }, 413);
+  }
+
   const params = await request.json();
-  const page = params.page || 1;
+  if (!params.title || typeof params.title !== "string" || !params.title.trim()) {
+    return corsResponse(request, { error: "title is required" }, 400);
+  }
+  const safeParams = {
+    ...params,
+    title: params.title.slice(0, 200),
+    city: typeof params.city === "string" ? params.city.slice(0, 200) : "",
+    page: Math.min(Math.max(parseInt(params.page, 10) || 1, 1), 20),
+  };
+  const page = safeParams.page;
 
   // Fetch from both sources in parallel
   const [adzunaResult, rapidResult] = await Promise.all([
-    fetchAdzuna(params, env, page),
-    fetchRapid(params, env, page),
+    fetchAdzuna(safeParams, env, page),
+    fetchRapid(safeParams, env, page),
   ]);
 
   const adzunaJobs = adzunaResult.jobs || [];
@@ -282,7 +310,7 @@ async function handleJobSearch(request, env) {
     return db - da;
   });
 
-  return corsResponse({
+  return corsResponse(request, {
     jobs: sorted,
     total: sorted.length,
     page,
@@ -299,7 +327,14 @@ async function handleJobSearch(request, env) {
 
 // ── Claude AI proxy handler ───────────────────────────────────────────────────
 async function handleClaude(request, env) {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 200_000) {
+    return corsResponse(request, { error: { message: "Request too large" } }, 413);
+  }
+
   const b = await request.json();
+  const model = "claude-sonnet-4-6";
+  const max_tokens = Math.min(Number(b.max_tokens) || 1000, 8000);
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -307,11 +342,11 @@ async function handleClaude(request, env) {
       "x-api-key": env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify(b),
+    body: JSON.stringify({ ...b, model, max_tokens }),
   });
   const d = await r.json();
   return new Response(JSON.stringify(d), {
-    headers: { "Content-Type": "application/json", ...CORS },
+    headers: { "Content-Type": "application/json", ...getCorsHeaders(request) },
   });
 }
 
@@ -323,7 +358,7 @@ export default {
 
     // CORS preflight
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: CORS });
+      return new Response(null, { headers: getCorsHeaders(request) });
     }
 
     // Only handle POST requests

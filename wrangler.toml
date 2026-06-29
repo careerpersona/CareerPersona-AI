@@ -1,0 +1,4 @@
+name = "proxy"
+main = "worker.js"
+compatibility_date = "2026-06-26"
+account_id = "637fa7d8ceb1610ccb368c96de2c0f3e"
