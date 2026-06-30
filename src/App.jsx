@@ -11,6 +11,8 @@ import { useNetworkingContacts } from "./data/networkingContacts";
 import { useAssistantChat } from "./data/assistantChat";
 import { useActivityLog } from "./data/activityLog";
 import { useNotifications, insertNotification } from "./data/notifications";
+import { useAiBriefing } from "./data/aiBriefing";
+import { useAiActionPlan } from "./data/aiActionPlan";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -362,6 +364,28 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     if (savedChatMessages.length) setChatMessages(savedChatMessages);
   }, [savedChatMessages, chatHistoryLoading, chatLoadedFor, profile?.id]);
 
+  const { briefing: savedBriefing, loading: briefingHistoryLoading, loadedFor: briefingLoadedFor, save: saveBriefing } = useAiBriefing(profile?.id);
+  const briefingAppliedForRef = useRef(undefined);
+
+  // ── Load the most recent briefing once the Supabase fetch resolves ──
+  useEffect(() => {
+    if (briefingHistoryLoading || briefingLoadedFor !== profile?.id) return;
+    if (briefingAppliedForRef.current === profile?.id) return;
+    briefingAppliedForRef.current = profile?.id;
+    if (savedBriefing) setBriefing(savedBriefing);
+  }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id]);
+
+  const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
+  const planAppliedForRef = useRef(undefined);
+
+  // ── Load the most recent action plan once the Supabase fetch resolves ──
+  useEffect(() => {
+    if (planHistoryLoading || planLoadedFor !== profile?.id) return;
+    if (planAppliedForRef.current === profile?.id) return;
+    planAppliedForRef.current = profile?.id;
+    if (savedPlan) setDailyPlan(savedPlan);
+  }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id]);
+
   // Read additional data from localStorage
   const readLS = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
   const interviewSession = readLS("cp_interview_session_v1", null);
@@ -388,11 +412,13 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
       const context = `User: ${profile?.full_name || "New user"}. Job title: ${profile?.job_title || "Not set"}. Target: ${profile?.preferred_job_title || "Not set"}. Applications: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved jobs: ${saved.length}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Profile completion: ${profileComplete}%.`;
       const raw = await askClaude(`You are CareerPersona AI. Generate a brief daily career briefing (4-5 bullet points, each 1 sentence). Be specific and actionable based on this data. If user is new with little data, give encouraging onboarding guidance. Return ONLY a JSON array of strings, no markdown: ["point1","point2","point3","point4"]
 ${context}`, 600);
+      let result;
       try {
         const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
-        if (start >= 0 && end > start) setBriefing(JSON.parse(raw.slice(start, end + 1)));
-        else setBriefing(["Welcome to CareerPersona AI! Start by completing your profile, uploading a resume, and searching for jobs."]);
-      } catch { setBriefing(["Your AI briefing is ready. Complete your profile to get personalized insights."]); }
+        result = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : ["Welcome to CareerPersona AI! Start by completing your profile, uploading a resume, and searching for jobs."];
+      } catch { result = ["Your AI briefing is ready. Complete your profile to get personalized insights."]; }
+      setBriefing(result);
+      saveBriefing(result).catch(err => console.error("briefing save failed", err));
       logActivity("Daily briefing generated");
       insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
     } catch { setBriefing(["Could not generate briefing. Please try again."]); }
@@ -406,11 +432,13 @@ ${context}`, 600);
       const context = `Profile complete: ${profileComplete}%. Apps: ${totalApps}. Saved: ${saved.length}. Interviews: ${interviews}. Questions practiced: ${questionsCount}. Target role: ${profile?.preferred_job_title || "not set"}.`;
       const raw = await askClaude(`You are CareerPersona AI career coach. Generate today's 4-5 action items for this job seeker. Each should be specific and achievable today. Return ONLY JSON array: [{"task":"<task>","priority":"high|medium|low"}]
 ${context}`, 600);
+      let result;
       try {
         const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
-        if (start >= 0 && end > start) setDailyPlan(JSON.parse(raw.slice(start, end + 1)));
-        else setDailyPlan([{task:"Complete your career profile",priority:"high"}]);
-      } catch { setDailyPlan([{task:"Set up your profile to get started",priority:"high"}]); }
+        result = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : [{task:"Complete your career profile",priority:"high"}];
+      } catch { result = [{task:"Set up your profile to get started",priority:"high"}]; }
+      setDailyPlan(result);
+      savePlan(result).catch(err => console.error("action plan save failed", err));
       logActivity("Daily plan generated");
       insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
     } catch { setDailyPlan([{task:"Could not generate plan. Try again.",priority:"medium"}]); }
