@@ -134,7 +134,7 @@ function UserMenu({ profile, page, setPage, onLogout }) {
   const active = page === "profile" || page === "settings";
   const name = profile?.full_name?.split(" ")[0] || t("userMenu.defaultName");
   return (
-    <div style={{ position: "relative", flex: "0 0 105px" }}>
+    <div style={{ position: "relative", flex: "0 0 105px", minWidth: 0 }}>
       <button title={name} onClick={() => setOpen(o => !o)} style={{ width: "100%", boxSizing: "border-box", minWidth: 0, padding: "6px 10px", borderRadius: 8, border: "none", background: active ? "#fff" : "transparent", color: active ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
         <span style={{ flexShrink: 0 }}>👤</span>
         <span className="nav-label" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
@@ -3028,7 +3028,7 @@ export default function App() {
   .brand-name { font-size: 20px !important; }
   .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { flex: 1 1 0% !important; min-width: 0 !important; justify-content: safe center !important; gap: 0 !important; padding: 2px !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none !important; -ms-overflow-style: none !important; }
+  .nav-pills { flex: 1 1 0% !important; min-width: 0 !important; justify-content: flex-start !important; gap: 0 !important; padding: 2px !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none !important; -ms-overflow-style: none !important; }
   .nav-pills::-webkit-scrollbar { display: none !important; }
   .nav-pills button { padding: 5px 6px !important; font-size: 11px !important; gap: 3px !important; flex: 0 0 auto !important; }
   .nav-pills button span:first-child { font-size: 12px !important; }
