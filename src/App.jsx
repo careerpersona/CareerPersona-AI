@@ -148,25 +148,11 @@ function AppName({ size = 18, onClick, className }) {
   );
 }
 
-// Fixed per-item pixel widths, measured from the actual rendered width (desktop
-// font-size/padding) of each nav label's widest translation across all 14
-// supported languages, plus a small safety buffer. Giving every pill a
-// language-invariant slot width is the only way each item can sit at the exact
-// same X position regardless of active language — an auto-width pill's
-// position always depends on the cumulative width of every preceding pill,
-// which varies by language. Re-measure (see scratch script pattern: read each
-// `.nav-pills button`'s getBoundingClientRect().width per language) if a nav
-// label or the language list ever changes.
-const NAV_PILL_WIDTH = {
-  dashboard: 146, resume: 96, jobs: 148, saved: 102, interview: 122,
-  tracker: 132, salary: 88, network: 128, pricing: 108,
-};
-
 function NavPills({ nav, page, setPage }) {
   return (
     <nav className="nav-pills" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
       {nav.map(n => (
-        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
+        <button key={n.id} title={n.label} className="nav-pill" style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
           <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
         </button>
       ))}
