@@ -40,14 +40,20 @@ const fromRow = (r) => ({
 // The existing UI only ever has one active interview session per user, so
 // this loads the most recent row and updates it in place rather than
 // modeling a list — mirrors the prior single-slot localStorage behavior.
+// `loadedFor` tracks which userId the current session/loading actually
+// belong to. Without it, a consumer gating on "loading just became false"
+// can be fooled by a stale render where the previous (e.g. undefined)
+// user's effect already cleared loading right as the prop flips to the
+// real userId, before that user's own fetch has even started.
 export function useInterviewSession(userId) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadedFor, setLoadedFor] = useState(undefined);
   const rowIdRef = useRef(null);
 
   useEffect(() => {
     let active = true;
-    if (!userId) { setSession(null); setLoading(false); rowIdRef.current = null; return; }
+    if (!userId) { setSession(null); setLoadedFor(userId); setLoading(false); rowIdRef.current = null; return; }
     setLoading(true);
     supabase.from(TABLE).select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1)
       .then(({ data, error }) => {
@@ -59,6 +65,7 @@ export function useInterviewSession(userId) {
           rowIdRef.current = null;
           setSession(null);
         }
+        setLoadedFor(userId);
         setLoading(false);
       });
     return () => { active = false; };
@@ -85,5 +92,5 @@ export function useInterviewSession(userId) {
     setSession(null);
   }, []);
 
-  return { session, loading, save, clear };
+  return { session, loading, loadedFor, save, clear };
 }

@@ -27,14 +27,20 @@ const fromRow = (r) => ({
 // The existing UI only ever has one active salary search per user (form +
 // AI results, edited and re-run in place), so this upserts a single row
 // rather than modeling a list — mirrors the prior single-slot localStorage behavior.
+// `loadedFor` tracks which userId the current data/loading actually belong
+// to. Without it, a consumer gating on "loading just became false" can be
+// fooled by a stale render where the previous (e.g. undefined) user's
+// effect already cleared loading right as the prop flips to the real
+// userId, before that user's own fetch has even started.
 export function useSalaryResearch(userId) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadedFor, setLoadedFor] = useState(undefined);
   const rowIdRef = useRef(null);
 
   useEffect(() => {
     let active = true;
-    if (!userId) { setData(null); setLoading(false); rowIdRef.current = null; return; }
+    if (!userId) { setData(null); setLoadedFor(userId); setLoading(false); rowIdRef.current = null; return; }
     setLoading(true);
     supabase.from(TABLE).select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1)
       .then(({ data: rows, error }) => {
@@ -46,6 +52,7 @@ export function useSalaryResearch(userId) {
           rowIdRef.current = null;
           setData(null);
         }
+        setLoadedFor(userId);
         setLoading(false);
       });
     return () => { active = false; };
@@ -64,5 +71,5 @@ export function useSalaryResearch(userId) {
     }
   }, [userId]);
 
-  return { data, loading, save };
+  return { data, loading, loadedFor, save };
 }

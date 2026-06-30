@@ -8,6 +8,7 @@ import { useSmartApplyQueue } from "./data/smartApply";
 import { useInterviewSession } from "./data/interviewSession";
 import { useSalaryResearch } from "./data/salaryResearch";
 import { useNetworkingContacts } from "./data/networkingContacts";
+import { useAssistantChat } from "./data/assistantChat";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -345,6 +346,20 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef();
 
+  const { messages: savedChatMessages, loading: chatHistoryLoading, loadedFor: chatLoadedFor, addMessage: addChatMessage } = useAssistantChat(profile?.id);
+  const chatAppliedForRef = useRef(undefined);
+
+  // ── Load chat history once the Supabase fetch for this user resolves ──
+  // Gated on `chatLoadedFor === profile?.id` (not just `!chatHistoryLoading`)
+  // so a stale render — where loading already cleared for the previous user
+  // right as profile.id flips to the real one — can't be mistaken for "loaded".
+  useEffect(() => {
+    if (chatHistoryLoading || chatLoadedFor !== profile?.id) return;
+    if (chatAppliedForRef.current === profile?.id) return;
+    chatAppliedForRef.current = profile?.id;
+    if (savedChatMessages.length) setChatMessages(savedChatMessages);
+  }, [savedChatMessages, chatHistoryLoading, chatLoadedFor, profile?.id]);
+
   // Read additional data from localStorage
   const readLS = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
   const interviewSession = readLS("cp_interview_session_v1", null);
@@ -408,11 +423,13 @@ ${context}`, 600);
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }]);
+    addChatMessage("user", userMsg).catch(err => console.error("assistant chat save failed", err));
     setChatLoading(true);
     try {
       const context = `You are CareerPersona AI career assistant. User: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "N/A"}. Target: ${profile?.preferred_job_title || "N/A"}. Apps: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved: ${saved.length}. Profile: ${profileComplete}% complete. Answer concisely (2-3 sentences) using this context.`;
       const raw = await askClaude(`${context}\nUser question: ${userMsg}`, 400);
       setChatMessages(prev => [...prev, { role: "ai", text: raw }]);
+      addChatMessage("ai", raw).catch(err => console.error("assistant chat save failed", err));
       logActivity("Chat: " + userMsg.slice(0, 30));
     } catch {
       setChatMessages(prev => [...prev, { role: "ai", text: "Sorry, I couldn't process that. Please try again." }]);
@@ -1334,14 +1351,17 @@ function InterviewPage({ profile }) {
   const [restored, setRestored] = useState(false);
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
 
-  const { session, loading: sessionLoading, save: saveSession, clear: clearSessionRow } = useInterviewSession(profile?.id);
+  const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, save: saveSession, clear: clearSessionRow } = useInterviewSession(profile?.id);
   const [loadApplied, setLoadApplied] = useState(false);
   const appliedForRef = useRef(undefined);
   const saveTimerRef = useRef(null);
 
   // ── Session persistence: load once the Supabase fetch for this user resolves ──
+  // Gated on `sessionLoadedFor === profile?.id` (not just `!sessionLoading`) so a
+  // stale render — where loading already cleared for the previous user right as
+  // profile.id flips to the real one — can't be mistaken for "loaded".
   useEffect(() => {
-    if (sessionLoading) return;
+    if (sessionLoading || sessionLoadedFor !== profile?.id) return;
     if (appliedForRef.current === profile?.id) return;
     appliedForRef.current = profile?.id;
     if (session?.questions?.length) {
@@ -1360,7 +1380,7 @@ function InterviewPage({ profile }) {
       setRestored(true);
     }
     setLoadApplied(true);
-  }, [session, sessionLoading, profile?.id]);
+  }, [session, sessionLoading, sessionLoadedFor, profile?.id]);
 
   // ── Session persistence: save on change (debounced to avoid a write per keystroke) ──
   useEffect(() => {
@@ -1914,14 +1934,17 @@ function SalaryPage({ profile }) {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
 
-  const { data: savedSearch, loading: searchLoading, save: saveSearch } = useSalaryResearch(profile?.id);
+  const { data: savedSearch, loading: searchLoading, loadedFor: searchLoadedFor, save: saveSearch } = useSalaryResearch(profile?.id);
   const [loadApplied, setLoadApplied] = useState(false);
   const appliedForRef = useRef(undefined);
   const saveTimerRef = useRef(null);
 
   // ── Load once the Supabase fetch for this user resolves ──
+  // Gated on `searchLoadedFor === profile?.id` (not just `!searchLoading`) so a
+  // stale render — where loading already cleared for the previous user right as
+  // profile.id flips to the real one — can't be mistaken for "loaded".
   useEffect(() => {
-    if (searchLoading) return;
+    if (searchLoading || searchLoadedFor !== profile?.id) return;
     if (appliedForRef.current === profile?.id) return;
     appliedForRef.current = profile?.id;
     if (savedSearch) {
@@ -1929,7 +1952,7 @@ function SalaryPage({ profile }) {
       setResults(savedSearch.results);
     }
     setLoadApplied(true);
-  }, [savedSearch, searchLoading, profile?.id]);
+  }, [savedSearch, searchLoading, searchLoadedFor, profile?.id]);
 
   // ── Save on change (debounced) — keeps the form and results in sync with Supabase ──
   useEffect(() => {
