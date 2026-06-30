@@ -9,6 +9,8 @@ import { useInterviewSession } from "./data/interviewSession";
 import { useSalaryResearch } from "./data/salaryResearch";
 import { useNetworkingContacts } from "./data/networkingContacts";
 import { useAssistantChat } from "./data/assistantChat";
+import { useActivityLog } from "./data/activityLog";
+import { useNotifications, insertNotification } from "./data/notifications";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -376,12 +378,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
   const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
   const questionsCount = interviewSession?.questions?.length || 0;
 
-  // AI Activity log (from localStorage)
-  const [aiActivity, setAiActivity] = useStorage("cp_ai_activity", []);
-  const logActivity = (action) => {
-    const entry = { action, time: new Date().toLocaleString(), id: Date.now() };
-    setAiActivity(prev => [entry, ...prev].slice(0, 10));
-  };
+  // AI Activity log
+  const { activity: aiActivity, logActivity } = useActivityLog(profile?.id);
 
   // Generate AI Briefing
   const generateBriefing = async () => {
@@ -396,6 +394,7 @@ ${context}`, 600);
         else setBriefing(["Welcome to CareerPersona AI! Start by completing your profile, uploading a resume, and searching for jobs."]);
       } catch { setBriefing(["Your AI briefing is ready. Complete your profile to get personalized insights."]); }
       logActivity("Daily briefing generated");
+      insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
     } catch { setBriefing(["Could not generate briefing. Please try again."]); }
     finally { setBriefingLoading(false); }
   };
@@ -413,6 +412,7 @@ ${context}`, 600);
         else setDailyPlan([{task:"Complete your career profile",priority:"high"}]);
       } catch { setDailyPlan([{task:"Set up your profile to get started",priority:"high"}]); }
       logActivity("Daily plan generated");
+      insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
     } catch { setDailyPlan([{task:"Could not generate plan. Try again.",priority:"medium"}]); }
     finally { setPlanLoading(false); }
   };
@@ -2852,6 +2852,12 @@ export default function App() {
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const planName = (profile?.plan || "free").toUpperCase();
+  const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
+  const toggleNotif = async () => {
+    const next = !notifOpen;
+    setNotifOpen(next);
+    if (next) { await refreshNotifications(); markAllRead(); }
+  };
 
   if (!user) return <AuthPage />;
 
@@ -2954,17 +2960,29 @@ export default function App() {
               )}
             </div>
             <div style={{ position: "relative" }}>
-              <button onClick={() => setNotifOpen(!notifOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: notifOpen ? "#fff" : "transparent", color: notifOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+              <button onClick={toggleNotif} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: notifOpen ? "#fff" : "transparent", color: notifOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
               {notifOpen && (
                 <div>
                   <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
                   <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
                     <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>Notifications</div>
-                    <div style={{ padding: "32px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>No notifications yet</div>
-                      <div style={{ fontSize: 12, color: C.textMuted }}>Job alerts, interview reminders, and AI insights will appear here.</div>
-                    </div>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: "32px 16px", textAlign: "center" }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>No notifications yet</div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>Job alerts, interview reminders, and AI insights will appear here.</div>
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                        {notifications.map(n => (
+                          <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
+                            {n.body && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>{n.body}</div>}
+                            <div style={{ fontSize: 11, color: C.textMuted }}>{n.time}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
