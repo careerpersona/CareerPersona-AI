@@ -662,8 +662,8 @@ ${context}`, 600);
           <div ref={chatEndRef} />
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder={t("dashboard.chatPlaceholder")} style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px" }}>{t("dashboard.send")}</Btn>
+          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder={t("dashboard.chatPlaceholder")} style={{ flex: 1, minWidth: 0, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px", flexShrink: 0 }}>{t("dashboard.send")}</Btn>
         </div>
       </Card>
     </div>
@@ -2947,8 +2947,9 @@ export default function App() {
   .brand-name { font-size: 20px !important; }
   .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { flex: 1 0 auto !important; justify-content: center !important; gap: 0 !important; padding: 2px !important; }
-  .nav-pills button { padding: 5px 6px !important; font-size: 11px !important; gap: 3px !important; }
+  .nav-pills { flex: 1 1 0% !important; min-width: 0 !important; justify-content: safe center !important; gap: 0 !important; padding: 2px !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none !important; -ms-overflow-style: none !important; }
+  .nav-pills::-webkit-scrollbar { display: none !important; }
+  .nav-pills button { padding: 5px 6px !important; font-size: 11px !important; gap: 3px !important; flex: 0 0 auto !important; }
   .nav-pills button span:first-child { font-size: 12px !important; }
   .nav-utility { flex: 0 0 auto !important; gap: 0 !important; }
   .nav-utility button { padding: 6px 4px !important; }
