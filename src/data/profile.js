@@ -23,12 +23,13 @@ export async function fetchProfile(userId, email) {
     preferred_industry: details?.preferred_industry || "",
     work_type: details?.work_type || "",
     desired_salary: details?.desired_salary || "",
+    preferred_language: details?.preferred_language || "en",
   };
 }
 
 export async function upsertProfile(userId, updates) {
   const baseFields = ["full_name", "phone", "location", "job_title", "years_experience"];
-  const detailFields = ["email_address", "preferred_job_title", "preferred_industry", "work_type", "desired_salary"];
+  const detailFields = ["email_address", "preferred_job_title", "preferred_industry", "work_type", "desired_salary", "preferred_language"];
 
   const baseUpdate = Object.fromEntries(baseFields.filter(f => f in updates).map(f => [f, updates[f]]));
   const detailUpdate = Object.fromEntries(detailFields.filter(f => f in updates).map(f => [f, updates[f]]));

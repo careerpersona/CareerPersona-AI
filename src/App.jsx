@@ -13,6 +13,8 @@ import { useActivityLog } from "./data/activityLog";
 import { useNotifications, insertNotification } from "./data/notifications";
 import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
+import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
+import { LANGUAGES } from "./i18n/languages";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -127,9 +129,10 @@ function NavPills({ nav, page, setPage }) {
 }
 
 function UserMenu({ profile, page, setPage, onLogout }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const active = page === "profile" || page === "settings";
-  const name = profile?.full_name?.split(" ")[0] || "User";
+  const name = profile?.full_name?.split(" ")[0] || t("userMenu.defaultName");
   return (
     <div style={{ position: "relative", flex: "0 0 105px" }}>
       <button title={name} onClick={() => setOpen(o => !o)} style={{ width: "100%", boxSizing: "border-box", minWidth: 0, padding: "6px 10px", borderRadius: 8, border: "none", background: active ? "#fff" : "transparent", color: active ? C.purple : C.textMuted, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
@@ -141,10 +144,10 @@ function UserMenu({ profile, page, setPage, onLogout }) {
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
           <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
-            <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 Profile</button>
-            <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ Settings</button>
+            <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
+            <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
             <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 Sign Out</button>
+            <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 {t("userMenu.signOut")}</button>
           </div>
         </div>
       )}
@@ -2866,16 +2869,18 @@ export default function App() {
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => setPage("dashboard");
 
+  const { language, setLanguage, t } = useLanguagePreference(profile?.preferred_language, (code) => updateProfile({ preferred_language: code }));
+
   const nav = [
-    { id: "dashboard", icon: "📊", label: "Dashboard" },
-    { id: "resume", icon: "⚡", label: "Resume" },
-    { id: "jobs", icon: "🔍", label: "Job Search" },
-    { id: "saved", icon: "♥", label: `Saved${savedJobs.length > 0 ? ` (${savedJobs.length})` : ""}` },
-    { id: "interview", icon: "🎤", label: "Interview" },
-    { id: "tracker", icon: "📋", label: `Tracker${applications.length > 0 ? ` (${applications.length})` : ""}` },
-    { id: "salary", icon: "💰", label: "Salary" },
-    { id: "network", icon: "🤝", label: "Network" },
-    { id: "pricing", icon: "💎", label: "Pricing" },
+    { id: "dashboard", icon: "📊", label: t("nav.dashboard") },
+    { id: "resume", icon: "⚡", label: t("nav.resume") },
+    { id: "jobs", icon: "🔍", label: t("nav.jobSearch") },
+    { id: "saved", icon: "♥", label: `${t("nav.saved")}${savedJobs.length > 0 ? ` (${savedJobs.length})` : ""}` },
+    { id: "interview", icon: "🎤", label: t("nav.interview") },
+    { id: "tracker", icon: "📋", label: `${t("nav.tracker")}${applications.length > 0 ? ` (${applications.length})` : ""}` },
+    { id: "salary", icon: "💰", label: t("nav.salary") },
+    { id: "network", icon: "🤝", label: t("nav.network") },
+    { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -2890,6 +2895,7 @@ export default function App() {
   if (!user) return <AuthPage />;
 
   return (
+    <I18nContext.Provider value={{ language, setLanguage, t }}>
     <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -2978,10 +2984,15 @@ export default function App() {
                 <div>
                   <div onClick={() => setLangMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
                   <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
-                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>Language</div>
-                    <div style={{ padding: "12px 16px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}><span>🇺🇸</span><span style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>English</span><span style={{ marginLeft: "auto", color: C.purple }}>✓</span></div>
-                      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>More languages coming soon. Your AI responses will adapt to your selected language.</div>
+                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("language.title")}</div>
+                    <div style={{ padding: "6px 0", maxHeight: 320, overflowY: "auto" }}>
+                      {LANGUAGES.map(lng => (
+                        <button key={lng.code} onClick={() => { setLanguage(lng.code); setLangMenuOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", border: "none", background: lng.code === language ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                          <span style={{ fontSize: 16 }}>{lng.flag}</span>
+                          <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1 }}>{lng.native}</span>
+                          {lng.code === language && <span style={{ color: C.purple, fontWeight: 700 }}>✓</span>}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -2993,12 +3004,12 @@ export default function App() {
                 <div>
                   <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
                   <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
-                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>Notifications</div>
+                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("notifications.title")}</div>
                     {notifications.length === 0 ? (
                       <div style={{ padding: "32px 16px", textAlign: "center" }}>
                         <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>No notifications yet</div>
-                        <div style={{ fontSize: 12, color: C.textMuted }}>Job alerts, interview reminders, and AI insights will appear here.</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("notifications.emptyTitle")}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>{t("notifications.emptyBody")}</div>
                       </div>
                     ) : (
                       <div style={{ maxHeight: 320, overflowY: "auto" }}>
@@ -3028,13 +3039,13 @@ export default function App() {
           ))}
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
-            <span style={{ fontSize: 20 }}>👤</span>Profile
+            <span style={{ fontSize: 20 }}>👤</span>{t("userMenu.profile")}
           </button>
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "settings" ? C.purpleLight : "#fff", color: page === "settings" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("settings"); setMobileMenuOpen(false); }}>
-            <span style={{ fontSize: 20 }}>⚙️</span>Settings
+            <span style={{ fontSize: 20 }}>⚙️</span>{t("userMenu.settings")}
           </button>
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: "#fff", color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
-            <span style={{ fontSize: 20 }}>🚪</span>Sign Out
+            <span style={{ fontSize: 20 }}>🚪</span>{t("userMenu.signOut")}
           </button>
         </div>
       )}
@@ -3052,6 +3063,7 @@ export default function App() {
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
     </div>
+    </I18nContext.Provider>
   );
 }
 
