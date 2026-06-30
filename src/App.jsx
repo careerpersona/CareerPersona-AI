@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { supabase } from "./lib/supabaseClient";
+import { supabase, initialLocationHash } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { useApplications, insertApplicationRow } from "./data/applications";
 import { useSavedJobs } from "./data/savedJobs";
@@ -47,11 +47,17 @@ const saveAccount = (profile) => {
 };
 
 const useAuth = () => {
-  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
-  const [recoveryMode, setRecoveryMode] = useState(false);
-  // Sync ref so the async getSession callback can read the latest value without
-  // going stale in a closure.
-  const recoveryRef = useRef(false);
+  // Seed recoveryMode from the hash captured at module load time — before
+  // createClient() processes it, before React StrictMode double-mounts effects,
+  // and before any onAuthStateChange timing races can occur.
+  const isRecoveryUrl = initialLocationHash.includes("type=recovery");
+  const [user, setUser] = useState(() => {
+    if (isRecoveryUrl) return null; // don't restore old session during recovery
+    try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; }
+  });
+  const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
+  // Sync ref so async callbacks read the latest value without stale closures.
+  const recoveryRef = useRef(isRecoveryUrl);
 
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
   const logout = async () => {
