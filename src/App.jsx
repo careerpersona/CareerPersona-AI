@@ -48,28 +48,54 @@ const saveAccount = (profile) => {
 
 const useAuth = () => {
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  // Sync ref so the async getSession callback can read the latest value without
+  // going stale in a closure.
+  const recoveryRef = useRef(false);
+
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
   const logout = async () => {
     try { await supabase.auth.signOut(); } catch {}
     setUser(null);
+    recoveryRef.current = false;
+    setRecoveryMode(false);
     localStorage.removeItem("cp_user");
   };
 
-  // Real Supabase session — takes priority over the local fake-account fallback above.
   useEffect(() => {
     const syncFromSession = async (session) => {
       if (!session?.user) return;
       const merged = await fetchProfile(session.user.id, session.user.email);
       login(merged);
     };
-    supabase.auth.getSession().then(({ data }) => syncFromSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Don't auto-login if we're already in recovery mode when getSession resolves.
+    supabase.auth.getSession().then(({ data }) => {
+      if (!recoveryRef.current) syncFromSession(data.session);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        // Hold the Supabase internal session (needed for updateUser) but don't
+        // treat this as a normal login — show the reset form instead.
+        recoveryRef.current = true;
+        setRecoveryMode(true);
+        setUser(null);
+        localStorage.removeItem("cp_user");
+        return;
+      }
+      // Ignore all other events while the user is going through the reset flow
+      // (USER_UPDATED fires after updateUser succeeds; we don't want auto-login).
+      if (recoveryRef.current) return;
       if (session?.user) syncFromSession(session);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  return { user, login, logout };
+  const clearRecovery = () => {
+    recoveryRef.current = false;
+    setRecoveryMode(false);
+  };
+
+  return { user, login, logout, recoveryMode, clearRecovery };
 };
 
 async function askClaude(prompt, maxTokens = 2500) {
@@ -367,6 +393,64 @@ function ContentDisplay({ content }) {
   );
 }
 
+// ─── RESET PASSWORD PAGE ───────────────────────────────────
+function ResetPasswordPage({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handle = async () => {
+    if (!password) { setError("Password is required."); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password !== confirm) { setError("Passwords do not match."); return; }
+    setLoading(true); setError("");
+    const { error: err } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    setSuccess(true);
+    // Sign out so the user must log in fresh with their new password.
+    await supabase.auth.signOut().catch(() => {});
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Logo size={56} /></div>
+          <AppName size={26} />
+        </div>
+        <Card>
+          {success ? (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Password updated!</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Your password has been changed. Please sign in with your new password.</div>
+              <Btn style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={onDone}>Go to Sign In →</Btn>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>Set New Password</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Choose a new password for your account.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Input label="New Password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
+                <Input label="Confirm New Password" type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
+              </div>
+              {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
+              <div style={{ marginTop: 20 }}>
+                <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
+                  {loading ? "Saving…" : "💾 Save New Password"}
+                </Btn>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ─── AUTH PAGE ─────────────────────────────────────────────
 function AuthPage({ t }) {
   const [mode, setMode] = useState("login");
@@ -374,6 +458,11 @@ function AuthPage({ t }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [confirmPending, setConfirmPending] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
 
   const handle = async () => {
     if (!form.email) { setError(t("auth.emailRequired")); return; }
@@ -401,6 +490,17 @@ function AuthPage({ t }) {
     // On success the browser redirects away — no further code runs here.
   };
 
+  const handleForgot = async () => {
+    if (!forgotEmail.trim()) { setForgotError("Please enter your email address."); return; }
+    setForgotLoading(true); setForgotError("");
+    const { error: err } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setForgotLoading(false);
+    if (err) { setForgotError(err.message); return; }
+    setForgotSent(true);
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
@@ -410,7 +510,37 @@ function AuthPage({ t }) {
           <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>{t("auth.tagline")}</div>
         </div>
         <Card>
-          {confirmPending ? (
+          {/* ── Forgot password flow ── */}
+          {forgotPassword ? (
+            forgotSent ? (
+              <div style={{ textAlign: "center", padding: "12px 0" }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check your email</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
+                  We sent a password reset link to <strong>{forgotEmail}</strong>. Open it on this device to set a new password.
+                </div>
+                <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setForgotPassword(false); setForgotSent(false); setForgotEmail(""); setForgotError(""); }}>
+                  ← Back to Sign In
+                </Btn>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>Forgot Password?</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Enter your email and we'll send you a reset link.</div>
+                <Input label="Email Address" type="email" placeholder="you@email.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleForgot()} />
+                {forgotError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{forgotError}</div>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
+                  <Btn onClick={handleForgot} loading={forgotLoading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
+                    {forgotLoading ? "Sending…" : "Send Reset Link"}
+                  </Btn>
+                  <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setForgotPassword(false); setForgotError(""); }}>
+                    ← Back to Sign In
+                  </Btn>
+                </div>
+              </>
+            )
+          ) : confirmPending ? (
+            /* ── Email confirmation pending ── */
             <div style={{ textAlign: "center", padding: "12px 0" }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("auth.checkEmailTitle")}</div>
@@ -420,6 +550,7 @@ function AuthPage({ t }) {
               <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setConfirmPending(false); setMode("login"); }}>{t("auth.backToSignIn")}</Btn>
             </div>
           ) : (
+            /* ── Normal sign-in / sign-up ── */
             <>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 22 }}>
                 {["login","signup"].map(m => <Btn key={m} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? t("auth.signIn") : t("auth.signUp")}</Btn>)}
@@ -429,6 +560,13 @@ function AuthPage({ t }) {
                 <Input label={t("auth.emailLabel")} type="email" placeholder="you@email.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
                 <Input label={t("auth.passwordLabel")} type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
               </div>
+              {mode === "login" && (
+                <div style={{ textAlign: "right", marginTop: 8 }}>
+                  <button onClick={() => { setForgotPassword(true); setForgotEmail(form.email); setError(""); }} style={{ background: "none", border: "none", color: C.purple, fontSize: 13, cursor: "pointer", fontWeight: 600, padding: 0, fontFamily: "inherit" }}>
+                    Forgot password?
+                  </button>
+                </div>
+              )}
               {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
                 <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
@@ -2932,7 +3070,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
-  const { user, logout } = useAuth();
+  const { user, logout, recoveryMode, clearRecovery } = useAuth();
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
@@ -3016,6 +3154,7 @@ export default function App() {
   const planName = (profile?.plan || "free").toUpperCase();
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
 
+  if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;
   if (!user) return <AuthPage t={t} />;
 
   return (
