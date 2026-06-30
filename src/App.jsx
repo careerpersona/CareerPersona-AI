@@ -344,6 +344,7 @@ function AuthPage() {
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
 function DashboardPage({ profile, applications, savedJobs, setPage }) {
+  const { t } = useI18n();
   const [briefing, setBriefing] = useState(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [dailyPlan, setDailyPlan] = useState(null);
@@ -476,9 +477,9 @@ ${context}`, 600);
       {/* WELCOME HERO */}
       <div className="hero-section" style={{ marginBottom: 14 }}>
         <h1 className="hero-greeting" style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>
-          {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}, {profile?.full_name?.split(" ")[0] || "there"}! 👋
+          {(() => { const h = new Date().getHours(); return h < 12 ? t("dashboard.greetingMorning") : h < 17 ? t("dashboard.greetingAfternoon") : t("dashboard.greetingEvening"); })()}, {profile?.full_name?.split(" ")[0] || t("dashboard.greetingDefaultName")}! 👋
         </h1>
-        <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 13, lineHeight: 1.4 }}>While you were away, CareerPersona AI prepared your latest personalized career insights.</p>
+        <p className="hero-subtitle" style={{ color: C.textMuted, fontSize: 13, lineHeight: 1.4 }}>{t("dashboard.subtitle")}</p>
       </div>
 
       {/* TOP ROW: Briefing + Daily Plan */}
@@ -486,12 +487,12 @@ ${context}`, 600);
         {/* Daily Briefing */}
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>AI Daily Briefing</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>{t("dashboard.briefingTitle")}</span></div>
           </div>
           {!briefing && (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>Get a personalized daily briefing based on your career data.</div>
-              <Btn onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? "Analyzing…" : "✨ Generate Daily Briefing"}</Btn>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>{t("dashboard.briefingEmpty")}</div>
+              <Btn onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? t("dashboard.briefingAnalyzing") : t("dashboard.briefingGenerate")}</Btn>
             </div>
           )}
           {briefing && (
@@ -499,7 +500,7 @@ ${context}`, 600);
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
                 {briefing.map((b, i) => <div key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "6px 0", borderBottom: i < briefing.length - 1 ? `1px solid ${C.border}` : "none" }}>• {b}</div>)}
               </div>
-              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? "Analyzing…" : "↻ Regenerate"}</Btn>
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? t("dashboard.briefingAnalyzing") : t("dashboard.regenerate")}</Btn>
             </div>
           )}
         </Card>
@@ -507,12 +508,12 @@ ${context}`, 600);
         {/* Daily Plan */}
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>Today's Action Plan</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>{t("dashboard.planTitle")}</div>
           </div>
           {!dailyPlan && (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>Get today's recommended actions to move your job search forward.</div>
-              <Btn onClick={generatePlan} loading={planLoading}>{planLoading ? "Creating…" : "✨ Generate Action Plan"}</Btn>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>{t("dashboard.planEmpty")}</div>
+              <Btn onClick={generatePlan} loading={planLoading}>{planLoading ? t("dashboard.planCreating") : t("dashboard.planGenerate")}</Btn>
             </div>
           )}
           {dailyPlan && (
@@ -525,7 +526,7 @@ ${context}`, 600);
                   </div>
                 ))}
               </div>
-              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generatePlan} loading={planLoading}>{planLoading ? "Creating…" : "↻ Regenerate"}</Btn>
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generatePlan} loading={planLoading}>{planLoading ? t("dashboard.planCreating") : t("dashboard.regenerate")}</Btn>
             </div>
           )}
         </Card>
@@ -535,51 +536,51 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* Resume Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Resume Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.resumeIntelTitle")}</div>
           {totalApps > 0 || profileComplete > 50 ? (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>Profile Strength</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>{t("dashboard.profileStrength")}</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
               <PBar val={profileComplete} color={C.purple} />
-              <div style={{ marginTop: 12, fontSize: 13, color: C.textMuted }}>Upload your resume for ATS scoring, keyword analysis, and AI-powered improvements.</div>
+              <div style={{ marginTop: 12, fontSize: 13, color: C.textMuted }}>{t("dashboard.resumeIntelHint")}</div>
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Complete your profile and upload a resume to unlock AI-powered resume intelligence.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.resumeIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("resume")}>Go to Resume →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Job Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.jobIntelTitle")}</div>
           {saved.length > 0 ? (
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{saved.length}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>Saved Jobs</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("dashboard.savedJobs")}</div>
               {saved.slice(0, 3).map((j, i) => (
                 <div key={j.id || i} style={{ fontSize: 12, color: C.text, padding: "4px 0", borderBottom: `1px solid ${C.border}` }}>{j.title || j.jobTitle} — {j.company}</div>
               ))}
-              {saved.length > 3 && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>+{saved.length - 3} more</div>}
+              {saved.length > 3 && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{t("dashboard.moreCount").replace("{n}", saved.length - 3)}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Search for jobs to see AI-powered match scoring and recommendations here.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.jobIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>Go to Job Search →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>{t("dashboard.goToJobSearch")}</Btn>
         </Card>
 
         {/* Market Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Market Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.marketIntelTitle")}</div>
           {salaryResults ? (
             <div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Median Salary</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.medianSalary")}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>${salaryResults.salaryRange?.median?.toLocaleString() || "—"}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>Demand: <strong>{salaryResults.demandLevel || "—"}</strong></div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{t("dashboard.demandLabel")} <strong>{salaryResults.demandLevel || "—"}</strong></div>
               {salaryResults.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, marginTop: 6, lineHeight: 1.5 }}>{salaryResults.marketOutlook.slice(0, 120)}...</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Run a salary analysis to see market data, trends, and compensation benchmarks.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.marketIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("salary")}>Go to Salary →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
         </Card>
       </div>
 
@@ -587,29 +588,29 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* AI Recommendations */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>AI Recommendations</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.recommendationsTitle")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>Complete your profile ({profileComplete}% done)</div>}
-            {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>Search and save jobs to track opportunities</div>}
-            {totalApps === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.greenLight, borderRadius: 8 }}>Submit your first application</div>}
-            {questionsCount === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.yellowLight, borderRadius: 8 }}>Practice interview questions</div>}
-            {networkContacts.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.redLight, borderRadius: 8 }}>Build your network — reach out to someone</div>}
+            {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>{t("dashboard.recCompleteProfile").replace("{pct}", profileComplete)}</div>}
+            {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>{t("dashboard.recSaveJobs")}</div>}
+            {totalApps === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.greenLight, borderRadius: 8 }}>{t("dashboard.recFirstApp")}</div>}
+            {questionsCount === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.yellowLight, borderRadius: 8 }}>{t("dashboard.recPracticeInterview")}</div>}
+            {networkContacts.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.redLight, borderRadius: 8 }}>{t("dashboard.recBuildNetwork")}</div>}
             {profileComplete === 100 && saved.length > 0 && totalApps > 0 && questionsCount > 0 && networkContacts.length > 0 && (
-              <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>Great progress! Keep applying and following up.</div>
+              <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{t("dashboard.recGreatProgress")}</div>
             )}
           </div>
         </Card>
 
         {/* Career Progress */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>Career Progress</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              ["Profile", `${profileComplete}%`, profileComplete, C.purple],
-              ["Saved Jobs", saved.length, Math.min(saved.length * 10, 100), C.blue],
-              ["Applications", totalApps, Math.min(totalApps * 10, 100), C.green],
-              ["Interviews", interviews, Math.min(interviews * 20, 100), C.yellow],
-              ["Offers", offers, Math.min(offers * 50, 100), C.green],
+              [t("dashboard.progressProfile"), `${profileComplete}%`, profileComplete, C.purple],
+              [t("dashboard.progressSavedJobs"), saved.length, Math.min(saved.length * 10, 100), C.blue],
+              [t("dashboard.progressApplications"), totalApps, Math.min(totalApps * 10, 100), C.green],
+              [t("dashboard.progressInterviews"), interviews, Math.min(interviews * 20, 100), C.yellow],
+              [t("dashboard.progressOffers"), offers, Math.min(offers * 50, 100), C.green],
             ].map(([label, value, pct, color]) => (
               <div key={label}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
@@ -624,7 +625,7 @@ ${context}`, 600);
 
         {/* AI Activity */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>AI Activity</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.activityTitle")}</div>
           {aiActivity.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
               {aiActivity.map(a => (
@@ -635,19 +636,19 @@ ${context}`, 600);
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>Your AI activity will appear here as you use CareerPersona.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.activityEmpty")}</div>
           )}
         </Card>
       </div>
 
       {/* BOTTOM: AI Chat Assistant */}
       <Card>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 CareerPersona AI Assistant</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</div>
         <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           {chatMessages.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 14 }}>
               <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
-              Ask me anything about your career, resume, interviews, salary negotiation, or job search strategy.
+              {t("dashboard.assistantEmpty")}
             </div>
           )}
           {chatMessages.map((m, i) => (
@@ -657,12 +658,12 @@ ${context}`, 600);
               </div>
             </div>
           ))}
-          {chatLoading && <div style={{ color: C.purple, fontSize: 13 }}>Thinking...</div>}
+          {chatLoading && <div style={{ color: C.purple, fontSize: 13 }}>{t("dashboard.thinking")}</div>}
           <div ref={chatEndRef} />
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder="Ask CareerPersona AI anything..." style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px" }}>Send</Btn>
+          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder={t("dashboard.chatPlaceholder")} style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px" }}>{t("dashboard.send")}</Btn>
         </div>
       </Card>
     </div>
