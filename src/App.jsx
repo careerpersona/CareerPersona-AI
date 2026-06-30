@@ -155,6 +155,94 @@ function UserMenu({ profile, page, setPage, onLogout }) {
   );
 }
 
+// Single shared implementation used by both the desktop header (variant="icon")
+// and the mobile/tablet hamburger menu (variant="row") — same dropdown markup,
+// same i18n context, same persistence, just a different trigger affordance.
+function LanguageMenu({ variant = "icon" }) {
+  const { language, setLanguage, t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      {variant === "row" ? (
+        <button title={t("language.title")} onClick={() => setOpen(o => !o)} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }}>
+          <span style={{ fontSize: 20 }}>🌐</span>
+          <span style={{ fontSize: 18 }}>{LANGUAGES.find(l => l.code === language)?.flag}</span>
+          <span style={{ marginLeft: "auto", color: C.textMuted, fontSize: 12 }}>▼</span>
+        </button>
+      ) : (
+        <button onClick={() => setOpen(o => !o)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
+      )}
+      {open && (
+        <div>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("language.title")}</div>
+            <div style={{ padding: "6px 0", maxHeight: 320, overflowY: "auto" }}>
+              {LANGUAGES.map(lng => (
+                <button key={lng.code} onClick={() => { setLanguage(lng.code); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", border: "none", background: lng.code === language ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                  <span style={{ fontSize: 16 }}>{lng.flag}</span>
+                  <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1 }}>{lng.native}</span>
+                  {lng.code === language && <span style={{ color: C.purple, fontWeight: 700 }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same idea as LanguageMenu: one shared notification-center implementation,
+// data/handlers passed down from the single useNotifications() call in App()
+// so there is only ever one fetch/poll source regardless of how many trigger
+// affordances (desktop icon vs. mobile row) are mounted.
+function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRead }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next) { await refresh(); markAllRead(); }
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      {variant === "row" ? (
+        <button onClick={toggle} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }}>
+          <span style={{ fontSize: 20 }}>🔔</span>{t("notifications.title")}
+        </button>
+      ) : (
+        <button onClick={toggle} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+      )}
+      {open && (
+        <div>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("notifications.title")}</div>
+            {notifications.length === 0 ? (
+              <div style={{ padding: "32px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("notifications.emptyTitle")}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{t("notifications.emptyBody")}</div>
+              </div>
+            ) : (
+              <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                {notifications.map(n => (
+                  <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
+                    {n.body && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>{n.body}</div>}
+                    <div style={{ fontSize: 11, color: C.textMuted }}>{n.time}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title }) {
   const isDisabled = disabled || loading;
   const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: isDisabled ? "not-allowed" : "pointer", opacity: disabled && !loading ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" };
@@ -2883,15 +2971,8 @@ export default function App() {
     { id: "network", icon: "🤝", label: t("nav.network") },
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const planName = (profile?.plan || "free").toUpperCase();
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
-  const toggleNotif = async () => {
-    const next = !notifOpen;
-    setNotifOpen(next);
-    if (next) { await refreshNotifications(); markAllRead(); }
-  };
 
   if (!user) return <AuthPage />;
 
@@ -2980,54 +3061,8 @@ export default function App() {
         <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
           <NavPills nav={nav} page={page} setPage={setPage} />
           <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
-            <div style={{ position: "relative" }}>
-              <button onClick={() => setLangMenuOpen(!langMenuOpen)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: langMenuOpen ? "#fff" : "transparent", color: langMenuOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
-              {langMenuOpen && (
-                <div>
-                  <div onClick={() => setLangMenuOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
-                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("language.title")}</div>
-                    <div style={{ padding: "6px 0", maxHeight: 320, overflowY: "auto" }}>
-                      {LANGUAGES.map(lng => (
-                        <button key={lng.code} onClick={() => { setLanguage(lng.code); setLangMenuOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", border: "none", background: lng.code === language ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-                          <span style={{ fontSize: 16 }}>{lng.flag}</span>
-                          <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1 }}>{lng.native}</span>
-                          {lng.code === language && <span style={{ color: C.purple, fontWeight: 700 }}>✓</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div style={{ position: "relative" }}>
-              <button onClick={toggleNotif} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: notifOpen ? "#fff" : "transparent", color: notifOpen ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
-              {notifOpen && (
-                <div>
-                  <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-                  <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
-                    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("notifications.title")}</div>
-                    {notifications.length === 0 ? (
-                      <div style={{ padding: "32px 16px", textAlign: "center" }}>
-                        <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("notifications.emptyTitle")}</div>
-                        <div style={{ fontSize: 12, color: C.textMuted }}>{t("notifications.emptyBody")}</div>
-                      </div>
-                    ) : (
-                      <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                        {notifications.map(n => (
-                          <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
-                            {n.body && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>{n.body}</div>}
-                            <div style={{ fontSize: 11, color: C.textMuted }}>{n.time}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <LanguageMenu variant="icon" />
+            <NotificationsMenu variant="icon" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} />
             <UserMenu profile={profile} page={page} setPage={setPage} onLogout={handleLogout} />
           </div>
         </div>
@@ -3039,6 +3074,9 @@ export default function App() {
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
             </button>
           ))}
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
+          <LanguageMenu variant="row" />
+          <NotificationsMenu variant="row" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} />
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>👤</span>{t("userMenu.profile")}
