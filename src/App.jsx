@@ -368,7 +368,7 @@ function ContentDisplay({ content }) {
 }
 
 // ─── AUTH PAGE ─────────────────────────────────────────────
-function AuthPage() {
+function AuthPage({ t }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [loading, setLoading] = useState(false);
@@ -376,9 +376,9 @@ function AuthPage() {
   const [confirmPending, setConfirmPending] = useState(false);
 
   const handle = async () => {
-    if (!form.email) { setError("Email is required"); return; }
-    if (!form.password) { setError("Password is required"); return; }
-    if (mode === "signup" && !form.name) { setError("Name is required"); return; }
+    if (!form.email) { setError(t("auth.emailRequired")); return; }
+    if (!form.password) { setError(t("auth.passwordRequired")); return; }
+    if (mode === "signup" && !form.name) { setError(t("auth.nameRequired")); return; }
     setLoading(true); setError("");
     const { data, error: authError } =
       mode === "login"
@@ -407,33 +407,35 @@ function AuthPage() {
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Logo size={56} /></div>
           <AppName size={26} />
-          <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>Your AI-powered career platform</div>
+          <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>{t("auth.tagline")}</div>
         </div>
         <Card>
           {confirmPending ? (
             <div style={{ textAlign: "center", padding: "12px 0" }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check your email</div>
-              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>We sent a confirmation link to <strong>{form.email}</strong>. Click it to activate your account, then sign in.</div>
-              <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setConfirmPending(false); setMode("login"); }}>Back to Sign In</Btn>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("auth.checkEmailTitle")}</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
+                {(() => { const [pre, post] = t("auth.checkEmailBody").split("{email}"); return <>{pre}<strong>{form.email}</strong>{post}</>; })()}
+              </div>
+              <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setConfirmPending(false); setMode("login"); }}>{t("auth.backToSignIn")}</Btn>
             </div>
           ) : (
             <>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 22 }}>
-                {["login","signup"].map(m => <Btn key={m} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? "Sign In" : "Sign Up"}</Btn>)}
+                {["login","signup"].map(m => <Btn key={m} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: mode === m ? "#fff" : "transparent", color: mode === m ? C.text : C.textMuted, fontSize: 13, fontWeight: 700, boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { setMode(m); setError(""); }}>{m === "login" ? t("auth.signIn") : t("auth.signUp")}</Btn>)}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {mode === "signup" && <Input label="Full Name" placeholder="John Smith" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />}
-                <Input label="Email" type="email" placeholder="you@email.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
-                <Input label="Password" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
+                {mode === "signup" && <Input label={t("auth.fullNameLabel")} placeholder={t("auth.fullNamePlaceholder")} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />}
+                <Input label={t("auth.emailLabel")} type="email" placeholder="you@email.com" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
+                <Input label={t("auth.passwordLabel")} type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
               </div>
               {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
                 <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
-                  {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+                  {loading ? t("auth.pleaseWait") : mode === "login" ? t("auth.signIn") : t("auth.createAccount")}
                 </Btn>
                 <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={handleGoogle} loading={loading}>
-                  <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> Continue with Google
+                  <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> {t("auth.continueWithGoogle")}
                 </Btn>
               </div>
             </>
@@ -811,8 +813,9 @@ Location: Remote-first`;
 const RESUME_STEPS = ["Analyzing Resume…", "Calculating ATS Score…", "Generating Tailored Resume…", "Creating Cover Letter…"];
 
 function ResumePage({ onSave, onNavigate, profile }) {
+  const { t } = useI18n();
   const [resume, setResume] = useState("");
-  const [jobDesc, setJobDesc] = useState(profile?.preferred_job_title ? `Looking for a ${profile.preferred_job_title} position` : "");
+  const [jobDesc, setJobDesc] = useState(profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
   const [loading, setLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
   const [results, setResults] = useState(null);
@@ -861,8 +864,8 @@ function ResumePage({ onSave, onNavigate, profile }) {
           const data = await res.json();
           const text = data.content?.[0]?.text || '';
           if (text) setResume(text);
-          else setError("Could not extract text from image.");
-        } catch { setError("Could not extract text from image. Please paste your resume instead."); }
+          else setError(t("resume.imageExtractFailed"));
+        } catch { setError(t("resume.imageExtractFailedPaste")); }
         finally { setExtracting(false); }
       };
       reader.readAsDataURL(file);
@@ -890,10 +893,10 @@ function ResumePage({ onSave, onNavigate, profile }) {
         if (text.trim()) {
           setResume(text.trim());
         } else {
-          setError("Could not extract text from this PDF. It may be scanned/image-based — please paste your resume instead.");
+          setError(t("resume.pdfExtractFailed"));
         }
       } catch {
-        setError("Could not read this PDF. Please paste your resume text instead.");
+        setError(t("resume.pdfReadFailed"));
       } finally { setExtracting(false); }
     } else if (['doc','docx'].includes(ext)) {
       // DOCX: try to read as text (works for simple .docx)
@@ -905,7 +908,7 @@ function ResumePage({ onSave, onNavigate, profile }) {
         if (readableChars > 50) {
           setResume(text);
         } else {
-          setError("Could not read this DOCX file. Please copy and paste your resume text directly into the box.");
+          setError(t("resume.docxReadFailed"));
         }
         setExtracting(false);
       };
@@ -919,7 +922,7 @@ function ResumePage({ onSave, onNavigate, profile }) {
   };
 
   const analyze = async () => {
-    if (!resume.trim() || !jobDesc.trim()) { setError("Please add both resume and job description."); return; }
+    if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
     setError(""); setLoading(true); setResults(null); setLoadStep(0);
     const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 3)), 2000);
     try {
@@ -928,21 +931,21 @@ function ResumePage({ onSave, onNavigate, profile }) {
 RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000);
       setResults(JSON.parse(raw)); setTab("resume");
-    } catch { setError("Analysis failed. Please try again."); } 
+    } catch { setError(t("resume.analysisFailed")); }
     finally { clearInterval(iv); setLoading(false); }
   };
 
-  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || "Company", jobTitle: results.jobTitle || "Role", status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
+  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || t("resume.companyFallback"), jobTitle: results.jobTitle || t("resume.roleFallback"), status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   const handleSaveResume = async () => {
     if (!resume.trim()) return;
     setResumeError(""); setSavingResume(true);
     try {
-      await saveResume(uploadedFile?.name || "My Resume", resume, uploadedFile);
+      await saveResume(uploadedFile?.name || t("resume.myResumeFallback"), resume, uploadedFile);
       setResumeSaved(true);
       setTimeout(() => setResumeSaved(false), 3000);
     } catch {
-      setResumeError("Could not save resume. Please try again.");
+      setResumeError(t("resume.saveResumeFailed"));
     } finally {
       setSavingResume(false);
     }
@@ -952,7 +955,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
   const handleDeleteResume = async (r) => {
     setDeletingId(r.id);
-    try { await deleteResume(r); } catch { setResumeError("Could not delete resume. Please try again."); }
+    try { await deleteResume(r); } catch { setResumeError(t("resume.deleteResumeFailed")); }
     finally { setDeletingId(null); }
   };
 
@@ -961,7 +964,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       try {
         const url = await downloadResume(r);
         if (url) window.open(url, "_blank");
-      } catch { setResumeError("Could not generate download link."); }
+      } catch { setResumeError(t("resume.downloadLinkFailed")); }
     } else {
       downloadPDF(r.content, r.name.replace(/\.[^.]+$/, ""));
     }
@@ -970,24 +973,24 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Resume Tailor</h1>
-        <p style={{ color: C.textMuted, fontSize: 15 }}>Paste or upload your resume and job description — AI optimizes your resume for ATS and writes your cover letter.</p>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("resume.heading")}</h1>
+        <p style={{ color: C.textMuted, fontSize: 15 }}>{t("resume.subtitle")}</p>
       </div>
       {!results && (
         <>
           {resumes.length > 0 && (
             <Card style={{ marginBottom: 20 }}>
-              <Label>My Resumes</Label>
+              <Label>{t("resume.myResumes")}</Label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
                 {resumes.map(r => (
                   <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 8, fontSize: 10, color: C.purple, fontWeight: 700 }}>DEFAULT</span>}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 8, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("resume.default")}</span>}</div>
                       <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}{r.file_type ? ` · ${r.file_type.toUpperCase()}` : ""}</div>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleLoadResume(r)}>Load</Btn>
-                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleDownloadResume(r)}>⬇ Download</Btn>
+                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleLoadResume(r)}>{t("resume.load")}</Btn>
+                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleDownloadResume(r)}>{t("resume.download")}</Btn>
                       <Btn variant="danger" style={{ padding: "5px 10px", fontSize: 12 }} loading={deletingId === r.id} onClick={() => handleDeleteResume(r)}>✕</Btn>
                     </div>
                   </div>
@@ -998,29 +1001,29 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }} className="two-col">
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <Label>Your Resume</Label>
+                <Label>{t("resume.yourResume")}</Label>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={handleFile} />
-                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={extracting} onClick={() => fileRef.current.click()}>{extracting ? "Extracting…" : "📎 Upload File"}</Btn>
-                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume}>{resumeSaved ? "✓ Saved" : savingResume ? "Saving…" : "💾 Save Resume"}</Btn>
+                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={extracting} onClick={() => fileRef.current.click()}>{extracting ? t("resume.extracting") : t("resume.uploadFile")}</Btn>
+                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume}>{resumeSaved ? t("resume.savedShort") : savingResume ? t("resume.saving") : t("resume.saveResume")}</Btn>
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>Supports: PDF, DOCX, DOC, PNG, JPG, or paste text</div>
-              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume here, or upload a file above…" value={resume} onChange={e => setResume(e.target.value)} />
-              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words` : "Plain text works best for ATS scoring"}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{t("resume.supportsHint")}</div>
+              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.resumePlaceholder")} value={resume} onChange={e => setResume(e.target.value)} />
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("resume.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("resume.plainTextHint")}</div>
               {resumeError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginTop: 8 }}>{resumeError}</div>}
             </Card>
             <Card>
-              <Label>Job Description</Label>
-              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>Copy from LinkedIn, Indeed, or company website</div>
-              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste the job description here…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} />
-              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{jobDesc ? `${jobDesc.split(/\s+/).filter(Boolean).length} words` : "Include requirements and responsibilities for best results"}</div>
+              <Label>{t("resume.jobDescription")}</Label>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{t("resume.jobDescHint")}</div>
+              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.jobDescPlaceholder")} value={jobDesc} onChange={e => setJobDesc(e.target.value)} />
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{jobDesc ? t("resume.wordCount").replace("{n}", jobDesc.split(/\s+/).filter(Boolean).length) : t("resume.jobDescTip")}</div>
             </Card>
           </div>
           {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            <Btn onClick={analyze} loading={loading} style={{ padding: "13px 32px", fontSize: 15 }}>{loading ? "Analyzing…" : "⚡ Analyze & Tailor Resume"}</Btn>
-            <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }}>Try Sample</Btn>
+            <Btn onClick={analyze} loading={loading} style={{ padding: "13px 32px", fontSize: 15 }}>{loading ? t("resume.analyzing") : t("resume.analyzeAndTailor")}</Btn>
+            <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }}>{t("resume.trySample")}</Btn>
           </div>
         </>
       )}
@@ -1029,12 +1032,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>Analysis Complete</div>
-              {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{results.jobTitle} at {results.company}</div>}
+              <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("resume.analysisComplete")}</div>
+              {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{t("resume.roleAtCompany").replace("{role}", results.jobTitle).replace("{company}", results.company)}</div>}
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn onClick={handleSave}>{saved ? "✓ Saved!" : "💾 Save to Tracker"}</Btn>
-              <Btn variant="secondary" onClick={() => { setResults(null); setResume(""); setJobDesc(""); }}>← New Analysis</Btn>
+              <Btn onClick={handleSave}>{saved ? t("resume.savedToTrackerDone") : t("resume.saveToTracker")}</Btn>
+              <Btn variant="secondary" onClick={() => { setResults(null); setResume(""); setJobDesc(""); }}>{t("resume.newAnalysis")}</Btn>
             </div>
           </div>
 
@@ -1043,7 +1046,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
               <div style={{ textAlign: "center" }}>
                 <ScoreRing score={results.atsScore} size={90} />
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>Current ATS Score</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
               </div>
               <div style={{ fontSize: 28, color: C.textMuted }}>→</div>
               <div style={{ textAlign: "center" }}>
@@ -1051,10 +1054,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <span style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{results.potentialAtsScore || Math.min(results.atsScore + 20, 98)}+</span>
                   <span style={{ fontSize: 11, color: C.textMuted }}>/100</span>
                 </div>
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>Potential ATS Score</div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.potentialAtsScore")}</div>
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
-                {[["Keyword Match", results.scoreBreakdown?.keywordMatch], ["Formatting", results.scoreBreakdown?.formatting], ["Relevance", results.scoreBreakdown?.relevance]].map(([l, v]) => (
+                {[[t("resume.keywordMatch"), results.scoreBreakdown?.keywordMatch], [t("resume.formatting"), results.scoreBreakdown?.formatting], [t("resume.relevance"), results.scoreBreakdown?.relevance]].map(([l, v]) => (
                   <div key={l} style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}><span style={{ color: C.textMid, fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 700, color: v >= 80 ? C.green : v >= 60 ? C.yellow : C.red }}>{v}%</span></div>
                     <PBar val={v} />
@@ -1067,18 +1070,18 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {/* Keywords */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }} className="two-col">
             <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>✓ KEYWORDS FOUND IN YOUR RESUME</div>
+              <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsFound")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsFound?.map(k => <Badge key={k} color={C.green}>{k}</Badge>)}</div>
             </div>
             <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 10 }}>✗ MISSING KEYWORDS (ADD THESE)</div>
+              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsMissing")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsMissing?.map(k => <Badge key={k} color={C.red}>{k}</Badge>)}</div>
             </div>
           </div>
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
-            {[["resume","✨ Tailored Resume"],["suggestions","💡 Improvement Tips"],["cover","📄 Cover Letter"]].map(([id, lbl]) => (
+            {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")]].map(([id, lbl]) => (
               <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
@@ -1087,9 +1090,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div>
               <ContentDisplay content={results.tailoredResume} />
               <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <Btn variant="secondary" onClick={() => downloadPDF(results.tailoredResume, "tailored-resume")}>📄 Download PDF</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(results.tailoredResume, "tailored-resume")}>📝 Download DOCX</Btn>
-                <CopyBtn text={results.tailoredResume} label="📋 Copy Resume" variant="secondary" />
+                <Btn variant="secondary" onClick={() => downloadPDF(results.tailoredResume, "tailored-resume")}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(results.tailoredResume, "tailored-resume")}>{t("resume.downloadDocx")}</Btn>
+                <CopyBtn text={results.tailoredResume} label={t("resume.copyResume")} variant="secondary" />
               </div>
             </div>
           )}
@@ -1107,9 +1110,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div>
               <ContentDisplay content={results.coverLetter} />
               <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <Btn variant="secondary" onClick={() => downloadPDF(results.coverLetter, "cover-letter")}>📄 Download PDF</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(results.coverLetter, "cover-letter")}>📝 Download DOCX</Btn>
-                <CopyBtn text={results.coverLetter} label="📋 Copy Cover Letter" variant="secondary" />
+                <Btn variant="secondary" onClick={() => downloadPDF(results.coverLetter, "cover-letter")}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(results.coverLetter, "cover-letter")}>{t("resume.downloadDocx")}</Btn>
+                <CopyBtn text={results.coverLetter} label={t("resume.copyCoverLetter")} variant="secondary" />
               </div>
             </div>
           )}
@@ -1120,7 +1123,15 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 }
 
 // ─── JOB SEARCH ────────────────────────────────────────────
+const JS_COUNTRY_OPTIONS = ["United States","Canada","United Kingdom","Australia","Germany","France","Netherlands","Remote Worldwide"];
+const JS_COUNTRY_LABEL_KEY = { "United States": "countryUS", "Canada": "countryCanada", "United Kingdom": "countryUK", "Australia": "countryAustralia", "Germany": "countryGermany", "France": "countryFrance", "Netherlands": "countryNetherlands", "Remote Worldwide": "countryRemoteWorldwide" };
+const JS_EMPLOYMENT_OPTIONS = ["Any","Full-time","Part-time","Contract","Internship","Freelance"];
+const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employmentFullTime", "Part-time": "employmentPartTime", Contract: "employmentContract", Internship: "employmentInternship", Freelance: "employmentFreelance" };
+const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
+const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
+
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
+  const { t } = useI18n();
   const [filters, setFilters] = useState({ title: profile?.preferred_job_title || "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
   const resumeFileRef = useRef();
@@ -1134,7 +1145,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
   const extractResumeFile = async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (file.size > 5 * 1024 * 1024) { setError("File too large. Maximum size is 5MB."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError(t("jobSearch.fileTooLarge")); return; }
     setError(""); setUploadingResume(true);
     try {
       if (ext === "pdf") {
@@ -1156,7 +1167,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
           text += content.items.map(it => it.str).join(" ") + "\n";
         }
         if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
-        else { setError("Could not extract text from this PDF. It may be scanned/image-based — please paste your resume instead."); }
+        else { setError(t("jobSearch.pdfExtractFailed")); }
       } else if (ext === "docx" || ext === "doc" || ext === "txt") {
         const text = await file.text();
         let clean = text;
@@ -1164,12 +1175,12 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
           clean = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         }
         if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
-        else { setError("Could not read this file. Please paste your resume text instead."); }
+        else { setError(t("jobSearch.fileReadFailed")); }
       } else {
-        setError("Unsupported file type. Please upload PDF, DOCX, or TXT.");
+        setError(t("jobSearch.unsupportedFileType"));
       }
     } catch (err) {
-      setError("Could not read the file. Please paste your resume text instead.");
+      setError(t("jobSearch.fileReadFailedGeneric"));
     } finally {
       setUploadingResume(false);
     }
@@ -1192,7 +1203,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
   const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
 
   const search = async (loadMore = false) => {
-    if (!filters.title.trim()) { setError("Enter a job title to search"); return; }
+    if (!filters.title.trim()) { setError(t("jobSearch.enterTitlePrompt")); return; }
     setError("");
     setLoading(true);
     const nextPage = loadMore ? page + 1 : 1;
@@ -1228,7 +1239,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
         autoMatchAll(newJobs);
       }
     } catch (e) {
-      setError(`Search failed: ${e.message}. Please try again.`);
+      setError(t("jobSearch.searchFailed").replace("{message}", e.message));
     } finally {
       setLoading(false);
     }
@@ -1264,7 +1275,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
   // Now" link themselves, this just does the prep work.
   const smartApply = async (job) => {
     if (!resume.trim()) { setShowResume(true); return; }
-    if (!profile?.id) { setError("Please sign in to use Smart Apply."); return; }
+    if (!profile?.id) { setError(t("jobSearch.signInForSmartApply")); return; }
     setSmartApplying(job.id);
     let queued;
     try {
@@ -1284,7 +1295,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 4000);
     } catch (e) {
       console.error("Smart Apply failed:", e);
       if (queued) await markSmartApplyFailed(queued.id);
-      setError("Smart Apply failed. Please try again.");
+      setError(t("jobSearch.smartApplyFailed"));
     } finally {
       setSmartApplying(null);
     }
@@ -1307,38 +1318,38 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
   const toggleSave = (job) => { const s = savedJobs.find(j => j.job_id === job.id); if (s) { setSavedJobs(p => p.filter(j => j.job_id !== job.id)); } else { setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]); } };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
   const addTracker = (job) => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
-  const fmtSalary = (min, max) => { if (!min && !max) return "Salary not listed"; const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : `Up to ${f(max)}`; };
+  const fmtSalary = (min, max) => { if (!min && !max) return t("jobSearch.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("jobSearch.upTo").replace("{v}", f(max)); };
   const matchColor = s => s >= 85 ? C.green : s >= 70 ? C.yellow : C.red;
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Job Search</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>Search real jobs from multiple sources with AI-powered match scoring.</p>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("jobSearch.heading")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("jobSearch.subtitle")}</p>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }} className="three-col">
-          <Input label="Job Title *" placeholder="e.g. Software Engineer" value={filters.title} onChange={e => setFilters(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
-          <Select label="Country" value={filters.country} onChange={e => setFilters(f => ({ ...f, country: e.target.value }))}>
-            {["United States","Canada","United Kingdom","Australia","Germany","France","Netherlands","Remote Worldwide"].map(c => <option key={c}>{c}</option>)}
+          <Input label={t("jobSearch.jobTitleLabel")} placeholder={t("jobSearch.jobTitlePlaceholder")} value={filters.title} onChange={e => setFilters(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
+          <Select label={t("jobSearch.countryLabel")} value={filters.country} onChange={e => setFilters(f => ({ ...f, country: e.target.value }))}>
+            {JS_COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{t(`jobSearch.${JS_COUNTRY_LABEL_KEY[c]}`)}</option>)}
           </Select>
-          <Input label="City" placeholder="e.g. New York, London" value={filters.city} onChange={e => setFilters(f => ({ ...f, city: e.target.value }))} />
-          <Select label="Employment Type" value={filters.employmentType} onChange={e => setFilters(f => ({ ...f, employmentType: e.target.value }))}>
-            {["Any","Full-time","Part-time","Contract","Internship","Freelance"].map(t => <option key={t}>{t}</option>)}
+          <Input label={t("jobSearch.cityLabel")} placeholder={t("jobSearch.cityPlaceholder")} value={filters.city} onChange={e => setFilters(f => ({ ...f, city: e.target.value }))} />
+          <Select label={t("jobSearch.employmentTypeLabel")} value={filters.employmentType} onChange={e => setFilters(f => ({ ...f, employmentType: e.target.value }))}>
+            {JS_EMPLOYMENT_OPTIONS.map(o => <option key={o} value={o}>{t(`jobSearch.${JS_EMPLOYMENT_LABEL_KEY[o]}`)}</option>)}
           </Select>
-          <Select label="Experience Level" value={filters.experienceLevel} onChange={e => setFilters(f => ({ ...f, experienceLevel: e.target.value }))}>
-            {["Any","Entry Level","Mid Level","Senior","Lead","Executive"].map(l => <option key={l}>{l}</option>)}
+          <Select label={t("jobSearch.experienceLevelLabel")} value={filters.experienceLevel} onChange={e => setFilters(f => ({ ...f, experienceLevel: e.target.value }))}>
+            {JS_EXPERIENCE_OPTIONS.map(o => <option key={o} value={o}>{t(`jobSearch.${JS_EXPERIENCE_LABEL_KEY[o]}`)}</option>)}
           </Select>
-          <Input label="Min Salary ($)" type="number" placeholder="e.g. 80000" value={filters.salaryMin} onChange={e => setFilters(f => ({ ...f, salaryMin: e.target.value }))} />
+          <Input label={t("jobSearch.minSalaryLabel")} type="number" placeholder={t("jobSearch.minSalaryPlaceholder")} value={filters.salaryMin} onChange={e => setFilters(f => ({ ...f, salaryMin: e.target.value }))} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> Remote Only</label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-            <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? "Resume Added ✓" : "Add Resume for AI Match"}</Btn>
-            <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? "Searching…" : "🔍 Search Jobs"}</Btn>
+            <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? t("jobSearch.resumeAdded") : t("jobSearch.addResumeForMatch")}</Btn>
+            <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? t("jobSearch.searching") : t("jobSearch.searchJobs")}</Btn>
           </div>
         </div>
         {showResume && <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 10 }}>Your Resume (for AI match scoring)</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 10 }}>{t("jobSearch.yourResumeForMatch")}</div>
 
           <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
 
@@ -1362,37 +1373,37 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
             }}
           >
             {uploadingResume ? (
-              <div style={{ color: C.purple, fontWeight: 600, fontSize: 15 }}>⏳ Extracting text…</div>
+              <div style={{ color: C.purple, fontWeight: 600, fontSize: 15 }}>{t("jobSearch.extractingText")}</div>
             ) : resumeFileName ? (
               <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.green, color: "#fff", padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>✓ Resume Loaded</div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.green, color: "#fff", padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t("jobSearch.resumeLoaded")}</div>
                 <div style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>📄 {resumeFileName}</div>
-                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>Click or drop to replace</div>
+                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>{t("jobSearch.clickOrDropReplace")}</div>
               </div>
             ) : (
               <div>
                 <div style={{ fontSize: 26, marginBottom: 6 }}>⬆️</div>
-                <div style={{ color: C.purple, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Upload Resume</div>
-                <div style={{ color: C.textMuted, fontSize: 13 }}>Drag & drop or click to browse · PDF / DOCX / TXT (Max 5MB)</div>
+                <div style={{ color: C.purple, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{t("jobSearch.uploadResume")}</div>
+                <div style={{ color: C.textMuted, fontSize: 13 }}>{t("jobSearch.dragDropHint")}</div>
               </div>
             )}
           </div>
 
           {/* Resume textarea */}
-          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="Paste your resume, or upload a file above, to see how well you match each job…" value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
-          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? `${resume.split(/\s+/).filter(Boolean).length} words` : "PDF and TXT extract best. For DOCX, paste text if extraction looks off."}</div>
-          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>✓ Save & Close</Btn>}
+          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("jobSearch.resumeTextareaPlaceholder")} value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("jobSearch.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("jobSearch.extractTip")}</div>
+          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>{t("jobSearch.saveAndClose")}</Btn>}
         </div>}
       </Card>
 
-      {loading && jobs.length === 0 && <Spinner steps={["Searching Adzuna & JSearch…", "Merging and deduplicating results…", "Ranking by relevance…"]} currentStep={1} />}
-      {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>No results found</div><div style={{ color: C.textMuted, marginTop: 6 }}>Try different keywords or broaden your filters</div></Card>}
+      {loading && jobs.length === 0 && <Spinner steps={[t("jobSearch.step1"), t("jobSearch.step2"), t("jobSearch.step3")]} currentStep={1} />}
+      {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>{t("jobSearch.noResultsFound")}</div><div style={{ color: C.textMuted, marginTop: 6 }}>{t("jobSearch.tryDifferentKeywords")}</div></Card>}
 
       {jobs.length > 0 && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>
-              {jobs.length} jobs found for "<strong style={{ color: C.text }}>{filters.title}</strong>"
+              {t("jobSearch.jobsFoundFor").replace("{n}", jobs.length)}"<strong style={{ color: C.text }}>{filters.title}</strong>"
               {sourceCounts && <span style={{ marginLeft: 10, fontSize: 12 }}>
                 <span style={{ color: C.blue }}>Adzuna: {sourceCounts.adzuna}</span>
                 {" · "}
@@ -1410,31 +1421,31 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
                         <Badge color={C.blue}>{job.source}</Badge>
-                        {job.remote && <Badge color={C.green}>🌐 Remote</Badge>}
+                        {job.remote && <Badge color={C.green}>{t("jobSearch.remoteBadge")}</Badge>}
                         <Badge color={C.textMuted}>{job.employmentType}</Badge>
                         {job.experienceLevel && <Badge color={C.purple}>{job.experienceLevel}</Badge>}
-                        <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{displayMatch}% Match</span>
+                        <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
                       <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 6 }}>{job.company} · {job.location}</div>
                       <div style={{ fontSize: 14, color: C.green, fontWeight: 700, marginBottom: 10 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</div>
                       <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 10 }}>{job.description?.slice(0, 200)}…</div>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>{job.skills?.slice(0, 5).map(s => <span key={s} style={{ background: C.purpleLight, color: C.purple, borderRadius: 6, padding: "3px 9px", fontSize: 12, fontWeight: 600 }}>{s}</span>)}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>Posted: {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "Recently"}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>Apply Now →</a>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? "Analyzing…" : "🤖 AI Match"}</Btn>
-                      <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? "♥ Saved" : "♡ Save Job"}</Btn>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>+ Track</Btn>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? "Preparing…" : "🚀 Smart Apply"}</Btn>
+                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>{t("jobSearch.applyNow")}</a>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? t("jobSearch.preparing") : t("jobSearch.smartApply")}</Btn>
                     </div>
                   </div>
                   {mr && (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
                       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{mr.summary}</div>
                       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                        {[["Match", mr.matchScore], ["ATS", mr.atsScore], ["Interview %", mr.interviewProbability]].map(([l, v]) => (
+                        {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
                           <div key={l} style={{ flex: 1, minWidth: 80 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
                             <PBar val={v} color={matchColor(v)} />
@@ -1442,8 +1453,8 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
                         ))}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
-                        <div style={{ background: C.greenLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>✓ YOU HAVE</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div></div>
-                        <div style={{ background: C.redLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 6 }}>✗ YOU NEED</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div></div>
+                        <div style={{ background: C.greenLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>{t("jobSearch.youHave")}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div></div>
+                        <div style={{ background: C.redLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("jobSearch.youNeed")}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div></div>
                       </div>
                     </div>
                   )}
@@ -1454,7 +1465,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
           <div style={{ textAlign: "center", marginTop: 24 }}>
             {hasMore && (
               <Btn variant="secondary" onClick={() => search(true)} disabled={loading} style={{ padding: "13px 32px", fontSize: 14 }}>
-                {loading ? "Loading more…" : "Load More Jobs →"}
+                {loading ? t("jobSearch.loadingMore") : t("jobSearch.loadMoreJobs")}
               </Btn>
             )}
           </div>
@@ -1923,7 +1934,11 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
 const STATUSES = ["Saved","Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Withdrawn","Ghosted"];
 const SCOLOR = { Saved: C.textMuted, Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: "#9333EA", Ghosted: C.textMuted };
 
+const STATUS_LABEL_KEY = { Saved: "statusSaved", Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
+
 function TrackerPage({ applications, setApplications }) {
+  const { t } = useI18n();
+  const tStatus = s => t(`tracker.${STATUS_LABEL_KEY[s]}`, s);
   const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useState("All"); const [viewApp, setViewApp] = useState(null);
   const [formErrors, setFormErrors] = useState({});
   const [search, setSearch] = useState("");
@@ -1932,24 +1947,24 @@ function TrackerPage({ applications, setApplications }) {
 
   const save = () => {
     const errors = {};
-    if (!form.company.trim()) errors.company = "Company is required.";
-    if (!form.jobTitle.trim()) errors.jobTitle = "Job title is required.";
+    if (!form.company.trim()) errors.company = t("tracker.companyRequired");
+    if (!form.jobTitle.trim()) errors.jobTitle = t("tracker.jobTitleRequired");
     let atsClean = form.atsScore;
     if (form.atsScore !== "" && form.atsScore !== null) {
       const n = Number(form.atsScore);
-      if (isNaN(n)) errors.atsScore = "ATS score must be a number.";
-      else if (n < 0 || n > 100) errors.atsScore = "ATS score must be between 0 and 100.";
+      if (isNaN(n)) errors.atsScore = t("tracker.atsScoreNumber");
+      else if (n < 0 || n > 100) errors.atsScore = t("tracker.atsScoreRange");
       else atsClean = String(Math.round(n));
     }
     if (form.date && form.followUpDate && form.followUpDate < form.date) {
-      errors.followUpDate = "Follow-up date can't be before the application date.";
+      errors.followUpDate = t("tracker.followUpBeforeApply");
     }
     const dupe = applications.find(a =>
       a.id !== editId &&
       (a.company || "").trim().toLowerCase() === form.company.trim().toLowerCase() &&
       (a.jobTitle || "").trim().toLowerCase() === form.jobTitle.trim().toLowerCase()
     );
-    if (dupe) errors.company = `You already have an application for "${form.jobTitle}" at "${form.company}".`;
+    if (dupe) errors.company = t("tracker.duplicateApplication").replace("{title}", form.jobTitle).replace("{company}", form.company);
 
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     setFormErrors({});
@@ -1983,64 +1998,64 @@ function TrackerPage({ applications, setApplications }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
-        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Application Tracker</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{applications.length} applications tracked</p></div>
-        <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>+ Add Application</Btn>
+        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p></div>
+        <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
       {applications.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
-          <div onClick={() => setFilterStatus("All")} style={{ cursor: "pointer", background: `${C.purple}12`, border: `1.5px solid ${filterStatus === "All" ? C.purple : C.purple + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.purple }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Total</div></div>
-          {STATUSES.filter(s => stats[s] > 0).map(s => <div key={s} onClick={() => setFilterStatus(filterStatus === s ? "All" : s)} style={{ cursor: "pointer", background: `${SCOLOR[s]}12`, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] : SCOLOR[s] + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: SCOLOR[s] }}>{stats[s]}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{s}</div></div>)}
-          {successRate !== null && <div style={{ background: `${C.green}12`, border: `1.5px solid ${C.green}40`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{successRate}%</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Success Rate</div></div>}
+          <div onClick={() => setFilterStatus("All")} style={{ cursor: "pointer", background: `${C.purple}12`, border: `1.5px solid ${filterStatus === "All" ? C.purple : C.purple + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.purple }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.total")}</div></div>
+          {STATUSES.filter(s => stats[s] > 0).map(s => <div key={s} onClick={() => setFilterStatus(filterStatus === s ? "All" : s)} style={{ cursor: "pointer", background: `${SCOLOR[s]}12`, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] : SCOLOR[s] + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: SCOLOR[s] }}>{stats[s]}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{tStatus(s)}</div></div>)}
+          {successRate !== null && <div style={{ background: `${C.green}12`, border: `1.5px solid ${C.green}40`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{successRate}%</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.successRate")}</div></div>}
         </div>
       )}
       {applications.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search by company or job title…" style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("tracker.searchPlaceholder")} style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
         </div>
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {["All", ...STATUSES].map(s => <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || C.purple : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || C.purple}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || C.purple : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>{s}</Btn>)}
+        {["All", ...STATUSES].map(s => <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || C.purple : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || C.purple}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || C.purple : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>{s === "All" ? t("tracker.all") : tStatus(s)}</Btn>)}
       </div>
       {showForm && (
         <Card style={{ marginBottom: 20, border: `1.5px solid ${C.purple}30` }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{editId ? "Edit" : "Add"} Application</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{editId ? t("tracker.editApplication") : t("tracker.addApplicationTitle")}</div>
           {Object.keys(formErrors).length > 0 && (
             <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "10px 14px", marginBottom: 14, color: C.red, fontSize: 13 }}>
               {Object.values(formErrors).map((e, i) => <div key={i}>• {e}</div>)}
             </div>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
-            <div><Input label="Company *" placeholder="Google, Meta, Stripe…" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} style={formErrors.company ? { borderColor: C.red } : {}} />{formErrors.company && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.company}</div>}</div>
-            <div><Input label="Job Title *" placeholder="Senior Engineer" value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} style={formErrors.jobTitle ? { borderColor: C.red } : {}} />{formErrors.jobTitle && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.jobTitle}</div>}</div>
-            <Select label="Status" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>{STATUSES.map(s => <option key={s}>{s}</option>)}</Select>
-            <Input label="Date Applied" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-            <div><Input label="Follow-up Date" type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} style={formErrors.followUpDate ? { borderColor: C.red } : {}} />{formErrors.followUpDate && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.followUpDate}</div>}</div>
-            <div><Input label="ATS Score (0-100)" type="number" min="0" max="100" placeholder="82" value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} style={formErrors.atsScore ? { borderColor: C.red } : {}} />{formErrors.atsScore && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.atsScore}</div>}</div>
-            <Input label="Contact Name" placeholder="Recruiter name" value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} />
-            <Input label="Contact Email" placeholder="recruiter@company.com" value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
-            <div style={{ gridColumn: "1 / -1" }}><Input label="Job URL" placeholder="https://linkedin.com/jobs/…" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
+            <div><Input label={t("tracker.companyLabel")} placeholder={t("tracker.companyPlaceholder")} value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} style={formErrors.company ? { borderColor: C.red } : {}} />{formErrors.company && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.company}</div>}</div>
+            <div><Input label={t("tracker.jobTitleLabel")} placeholder={t("tracker.jobTitlePlaceholder")} value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} style={formErrors.jobTitle ? { borderColor: C.red } : {}} />{formErrors.jobTitle && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.jobTitle}</div>}</div>
+            <Select label={t("tracker.statusLabel")} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>{STATUSES.map(s => <option key={s} value={s}>{tStatus(s)}</option>)}</Select>
+            <Input label={t("tracker.dateAppliedLabel")} type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+            <div><Input label={t("tracker.followUpDateLabel")} type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} style={formErrors.followUpDate ? { borderColor: C.red } : {}} />{formErrors.followUpDate && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.followUpDate}</div>}</div>
+            <div><Input label={t("tracker.atsScoreLabel")} type="number" min="0" max="100" placeholder={t("tracker.atsScorePlaceholder")} value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} style={formErrors.atsScore ? { borderColor: C.red } : {}} />{formErrors.atsScore && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.atsScore}</div>}</div>
+            <Input label={t("tracker.contactNameLabel")} placeholder={t("tracker.contactNamePlaceholder")} value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} />
+            <Input label={t("tracker.contactEmailLabel")} placeholder={t("tracker.contactEmailPlaceholder")} value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
+            <div style={{ gridColumn: "1 / -1" }}><Input label={t("tracker.jobUrlLabel")} placeholder={t("tracker.jobUrlPlaceholder")} value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
-          <div style={{ marginBottom: 16 }}><Textarea label="Notes" placeholder="Interview notes, follow-up tasks, salary discussed…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
-          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>💾 Save Application</Btn><Btn variant="secondary" onClick={closeForm}>Cancel</Btn></div>
+          <div style={{ marginBottom: 16 }}><Textarea label={t("tracker.notesLabel")} placeholder={t("tracker.notesPlaceholder")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
+          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>{t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm}>{t("tracker.cancel")}</Btn></div>
         </Card>
       )}
-      {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{applications.length === 0 ? "No applications yet" : "No matches found"}</div><div style={{ fontSize: 14, color: C.textMuted }}>{applications.length === 0 ? "Add one manually or save from Resume Tailor" : "Try a different search or filter"}</div></Card>}
+      {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{applications.length === 0 ? t("tracker.noApplicationsYet") : t("tracker.noMatchesFound")}</div><div style={{ fontSize: 14, color: C.textMuted }}>{applications.length === 0 ? t("tracker.addManuallyHint") : t("tracker.tryDifferentSearch")}</div></Card>}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filtered.map(app => (
           <div key={app.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 180 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{app.jobTitle || "Untitled Role"}</div>
-                <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{app.company || "Unknown Company"}{app.date ? ` · Applied ${app.date}` : ""}</div>
-                {app.followUpDate && <div style={{ fontSize: 12, color: C.yellow, marginTop: 3, fontWeight: 500 }}>⏰ Follow up: {app.followUpDate}</div>}
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{app.jobTitle || t("tracker.untitledRole")}</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{app.company || t("tracker.unknownCompany")}{app.date ? t("tracker.appliedOn").replace("{date}", app.date) : ""}</div>
+                {app.followUpDate && <div style={{ fontSize: 12, color: C.yellow, marginTop: 3, fontWeight: 500 }}>{t("tracker.followUp").replace("{date}", app.followUpDate)}</div>}
                 {app.contactName && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>👤 {app.contactName}{app.contactEmail ? ` · ${app.contactEmail}` : ""}</div>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
-                <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status || "Unknown"}</Badge>
-                {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>📄 View</Btn>}
-                {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>🔗 Job</a>}
-                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>Edit</Btn>
+                <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status ? tStatus(app.status) : t("tracker.statusUnknown")}</Badge>
+                {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
+                {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>{t("tracker.job")}</a>}
+                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
                 <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => del(app.id)}>✕</Btn>
               </div>
             </div>
@@ -2053,9 +2068,9 @@ function TrackerPage({ applications, setApplications }) {
             <div style={{ fontSize: 16, fontWeight: 700 }}>{viewApp.jobTitle} — {viewApp.company}</div>
             <Btn variant="ghost" style={{ padding: "5px 12px" }} onClick={() => setViewApp(null)}>✕</Btn>
           </div>
-          {viewApp.resume && <div style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><Label>Tailored Resume</Label><div style={{ display: "flex", gap: 6 }}><Btn variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => downloadPDF(viewApp.resume, "resume")}>📄 PDF</Btn><CopyBtn text={viewApp.resume} label="📋 Copy" /></div></div><ContentDisplay content={viewApp.resume} /></div>}
-          {viewApp.coverLetter && <div style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><Label>Cover Letter</Label><div style={{ display: "flex", gap: 6 }}><Btn variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => downloadPDF(viewApp.coverLetter, "cover-letter")}>📄 PDF</Btn><CopyBtn text={viewApp.coverLetter} label="📋 Copy" /></div></div><ContentDisplay content={viewApp.coverLetter} /></div>}
-          {viewApp.notes && <div><Label>Notes</Label><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text, padding: "12px 0" }}>{viewApp.notes}</div></div>}
+          {viewApp.resume && <div style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><Label>{t("tracker.tailoredResume")}</Label><div style={{ display: "flex", gap: 6 }}><Btn variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => downloadPDF(viewApp.resume, "resume")}>{t("tracker.pdf")}</Btn><CopyBtn text={viewApp.resume} label={t("tracker.copy")} /></div></div><ContentDisplay content={viewApp.resume} /></div>}
+          {viewApp.coverLetter && <div style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}><Label>{t("tracker.coverLetter")}</Label><div style={{ display: "flex", gap: 6 }}><Btn variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => downloadPDF(viewApp.coverLetter, "cover-letter")}>{t("tracker.pdf")}</Btn><CopyBtn text={viewApp.coverLetter} label={t("tracker.copy")} /></div></div><ContentDisplay content={viewApp.coverLetter} /></div>}
+          {viewApp.notes && <div><Label>{t("tracker.notes")}</Label><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text, padding: "12px 0" }}>{viewApp.notes}</div></div>}
         </Card>
       )}
     </div>
@@ -2064,6 +2079,7 @@ function TrackerPage({ applications, setApplications }) {
 
 // ─── SALARY PAGE ───────────────────────────────────────────
 function SalaryPage({ profile }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
@@ -2114,7 +2130,7 @@ function SalaryPage({ profile }) {
   };
 
   const analyze = async () => {
-    if (!form.jobTitle || !form.location) { setError("Job title and location are required."); return; }
+    if (!form.jobTitle || !form.location) { setError(t("salary.titleLocationRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
       const companyBlock = form.company ? `, company type: ${form.company}` : "";
@@ -2123,51 +2139,51 @@ function SalaryPage({ profile }) {
 ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: ${form.skills || "general"}${companyBlock}`, 2500);
       const parsed = safeParse(raw);
       if (!parsed || !parsed.salaryRange) {
-        setError("The salary data came back incomplete. Please try again in a moment.");
+        setError(t("salary.incompleteData"));
       } else {
         setResults(parsed);
       }
     } catch (e) {
-      setError("Couldn't reach the salary service. Check your connection and try again.");
+      setError(t("salary.serviceUnreachable"));
     } finally { setLoading(false); }
   };
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Salary Insights</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>Know your market value before you negotiate — powered by 2026 compensation data.</p>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("salary.heading")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("salary.subtitle")}</p>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
-          <Input label="Job Title *" placeholder="Senior Frontend Engineer" value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} />
-          <Input label="Location *" placeholder="San Francisco, CA" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-          <Input label="Years of Experience" placeholder="4 years" value={form.experience} onChange={e => setForm(f => ({ ...f, experience: e.target.value }))} />
-          <Input label="Key Skills" placeholder="React, TypeScript, AWS" value={form.skills} onChange={e => setForm(f => ({ ...f, skills: e.target.value }))} />
-          <div style={{ gridColumn: "1 / -1" }}><Input label="Company Type (optional)" placeholder="FAANG, startup, mid-size company…" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
+          <Input label={t("salary.jobTitleLabel")} placeholder={t("salary.jobTitlePlaceholder")} value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} />
+          <Input label={t("salary.locationLabel")} placeholder={t("salary.locationPlaceholder")} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+          <Input label={t("salary.experienceLabel")} placeholder={t("salary.experiencePlaceholder")} value={form.experience} onChange={e => setForm(f => ({ ...f, experience: e.target.value }))} />
+          <Input label={t("salary.skillsLabel")} placeholder={t("salary.skillsPlaceholder")} value={form.skills} onChange={e => setForm(f => ({ ...f, skills: e.target.value }))} />
+          <div style={{ gridColumn: "1 / -1" }}><Input label={t("salary.companyTypeLabel")} placeholder={t("salary.companyTypePlaceholder")} value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={analyze} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Calculating…" : "💰 Get Salary Data"}</Btn>
-          {results && <Btn variant="secondary" onClick={() => { setResults(null); setError(""); }}>New Search</Btn>}
+          <Btn onClick={analyze} loading={loading} style={{ padding: "13px 28px" }}>{loading ? t("salary.calculating") : t("salary.getSalaryData")}</Btn>
+          {results && <Btn variant="secondary" onClick={() => { setResults(null); setError(""); }}>{t("salary.newSearch")}</Btn>}
         </div>
       </Card>
-      {loading && <Spinner steps={["Researching market rates…","Analyzing compensation data…","Calculating skill premiums…"]} currentStep={1} />}
+      {loading && <Spinner steps={[t("salary.step1"), t("salary.step2"), t("salary.step3")]} currentStep={1} />}
       {results && (
         <div>
           <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic", marginBottom: 12, padding: "8px 12px", background: C.bgSoft, borderRadius: 8, border: `1px solid ${C.border}` }}>
-            ℹ️ Figures are AI-generated estimates for guidance only — not verified market data. Always cross-check with sources like Levels.fyi, Glassdoor, or official offers before negotiating.
+            {t("salary.disclaimer")}
           </div>
           <Card style={{ marginBottom: 16, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1.5px solid ${C.purple}20` }}>
-            <div style={{ fontSize: 14, color: C.purple, fontWeight: 600, marginBottom: 16 }}>{txt(results.benchmarkInsight, "Estimated compensation based on your inputs.")}</div>
+            <div style={{ fontSize: 14, color: C.purple, fontWeight: 600, marginBottom: 16 }}>{txt(results.benchmarkInsight, t("salary.estimatedCompFallback"))}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: 18, paddingBottom: 18 }} className="three-col">
-              {[["Low", results.salaryRange?.low, C.textMuted], ["Median", results.salaryRange?.median, C.purple], ["High", results.salaryRange?.high, C.green]].map(([l, v, c]) => (
-                <div key={l} style={{ textAlign: "center", borderRight: l !== "High" ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
+              {[[t("salary.low"), results.salaryRange?.low, C.textMuted], [t("salary.median"), results.salaryRange?.median, C.purple], [t("salary.high"), results.salaryRange?.high, C.green]].map(([l, v, c]) => (
+                <div key={l} style={{ textAlign: "center", borderRight: l !== t("salary.high") ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
                   <div style={{ fontSize: 28, fontWeight: 800, color: c }}>{fmt(v)}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginTop: 4 }}>{l} Salary</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginTop: 4 }}>{t("salary.salarySuffix").replace("{level}", l)}</div>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[["Total Comp (Median)", fmt(results.totalComp?.median), C.purple], ["Equity", txt(results.equityRange), C.yellow], ["Bonus", txt(results.bonusRange), C.green], ["Market Demand", txt(results.demandLevel), C.blue]].map(([l, v, c]) => (
+              {[[t("salary.totalCompMedian"), fmt(results.totalComp?.median), C.purple], [t("salary.equity"), txt(results.equityRange), C.yellow], [t("salary.bonus"), txt(results.bonusRange), C.green], [t("salary.marketDemand"), txt(results.demandLevel), C.blue]].map(([l, v, c]) => (
                 <div key={l} style={{ background: `${c}12`, border: `1px solid ${c}25`, borderRadius: 10, padding: "10px 16px" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{l}</div>
@@ -2177,7 +2193,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </Card>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>📈 Salary by Experience</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.salaryByExperience")}</div>
               {results.salaryByExperience?.map(({ level, salary }) => {
                 const vals = results.salaryByExperience.map(x => Number(x.salary) || 0);
                 const max = Math.max(...vals, 1);
@@ -2185,7 +2201,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               })}
             </Card>
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>⚡ Skill Premiums</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.skillPremiums")}</div>
               {results.skillPremiums?.map(({ skill, premium }) => (
                 <div key={skill} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <span style={{ fontSize: 14, color: C.text }}>{skill}</span>
@@ -2196,7 +2212,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>🏆 Top Paying Companies</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.topPayingCompanies")}</div>
               {results.topPayingCompanies?.map(({ name, avgComp }, i) => (
                 <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -2208,7 +2224,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               ))}
             </Card>
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>🤝 Negotiation Tips</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.negotiationTips")}</div>
               {results.negotiationTips?.map((tip, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                   <span style={{ width: 20, height: 20, background: C.blueLight, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: C.blue, flexShrink: 0 }}>{i+1}</span>
@@ -2219,7 +2235,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </div>
           {results.marketOutlook && (
             <Card style={{ marginTop: 16, border: `1px solid ${C.green}25` }}>
-              <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>🔮 2026 MARKET OUTLOOK</div>
+              <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("salary.marketOutlook")}</div>
               <div style={{ fontSize: 14, lineHeight: 1.8, color: C.text }}>{results.marketOutlook}</div>
             </Card>
           )}
@@ -2549,47 +2565,49 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 
 // ─── SAVED JOBS ────────────────────────────────────────────
 function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued") }[item.status] || item.status;
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{item.job_title}</div>
-            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : C.yellow}>{item.status}</Badge>
+            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : C.yellow}>{statusLabel}</Badge>
           </div>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{item.company}</div>
           {item.status === "ready" && (
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              {item.interview_probability != null && <Badge color={C.purple}>Interview: {item.interview_probability}%</Badge>}
-              {item.hiring_probability != null && <Badge color={C.green}>Hiring: {item.hiring_probability}%</Badge>}
+              {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
+              {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
             </div>
           )}
         </div>
         {item.status === "ready" && (
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? "Hide details" : "View details"}</Btn>
-            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>Skip</Btn>
-            <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>✓ Mark as Applied</Btn>
+            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
+            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
+            <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>{t("savedJobs.markApplied")}</Btn>
           </div>
         )}
       </div>
-      {item.status === "queued" && <div style={{ fontSize: 13, color: C.textMuted, marginTop: 10 }}>⏳ AI is preparing this application…</div>}
+      {item.status === "queued" && <div style={{ fontSize: 13, color: C.textMuted, marginTop: 10 }}>{t("savedJobs.preparingApplication")}</div>}
       {expanded && item.status === "ready" && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 14 }}>
           {item.missing_skills?.length > 0 && (
             <div>
-              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>MISSING SKILLS</div>
+              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
             </div>
           )}
-          {item.cover_letter && <div><Label>Cover Letter</Label><ContentDisplay content={item.cover_letter} /></div>}
-          {item.tailored_resume && <div><Label>Tailored Resume</Label><ContentDisplay content={item.tailored_resume} /></div>}
-          {item.recruiter_message && <div><Label>Recruiter Message</Label><ContentDisplay content={item.recruiter_message} /></div>}
-          {item.networking_message && <div><Label>Networking Message</Label><ContentDisplay content={item.networking_message} /></div>}
+          {item.cover_letter && <div><Label>{t("savedJobs.coverLetter")}</Label><ContentDisplay content={item.cover_letter} /></div>}
+          {item.tailored_resume && <div><Label>{t("savedJobs.tailoredResume")}</Label><ContentDisplay content={item.tailored_resume} /></div>}
+          {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /></div>}
+          {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /></div>}
           {item.application_questions?.length > 0 && (
             <div>
-              <Label>Likely Application Questions</Label>
+              <Label>{t("savedJobs.likelyQuestions")}</Label>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
                 {item.application_questions.map((q, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, background: C.bgSoft, borderRadius: 8, padding: "8px 12px" }}>{q}</div>)}
               </div>
@@ -2602,9 +2620,10 @@ function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
 }
 
 function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
+  const { t } = useI18n();
   const remove = id => setSavedJobs(p => p.filter(j => j.job_id !== id));
   const addTracker = job => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
-  const fmtSalary = (min, max) => { if (!min && !max) return "Salary not listed"; const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : `Up to ${f(max)}`; };
+  const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
   const { queue, markApplied, skip } = useSmartApplyQueue(profile?.id);
   const [applyingId, setApplyingId] = useState(null);
   const [queueError, setQueueError] = useState("");
@@ -2623,7 +2642,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
       setApplications(p => [newApp, ...p]);
       await markApplied(item.id, appId);
     } catch {
-      setQueueError("Could not mark this as applied. Please try again.");
+      setQueueError(t("savedJobs.markAppliedError"));
     } finally {
       setApplyingId(null);
     }
@@ -2632,17 +2651,17 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
   const handleSkip = async (item) => {
     setQueueError("");
     try { await skip(item.id); }
-    catch { setQueueError("Could not skip this item. Please try again."); }
+    catch { setQueueError(t("savedJobs.skipError")); }
   };
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Saved Jobs</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{savedJobs.length} saved job{savedJobs.length !== 1 ? "s" : ""} — apply when you're ready.</p>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("savedJobs.heading")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("savedJobs.subtitleCount").replace("{n}", savedJobs.length)}</p>
 
       {visibleQueue.length > 0 && (
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>🚀 Smart Apply Queue</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("savedJobs.smartApplyQueue")}</div>
           {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 12 }}>{queueError}</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
@@ -2652,7 +2671,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
         </div>
       )}
 
-      {savedJobs.length === 0 && <Card style={{ textAlign: "center", padding: 64 }}><div style={{ fontSize: 48, marginBottom: 16 }}>♡</div><div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>No saved jobs yet</div><div style={{ fontSize: 14, color: C.textMuted }}>Heart any job in Job Search to bookmark it here</div></Card>}
+      {savedJobs.length === 0 && <Card style={{ textAlign: "center", padding: 64 }}><div style={{ fontSize: 48, marginBottom: 16 }}>♡</div><div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.emptyTitle")}</div><div style={{ fontSize: 14, color: C.textMuted }}>{t("savedJobs.emptyBody")}</div></Card>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {savedJobs.map(job => (
           <Card key={job.job_id}>
@@ -2661,12 +2680,12 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
                 <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{job.title}</div>
                 <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{job.company} · {job.location}</div>
                 <div style={{ fontSize: 14, color: C.green, fontWeight: 600, marginBottom: 8 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</div>
-                <div style={{ display: "flex", gap: 6 }}>{job.remote && <Badge color={C.green}>🌐 Remote</Badge>}{job.employmentType && <Badge color={C.textMuted}>{job.employmentType}</Badge>}{job.matchScore && <Badge color={C.purple}>{job.matchScore}% Match</Badge>}</div>
+                <div style={{ display: "flex", gap: 6 }}>{job.remote && <Badge color={C.green}>🌐 {t("savedJobs.remote")}</Badge>}{job.employmentType && <Badge color={C.textMuted}>{job.employmentType}</Badge>}{job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}</div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>Apply Now →</a>
-                <Btn variant="secondary" onClick={() => addTracker(job)}>+ Track</Btn>
-                <Btn variant="danger" onClick={() => remove(job.job_id)}>✕ Remove</Btn>
+                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>{t("savedJobs.applyNow")}</a>
+                <Btn variant="secondary" onClick={() => addTracker(job)}>{t("savedJobs.track")}</Btn>
+                <Btn variant="danger" onClick={() => remove(job.job_id)}>{t("savedJobs.remove")}</Btn>
               </div>
             </div>
           </Card>
@@ -2678,28 +2697,29 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
 
 // ─── PRICING PAGE ──────────────────────────────────────────
 function PricingPage({ profile }) {
+  const { t } = useI18n();
   const plans = [
-    { id: "free", name: "Free", price: "$0", sub: "Forever free", color: C.textMuted, features: ["3 resume analyses/month","10 job searches/day","Basic application tracker","3 interview sessions/month","Basic salary insights"], cta: "Current Plan", disabled: true },
-    { id: "pro", name: "Pro", price: "$19", sub: "per month", color: C.purple, popular: true, features: ["Unlimited resume analyses","Unlimited job searches","Full interview prep + AI coaching","Advanced salary benchmarks","Networking assistant","AI job match scoring","PDF & DOCX downloads","Priority AI processing"], cta: "Start Pro Free Trial", disabled: false },
+    { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true },
+    { id: "pro", name: t("pricing.proName"), price: "$19", sub: t("pricing.proSub"), color: C.purple, popular: true, features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7"), t("pricing.proFeature8")], cta: t("pricing.proCta"), disabled: false },
   ];
 
   return (
     <div>
       <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 10 }}>Simple, Transparent Pricing</h1>
-        <p style={{ color: C.textMuted, fontSize: 15 }}>Start free. Upgrade when you're ready to land your dream job faster.</p>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("pricing.heading")}</h1>
+        <p style={{ color: C.textMuted, fontSize: 15 }}>{t("pricing.subheading")}</p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }} className="two-col">
         {plans.map(plan => (
           <Card key={plan.id} style={{ position: "relative", border: plan.popular ? `2px solid ${C.purple}` : `1px solid ${C.border}` }}>
-            {plan.popular && <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 16px", borderRadius: 20, whiteSpace: "nowrap" }}>MOST POPULAR</div>}
+            {plan.popular && <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 16px", borderRadius: 20, whiteSpace: "nowrap" }}>{t("pricing.mostPopular")}</div>}
             <div style={{ fontSize: 17, fontWeight: 800, color: plan.color, marginBottom: 4 }}>{plan.name}</div>
             <div style={{ marginBottom: 6 }}><span style={{ fontSize: 32, fontWeight: 900, color: C.text }}>{plan.price}</span><span style={{ fontSize: 14, color: C.textMuted, marginLeft: 4 }}>{plan.sub}</span></div>
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
               <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1 }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(`Connect Stripe to enable ${plan.name} payments`); }}>
-                {profile?.plan === plan.id ? "✓ Current Plan" : plan.cta}
+                {profile?.plan === plan.id ? t("pricing.currentPlan") : plan.cta}
               </Btn>
             </div>
           </Card>
@@ -2711,6 +2731,7 @@ function PricingPage({ profile }) {
 
 // ─── PROFILE PAGE ──────────────────────────────────────────
 function ProfilePage({ profile, updateProfile }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({
     full_name: profile?.full_name || "",
     email_address: profile?.email_address || "",
@@ -2725,9 +2746,14 @@ function ProfilePage({ profile, updateProfile }) {
   });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const workTypes = [
+    { value: "Remote", label: t("profile.workTypeRemote") },
+    { value: "Hybrid", label: t("profile.workTypeHybrid") },
+    { value: "On-site", label: t("profile.workTypeOnsite") },
+  ];
 
   const save = () => {
-    if (!form.full_name.trim()) { setError("Full Name is required."); return; }
+    if (!form.full_name.trim()) { setError(t("profile.fullNameRequired")); return; }
     setError("");
     updateProfile(form);
     setSaved(true);
@@ -2737,12 +2763,12 @@ function ProfilePage({ profile, updateProfile }) {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>Career Profile</h1>
-        <p style={{ color: C.textMuted, fontSize: 13 }}>Logged in as: {profile?.email || "—"}</p>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("profile.heading")}</h1>
+        <p style={{ color: C.textMuted, fontSize: 13 }}>{t("profile.loggedInAs").replace("{email}", profile?.email || "—")}</p>
       </div>
 
       {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
-      {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>✓ Profile saved successfully!</div>}
+      {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>{t("profile.savedSuccess")}</div>}
 
       {/* Profile Picture */}
       <Card style={{ marginBottom: 16 }}>
@@ -2751,40 +2777,40 @@ function ProfilePage({ profile, updateProfile }) {
             {form.full_name ? form.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "👤"}
           </div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{form.full_name || "Your Name"}</div>
-            <div style={{ fontSize: 14, color: C.textMuted, marginTop: 2 }}>{form.job_title || "Add your job title"}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{form.full_name || t("profile.yourName")}</div>
+            <div style={{ fontSize: 14, color: C.textMuted, marginTop: 2 }}>{form.job_title || t("profile.addJobTitle")}</div>
           </div>
         </div>
       </Card>
 
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Personal Information</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{t("profile.personalInfo")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
-          <Input label="Full Name *" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Your full name" />
-          <Input label="Email Address" value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} placeholder="your@email.com" />
-          <Input label="Phone" placeholder="+1 (415) 555-0123" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-          <Input label="Location" placeholder="San Francisco, CA" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+          <Input label={t("profile.fullNameLabel")} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder={t("profile.fullNamePlaceholder")} />
+          <Input label={t("profile.emailLabel")} value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} placeholder={t("profile.emailPlaceholder")} />
+          <Input label={t("profile.phoneLabel")} placeholder={t("profile.phonePlaceholder")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          <Input label={t("profile.locationLabel")} placeholder={t("profile.locationPlaceholder")} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
         </div>
       </Card>
 
       <Card>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>Career Information</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{t("profile.careerInfo")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
-          <Input label="Current Job Title" placeholder="Software Engineer" value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
-          <Input label="Years of Experience" placeholder="4" value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
-          <Input label="Preferred Job Title" placeholder="Senior Software Engineer" value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} />
-          <Input label="Preferred Industry" placeholder="Technology, Healthcare, Finance…" value={form.preferred_industry} onChange={e => setForm(f => ({ ...f, preferred_industry: e.target.value }))} />
+          <Input label={t("profile.currentJobTitleLabel")} placeholder={t("profile.currentJobTitlePlaceholder")} value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
+          <Input label={t("profile.yearsExpLabel")} placeholder={t("profile.yearsExpPlaceholder")} value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
+          <Input label={t("profile.preferredJobTitleLabel")} placeholder={t("profile.preferredJobTitlePlaceholder")} value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} />
+          <Input label={t("profile.preferredIndustryLabel")} placeholder={t("profile.preferredIndustryPlaceholder")} value={form.preferred_industry} onChange={e => setForm(f => ({ ...f, preferred_industry: e.target.value }))} />
           <div>
-            <Label>Preferred Work Type</Label>
+            <Label>{t("profile.preferredWorkType")}</Label>
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              {["Remote", "Hybrid", "On-site"].map(wt => (
-                <Btn key={wt} variant="ghost" onClick={() => setForm(f => ({ ...f, work_type: f.work_type === wt ? "" : wt }))} style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${form.work_type === wt ? C.purple : C.border}`, background: form.work_type === wt ? C.purpleLight : "#fff", color: form.work_type === wt ? C.purple : C.textMid, fontSize: 13, fontWeight: 600 }}>{wt}</Btn>
+              {workTypes.map(wt => (
+                <Btn key={wt.value} variant="ghost" onClick={() => setForm(f => ({ ...f, work_type: f.work_type === wt.value ? "" : wt.value }))} style={{ padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${form.work_type === wt.value ? C.purple : C.border}`, background: form.work_type === wt.value ? C.purpleLight : "#fff", color: form.work_type === wt.value ? C.purple : C.textMid, fontSize: 13, fontWeight: 600 }}>{wt.label}</Btn>
               ))}
             </div>
           </div>
-          <Input label="Desired Salary" placeholder="$120,000" value={form.desired_salary} onChange={e => setForm(f => ({ ...f, desired_salary: e.target.value }))} />
+          <Input label={t("profile.desiredSalaryLabel")} placeholder={t("profile.desiredSalaryPlaceholder")} value={form.desired_salary} onChange={e => setForm(f => ({ ...f, desired_salary: e.target.value }))} />
         </div>
-        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? "✓ Saved!" : "💾 Save Changes"}</Btn>
+        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? t("profile.saved") : t("profile.saveChanges")}</Btn>
       </Card>
     </div>
   );
@@ -2793,15 +2819,17 @@ function ProfilePage({ profile, updateProfile }) {
 
 // ─── SETTINGS PAGE ─────────────────────────────────────────
 function SettingsPage({ profile, updateProfile, logout, setPage }) {
+  const { t } = useI18n();
   const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
 
   const planName = (profile?.plan || "free").toUpperCase();
   const isPro = planName === "PRO";
+  const deleteConfirmPhrase = t("settings.deleteConfirmPhrase");
 
   const handleDelete = () => {
-    if (deleteText.toLowerCase() === "delete my account") {
+    if (deleteText.toLowerCase() === deleteConfirmPhrase.toLowerCase()) {
       localStorage.clear();
       logout();
     }
@@ -2809,71 +2837,71 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 24 }}>Settings</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 24 }}>{t("settings.heading")}</h1>
 
       {/* SUBSCRIPTION */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💳</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Subscription</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💳</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.subscription")}</span></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Current Plan</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.currentPlan")}</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: isPro ? C.purple : C.text }}>{planName}</div>
           </div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Status</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>Active</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.status")}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
           </div>
           {isPro && <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Next Renewal</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>—</div>
           </div>}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {!isPro && <Btn onClick={() => setPage("pricing")}>Upgrade to PRO</Btn>}
-          {isPro && <Btn variant="secondary" onClick={() => alert("Stripe subscription management coming soon.")}>Cancel Subscription</Btn>}
+          {!isPro && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
+          {isPro && <Btn variant="secondary" onClick={() => alert(t("settings.stripeManageSoon"))}>{t("settings.cancelSubscription")}</Btn>}
         </div>
       </Card>
 
       {/* BILLING */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💰</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Billing</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💰</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.billing")}</span></div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>Payment Method</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.paymentMethod")}</div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ color: C.textMuted, fontSize: 14 }}>No payment method on file</div>
+            <div style={{ color: C.textMuted, fontSize: 14 }}>{t("settings.noPaymentMethod")}</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("Stripe integration coming soon.")}>Add Card</Btn>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("Stripe integration coming soon.")}>Change Card</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.stripeIntegrationSoon"))}>{t("settings.addCard")}</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.stripeIntegrationSoon"))}>{t("settings.changeCard")}</Btn>
             </div>
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>Billing History</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.billingHistory")}</div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16 }}>
-            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>No billing history yet</div>
+            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{t("settings.noBillingHistory")}</div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>View Invoice</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>Download PDF</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert("No invoices yet. Subscribe to Pro to generate invoices.")}>Print Invoice</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.viewInvoice")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.downloadPdf")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.printInvoice")}</Btn>
           </div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>When you subscribe to Pro, invoices will appear here.</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>{t("settings.invoicesWillAppear")}</div>
         </div>
       </Card>
 
       {/* SECURITY */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔒</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Security</span></div>
-        <Btn variant="secondary" onClick={() => alert("Password change will be available when authentication is connected to Supabase.")}>Change Password</Btn>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔒</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.security")}</span></div>
+        <Btn variant="secondary" onClick={() => alert(t("settings.passwordChangeSoon"))}>{t("settings.changePassword")}</Btn>
       </Card>
 
       {/* NOTIFICATIONS */}
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔔</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Notifications</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🔔</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("notifications.title")}</span></div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>Email Notifications</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>Receive updates about new features and career tips</div>
+            <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{t("settings.emailNotifications")}</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{t("settings.emailNotificationsHint")}</div>
           </div>
           <Btn variant="ghost" onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, padding: 0, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, position: "relative" }}>
             <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 3, left: notifyEmail ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
@@ -2883,17 +2911,17 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
       {/* ACCOUNT */}
       <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Account</span></div>
-        <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete Account</Btn>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.account")}</span></div>
+        <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>{t("settings.deleteAccount")}</Btn>
         {showDeleteConfirm && (
           <div style={{ marginTop: 16, background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 8 }}>⚠️ Delete Account Permanently</div>
-            <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>This will permanently delete your account and all data. This action cannot be undone.</div>
-            <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>Type <strong>delete my account</strong> to confirm:</div>
-            <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="delete my account" style={{ width: "100%", border: `1.5px solid ${C.red}40`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box", fontFamily: "inherit" }} />
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 8 }}>⚠️ {t("settings.deletePermanentlyTitle")}</div>
+            <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>{t("settings.deletePermanentlyBody")}</div>
+            <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{t("settings.typeToConfirm")} <strong>{deleteConfirmPhrase}</strong>:</div>
+            <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder={deleteConfirmPhrase} style={{ width: "100%", border: `1.5px solid ${C.red}40`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box", fontFamily: "inherit" }} />
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn variant="danger" onClick={handleDelete} disabled={deleteText.toLowerCase() !== "delete my account"}>Permanently Delete</Btn>
-              <Btn variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>Cancel</Btn>
+              <Btn variant="danger" onClick={handleDelete} disabled={deleteText.toLowerCase() !== deleteConfirmPhrase.toLowerCase()}>{t("settings.permanentlyDelete")}</Btn>
+              <Btn variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>{t("settings.cancel")}</Btn>
             </div>
           </div>
         )}
@@ -2988,7 +3016,7 @@ export default function App() {
   const planName = (profile?.plan || "free").toUpperCase();
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
 
-  if (!user) return <AuthPage />;
+  if (!user) return <AuthPage t={t} />;
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
