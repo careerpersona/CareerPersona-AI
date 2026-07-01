@@ -775,6 +775,25 @@ ${context}`, 600);
         </Card>
       </div>
 
+      {/* ROW 1B: Smart Apply + Opportunity Intelligence */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
+        {/* AI Smart Apply Center */}
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>AI Smart Apply Center</div>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ color: C.textMuted, fontSize: 14 }}>Smart Apply content coming soon.</div>
+          </div>
+        </Card>
+
+        {/* AI Opportunity Intelligence */}
+        <Card>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>AI Opportunity Intelligence</div>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ color: C.textMuted, fontSize: 14 }}>Opportunity Intelligence content coming soon.</div>
+          </div>
+        </Card>
+      </div>
+
       {/* SECOND ROW: Resume + Job + Market Intelligence */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* Resume Intelligence */}
