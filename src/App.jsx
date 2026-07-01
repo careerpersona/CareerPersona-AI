@@ -159,10 +159,10 @@ const NAV_PILL_WIDTH = {
 
 function NavPills({ nav, page, setPage }) {
   return (
-    <nav className="nav-pills" style={{ display: "flex", gap: 2, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
+    <nav className="nav-pills" style={{ display: "flex", gap: 4, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
       {nav.map(n => (
         <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
-          <span style={{ fontSize: 13 }}>{n.icon}</span><span className="nav-label">{n.label}</span>
+          <span style={{ fontSize: 13, flexShrink: 0 }}>{n.icon}</span><span className="nav-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
         </button>
       ))}
     </nav>
@@ -3203,21 +3203,22 @@ export default function App() {
   .logo-block { gap: 5px !important; }
 }
 @media (min-width: 1025px) {
+  /* 3-column grid: logo pinned left (auto), nav centered (1fr), utility pinned right (auto).
+     justify-self:center on nav-pills keeps the gray pill background snug around buttons
+     instead of expanding to fill the full 1fr column. grid-column:1 overrides the inline
+     gridColumn:2 that mobile-logo-row sets on logo-block for its own mobile grid. */
   .hamburger-btn { display: none !important; }
   .subscription-badge { display: none !important; }
-  .desktop-nav { display: flex !important; }
-}
-@media (min-width: 1025px) {
-  header { display: flex !important; align-items: center !important; padding: 8px 14px !important; gap: 8px !important; }
+  header { display: grid !important; grid-template-columns: auto 1fr auto !important; align-items: center !important; padding: 8px 14px !important; column-gap: 8px !important; }
   .mobile-logo-row { display: contents !important; }
-  .logo-block { flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
+  .logo-block { grid-column: 1 !important; grid-row: 1 !important; justify-self: start !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
   .brand-logo { width: 38px !important; height: 38px !important; }
   .brand-logo-glyph { font-size: 17px !important; }
   .brand-name { font-size: 20px !important; }
   .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { flex: 1 1 0% !important; min-width: 0 !important; justify-content: center !important; gap: 2px !important; padding: 3px !important; overflow: hidden !important; }
-  .nav-utility { flex: 0 0 auto !important; gap: 0 !important; }
+  .nav-pills { grid-column: 2 !important; grid-row: 1 !important; justify-self: center !important; gap: 4px !important; padding: 3px !important; }
+  .nav-utility { grid-column: 3 !important; grid-row: 1 !important; justify-self: end !important; gap: 0 !important; }
   .nav-utility button { padding: 6px 4px !important; }
 }
         a { color: inherit; }
