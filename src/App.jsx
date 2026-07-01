@@ -3199,19 +3199,19 @@ export default function App() {
   .desktop-nav { display: flex !important; }
 }
 @media (min-width: 1025px) {
-  header { display: flex !important; align-items: center !important; padding: 8px 14px !important; gap: 8px !important; }
+  header { display: grid !important; grid-template-columns: auto 1fr auto !important; align-items: center !important; padding: 8px 14px !important; column-gap: 8px !important; }
   .mobile-logo-row { display: contents !important; }
-  .logo-block { flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
+  .logo-block { grid-column: 1 !important; flex: 0 0 auto !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
   .brand-logo { width: 38px !important; height: 38px !important; }
   .brand-logo-glyph { font-size: 17px !important; }
   .brand-name { font-size: 20px !important; }
   .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { flex: 1 1 0% !important; min-width: 0 !important; justify-content: flex-start !important; gap: 0 !important; padding: 2px !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none !important; -ms-overflow-style: none !important; }
+  .nav-pills { justify-self: center !important; max-width: 100% !important; min-width: 0 !important; justify-content: center !important; gap: 2px !important; padding: 3px !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none !important; -ms-overflow-style: none !important; }
   .nav-pills::-webkit-scrollbar { display: none !important; }
-  .nav-pills button { padding: 5px 6px !important; font-size: 11px !important; gap: 3px !important; flex: 0 0 auto !important; }
-  .nav-pills button span:first-child { font-size: 12px !important; }
-  .nav-utility { flex: 0 0 auto !important; gap: 0 !important; }
+  .nav-pills button { padding: 6px 10px !important; font-size: 11.5px !important; gap: 4px !important; flex: 0 0 auto !important; }
+  .nav-pills button span:first-child { font-size: 13px !important; }
+  .nav-utility { gap: 0 !important; }
   .nav-utility button { padding: 6px 4px !important; }
 }
         a { color: inherit; }
@@ -3268,7 +3268,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
+      <main style={{ maxWidth: 1160, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
