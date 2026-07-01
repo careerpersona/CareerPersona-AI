@@ -345,6 +345,7 @@ export default {
     download: "⬇ İndir",
     yourResume: "Özgeçmişiniz",
     extracting: "Çıkarılıyor…",
+    uploadFile: "⬆️ Dosya Yükle",
     savedShort: "✓ Kaydedildi",
     saving: "Kaydediliyor…",
     saveResume: "💾 Özgeçmişi Kaydet",

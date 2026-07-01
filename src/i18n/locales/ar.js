@@ -345,6 +345,7 @@ export default {
     download: "⬇ تنزيل",
     yourResume: "سيرتك الذاتية",
     extracting: "جارٍ الاستخراج…",
+    uploadFile: "⬆️ رفع الملف",
     savedShort: "✓ تم الحفظ",
     saving: "جارٍ الحفظ…",
     saveResume: "💾 حفظ السيرة الذاتية",

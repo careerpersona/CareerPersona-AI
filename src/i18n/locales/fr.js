@@ -345,6 +345,7 @@ export default {
     download: "⬇ Télécharger",
     yourResume: "Votre CV",
     extracting: "Extraction en cours…",
+    uploadFile: "⬆️ Télécharger le fichier",
     savedShort: "✓ Enregistré",
     saving: "Enregistrement…",
     saveResume: "💾 Enregistrer le CV",

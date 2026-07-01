@@ -345,6 +345,7 @@ export default {
     download: "⬇ Transferir",
     yourResume: "O Seu Currículo",
     extracting: "A extrair…",
+    uploadFile: "⬆️ Carregar Ficheiro",
     savedShort: "✓ Guardado",
     saving: "A guardar…",
     saveResume: "💾 Guardar Currículo",

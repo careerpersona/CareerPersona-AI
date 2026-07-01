@@ -345,6 +345,7 @@ export default {
     download: "⬇ Herunterladen",
     yourResume: "Ihr Lebenslauf",
     extracting: "Wird extrahiert…",
+    uploadFile: "⬆️ Datei hochladen",
     savedShort: "✓ Gespeichert",
     saving: "Wird gespeichert…",
     saveResume: "💾 Lebenslauf speichern",

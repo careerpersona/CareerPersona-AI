@@ -345,6 +345,7 @@ export default {
     download: "⬇ Downloaden",
     yourResume: "Jouw Cv",
     extracting: "Bezig met extraheren…",
+    uploadFile: "⬆️ Bestand uploaden",
     savedShort: "✓ Opgeslagen",
     saving: "Bezig met opslaan…",
     saveResume: "💾 Cv Opslaan",

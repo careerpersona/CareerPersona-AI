@@ -345,6 +345,7 @@ export default {
     download: "⬇ Скачать",
     yourResume: "Ваше резюме",
     extracting: "Извлечение…",
+    uploadFile: "⬆️ Загрузить файл",
     savedShort: "✓ Сохранено",
     saving: "Сохранение…",
     saveResume: "💾 Сохранить резюме",

@@ -345,6 +345,7 @@ export default {
     download: "⬇ 下载",
     yourResume: "您的简历",
     extracting: "正在提取…",
+    uploadFile: "⬆️ 上传文件",
     savedShort: "✓ 已保存",
     saving: "保存中…",
     saveResume: "💾 保存简历",

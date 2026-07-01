@@ -345,6 +345,7 @@ export default {
     download: "⬇ 다운로드",
     yourResume: "내 이력서",
     extracting: "추출 중…",
+    uploadFile: "⬆️ 파일 업로드",
     savedShort: "✓ 저장됨",
     saving: "저장 중…",
     saveResume: "💾 이력서 저장",

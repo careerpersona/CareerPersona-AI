@@ -345,6 +345,7 @@ export default {
     download: "⬇ डाउनलोड करें",
     yourResume: "आपका रिज़्यूमे",
     extracting: "निकाला जा रहा है…",
+    uploadFile: "⬆️ फ़ाइल अपलोड करें",
     savedShort: "✓ सहेजा गया",
     saving: "सहेजा जा रहा है…",
     saveResume: "💾 रिज़्यूमे सहेजें",

@@ -349,6 +349,7 @@ export default {
     download: "⬇ Download",
     yourResume: "Your Resume",
     extracting: "Extracting…",
+    uploadFile: "⬆️ Upload File",
     savedShort: "✓ Saved",
     saving: "Saving…",
     saveResume: "💾 Save Resume",

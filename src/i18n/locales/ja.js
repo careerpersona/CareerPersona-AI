@@ -345,6 +345,7 @@ export default {
     download: "⬇ ダウンロード",
     yourResume: "あなたの履歴書",
     extracting: "抽出中…",
+    uploadFile: "⬆️ ファイルをアップロード",
     savedShort: "✓ 保存済み",
     saving: "保存中…",
     saveResume: "💾 履歴書を保存",
