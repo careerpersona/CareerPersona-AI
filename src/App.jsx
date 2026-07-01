@@ -3275,7 +3275,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <main style={{ maxWidth: 1126, margin: "0 auto", padding: "32px 24px 80px" }}>
+      <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
