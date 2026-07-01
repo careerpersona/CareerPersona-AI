@@ -1607,6 +1607,9 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
 function InterviewPage({ profile }) {
+  const { t } = useI18n();
+  const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
+  const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
   const [error, setError] = useState("");
   const [resume, setResume] = useState("");
@@ -1678,7 +1681,7 @@ function InterviewPage({ profile }) {
   const extractResumeFile = async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (file.size > 5 * 1024 * 1024) { setError("File too large. Maximum size is 5MB."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError(t("interview.fileTooLarge")); return; }
     setError(""); setUploadingResume(true);
     try {
       if (ext === "pdf") {
@@ -1699,14 +1702,14 @@ function InterviewPage({ profile }) {
           text += content.items.map(it => it.str).join(" ") + "\n";
         }
         if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
-        else setError("Could not extract text from this PDF. It may be scanned — please paste instead.");
+        else setError(t("interview.pdfScanError"));
       } else if (["docx","doc","txt"].includes(ext)) {
         const text = await file.text();
         let clean = (ext === "txt") ? text : String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
-        else setError("Could not read this file. Please paste your resume text instead.");
-      } else setError("Unsupported file type. Please upload PDF, DOCX, or TXT.");
-    } catch { setError("Could not read the file. Please paste your resume text instead."); }
+        else setError(t("interview.fileReadError"));
+      } else setError(t("interview.unsupportedFile"));
+    } catch { setError(t("interview.fileError")); }
     finally { setUploadingResume(false); }
   };
   const handleResumeUpload = async (e) => { await extractResumeFile(e.target.files[0]); e.target.value = ""; };
@@ -1736,7 +1739,7 @@ function InterviewPage({ profile }) {
 
   // ── Generate questions (with full JD, resume context, STAR) ──
   const generate = async () => {
-    if (!jobDesc.trim()) { setError("Please paste a job description first."); return; }
+    if (!jobDesc.trim()) { setError(t("interview.noJobDesc")); return; }
     setLoading(true); setQuestions([]); setError("");
     try {
       const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1000)}` : "";
@@ -1746,13 +1749,13 @@ JOB:
 ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
       const parsed = safeParse(raw);
       if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
-        setError("Could not generate questions (the AI response was invalid). Please try again.");
+        setError(t("interview.parseError"));
       } else {
         setQuestions(parsed);
         setRestored(false);
       }
     } catch (e) {
-      setError(`Generation failed: ${e.message || "please try again."}`);
+      setError(t("interview.generationFailed").replace("{msg}", e.message || "please try again."));
     } finally { setLoading(false); }
   };
 
@@ -1777,7 +1780,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
       setFeedback(fb);
       setSavedFeedback(prev => ({ ...prev, [activeQ.id]: { answer, feedback: fb } }));
     } catch {
-      setError("Could not analyze your answer. Please try again.");
+      setError(t("interview.answerError"));
     } finally { setFbLoading(false); }
   };
 
@@ -1799,7 +1802,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
         await buildMockSummary({ ...mockAnswers, [q.id]: { answer: mockAnswerDraft, feedback: fb } });
       }
     } catch {
-      setError("Could not score that answer. Please try again.");
+      setError(t("interview.scoreError"));
     } finally { setMockLoading(false); }
   };
 
@@ -1837,9 +1840,9 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
   // Reusable STAR guidance card
   const StarCard = () => (
     <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-      <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>⭐ STAR FRAMEWORK — use this structure for your answer</div>
+      <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>{t("interview.starTitle")}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
-        {[["S — Situation","Describe the context and circumstances."],["T — Task","Explain your responsibility or goal."],["A — Action","Describe the specific steps you took."],["R — Result","Explain the outcome and impact."]].map(([h, d]) => (
+        {[[t("interview.starS"),t("interview.starSDesc")],[t("interview.starT"),t("interview.starTDesc")],[t("interview.starA"),t("interview.starADesc")],[t("interview.starR"),t("interview.starRDesc")]].map(([h, d]) => (
           <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
         ))}
       </div>
@@ -1851,15 +1854,15 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Interview Prep <span style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>v11</span></h1>
-          <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI generates tailored questions with strong, weak, and AI-recommended answers.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("interview.title")} <span style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>v11</span></h1>
+          <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("interview.subtitle")}</p>
         </div>
-        {questions.length > 0 && <Btn variant="secondary" onClick={clearSession}>🗑 Clear Session</Btn>}
+        {questions.length > 0 && <Btn variant="secondary" onClick={clearSession}>{t("interview.clearSession")}</Btn>}
       </div>
 
       {restored && questions.length > 0 && (
         <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 9, padding: "10px 14px", color: C.purple, fontSize: 13, marginBottom: 16 }}>
-          ↻ Restored your previous session ({questions.length} questions). <span style={{ textDecoration: "underline", cursor: "pointer" }} onClick={clearSession}>Start fresh</span>
+          {t("interview.restored").replace("{count}", questions.length)} <span style={{ textDecoration: "underline", cursor: "pointer" }} onClick={clearSession}>{t("interview.startFresh")}</span>
         </div>
       )}
 
@@ -1869,9 +1872,9 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
       {!questions.length && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
           <Card style={{ width: "100%" }}>
-            <Textarea label="Job Description *" placeholder="Paste the full job description here to generate tailored interview questions…" value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 220, width: "100%" }} />
+            <Textarea label={t("interview.jobDescLabel")} placeholder={t("interview.jobDescPlaceholder")} value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 220, width: "100%" }} />
             <div style={{ marginTop: 14 }}>
-              <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? "Resume Added ✓" : "Add Resume (optional, personalizes questions)"}</Btn>
+              <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>{resume ? t("interview.resumeAdded") : t("interview.addResume")}</Btn>
             </div>
             {showResume && (
               <div style={{ marginTop: 14 }}>
@@ -1882,37 +1885,37 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
                   onDrop={handleResumeDrop}
                   style={{ border: `1.5px solid ${resumeFileName ? C.green : C.border}`, background: resumeFileName ? C.greenLight : C.bgSoft, borderRadius: 9, padding: "22px", textAlign: "center", cursor: "pointer", marginBottom: 12, boxSizing: "border-box" }}
                 >
-                  {uploadingResume ? <span style={{ color: C.purple, fontWeight: 600 }}>⏳ Extracting…</span>
-                    : resumeFileName ? <span><span style={{ background: C.green, color: "#fff", padding: "4px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600 }}>✓ Resume Loaded</span> <span style={{ display: "block", marginTop: 8, color: C.text, fontWeight: 600 }}>📄 {resumeFileName}</span></span>
-                    : <span><span style={{ color: C.purple, fontWeight: 700, fontSize: 15 }}>⬆️ Upload Resume</span><br/><span style={{ color: C.textMuted, fontSize: 13 }}>Drag & drop or click · PDF / DOCX / TXT</span></span>}
+                  {uploadingResume ? <span style={{ color: C.purple, fontWeight: 600 }}>{t("interview.extracting")}</span>
+                    : resumeFileName ? <span><span style={{ background: C.green, color: "#fff", padding: "4px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600 }}>{t("interview.resumeLoaded")}</span> <span style={{ display: "block", marginTop: 8, color: C.text, fontWeight: 600 }}>📄 {resumeFileName}</span></span>
+                    : <span><span style={{ color: C.purple, fontWeight: 700, fontSize: 15 }}>{t("interview.uploadResume")}</span><br/><span style={{ color: C.textMuted, fontSize: 13 }}>{t("interview.uploadHint")}</span></span>}
                 </div>
-                <textarea style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder="…or paste your resume here" value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
+                <textarea style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("interview.resumePastePlaceholder")} value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
               </div>
             )}
           </Card>
           <div style={{ display: "flex", gap: 10 }}>
-            <Btn onClick={generate} disabled={!jobDesc.trim()} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Generating…" : "🎤 Generate 8 Questions"}</Btn>
-            <Btn variant="secondary" disabled={loading} onClick={() => setJobDesc(SAMPLE_JOB)}>Try Sample</Btn>
+            <Btn onClick={generate} disabled={!jobDesc.trim()} loading={loading} style={{ padding: "13px 28px" }}>{loading ? t("interview.generating") : t("interview.generateBtn")}</Btn>
+            <Btn variant="secondary" disabled={loading} onClick={() => setJobDesc(SAMPLE_JOB)}>{t("interview.trySample")}</Btn>
           </div>
         </div>
       )}
 
-      {loading && <Spinner steps={["Analyzing job requirements…","Generating behavioral questions…","Creating technical questions…","Adding sample answers…"]} currentStep={1} />}
+      {loading && <Spinner steps={[t("interview.spinner1"),t("interview.spinner2"),t("interview.spinner3"),t("interview.spinner4")]} currentStep={1} />}
 
       {/* MODE SWITCH */}
       {questions.length > 0 && !activeQ && mode === "browse" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-            <div style={{ fontWeight: 700, color: C.text, fontSize: 16 }}>{questions.length} Questions Generated</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <Btn key={c} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setFilterCat(c)}>{c}</Btn>)}</div>
-            <Btn onClick={startMock} style={{ padding: "8px 18px" }}>▶ Start Mock Interview</Btn>
+            <div style={{ fontWeight: 700, color: C.text, fontSize: 16 }}>{t("interview.questionsGenerated").replace("{count}", questions.length)}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <Btn key={c} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setFilterCat(c)}>{tCat(c)}</Btn>)}</div>
+            <Btn onClick={startMock} style={{ padding: "8px 18px" }}>{t("interview.startMock")}</Btn>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((q, i) => (
               <Card key={q.id} style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{q.category}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>STAR</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>✓ Practiced ({savedFeedback[q.id].feedback?.score}/10)</Badge>}</div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{tCat(q.category)}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>{t("interview.starBadge")}</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>✓ Practiced ({savedFeedback[q.id].feedback?.score}/10)</Badge>}</div>
                     <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6, fontWeight: 500 }}>Q{i+1}. {q.question}</div>
                   </div>
                   <span style={{ color: C.textMuted, fontSize: 22, marginLeft: 12, pointerEvents: "none" }}>›</span>
@@ -1927,38 +1930,38 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
       {questions.length > 0 && mode === "mock" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>← Exit Mock</Btn>
-            {!mockSummary && <div style={{ fontWeight: 700, color: C.text }}>Question {mockIdx + 1} of {mockQuestions.length}</div>}
+            <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>{t("interview.exitMock")}</Btn>
+            {!mockSummary && <div style={{ fontWeight: 700, color: C.text }}>{t("interview.questionOf").replace("{current}", mockIdx + 1).replace("{total}", mockQuestions.length)}</div>}
           </div>
 
           {!mockSummary && (
             <Card>
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Badge color={C.purple}>{mockQuestions[mockIdx].category}</Badge><Badge color={diffColor[mockQuestions[mockIdx].difficulty]}>{mockQuestions[mockIdx].difficulty}</Badge></div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}><Badge color={C.purple}>{tCat(mockQuestions[mockIdx].category)}</Badge><Badge color={diffColor[mockQuestions[mockIdx].difficulty]}>{mockQuestions[mockIdx].difficulty}</Badge></div>
               <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1.4, marginBottom: 8 }}>{mockQuestions[mockIdx].question}</div>
               <div style={{ height: 6, background: C.bgSoft, borderRadius: 4, marginBottom: 20, overflow: "hidden" }}><div style={{ width: `${((mockIdx) / mockQuestions.length) * 100}%`, height: "100%", background: C.purple }} /></div>
               {isBehavioral(mockQuestions[mockIdx]) && <StarCard />}
-              <Textarea label="Your answer" placeholder="Answer as if you're in a real interview…" value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
+              <Textarea label={t("interview.yourAnswer")} placeholder={t("interview.yourAnswerPlaceholder")} value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
               <div style={{ display: "flex", gap: 10 }}>
-                <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim()} loading={mockLoading}>{mockLoading ? "Scoring…" : (mockIdx + 1 < mockQuestions.length ? "Submit & Next →" : "Submit & Finish")}</Btn>
-                <Btn variant="secondary" onClick={skipMock} disabled={mockLoading}>Skip</Btn>
+                <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim()} loading={mockLoading}>{mockLoading ? t("interview.scoringBtn") : (mockIdx + 1 < mockQuestions.length ? t("interview.submitNext") : t("interview.submitFinish"))}</Btn>
+                <Btn variant="secondary" onClick={skipMock} disabled={mockLoading}>{t("interview.skipBtn")}</Btn>
               </div>
             </Card>
           )}
 
           {mockSummary && !showReview && (
             <Card style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Mock Interview Complete 🎉</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>{t("interview.mockComplete")}</div>
               <div style={{ fontSize: 48, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red, marginBottom: 4 }}>{mockSummary.avgScore}/10</div>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 18 }}>Average score across {mockSummary.answered} answered question{mockSummary.answered !== 1 ? "s" : ""}</div>
+              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 18 }}>{t("interview.avgScore").replace("{count}", mockSummary.answered)}</div>
               <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 24 }}>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{mockSummary.answered}</div><div style={{ fontSize: 12, color: C.textMuted }}>Answered</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.yellow }}>{mockSummary.skipped}</div><div style={{ fontSize: 12, color: C.textMuted }}>Skipped</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.text }}>{mockSummary.total}</div><div style={{ fontSize: 12, color: C.textMuted }}>Total</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</div><div style={{ fontSize: 12, color: C.textMuted }}>Complete</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{mockSummary.answered}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.answered")}</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.yellow }}>{mockSummary.skipped}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.skipped")}</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.text }}>{mockSummary.total}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.total")}</div></div>
+                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.complete")}</div></div>
               </div>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <Btn onClick={() => setShowReview(true)}>📋 Review Your Answers</Btn>
-                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>Retry Mock</Btn>
+                <Btn onClick={() => setShowReview(true)}>{t("interview.reviewAnswers")}</Btn>
+                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
               </div>
             </Card>
           )}
@@ -1966,8 +1969,8 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
           {mockSummary && showReview && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Interview Review</div>
-                <Btn variant="secondary" onClick={() => setShowReview(false)}>← Back to Summary</Btn>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{t("interview.interviewReview")}</div>
+                <Btn variant="secondary" onClick={() => setShowReview(false)}>{t("interview.backToSummary")}</Btn>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {mockQuestions.map((q, i) => {
@@ -1975,24 +1978,24 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
                   return (
                     <Card key={q.id}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                        <Badge color={C.purple}>{q.category}</Badge>
+                        <Badge color={C.purple}>{tCat(q.category)}</Badge>
                         <Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>
-                        {ans ? <Badge color={C.green}>✓ Answered {ans.feedback?.score ? `(${ans.feedback.score}/10)` : ""}</Badge> : <Badge color={C.textMuted}>⊘ Skipped</Badge>}
+                        {ans ? <Badge color={C.green}>✓ Answered {ans.feedback?.score ? `(${ans.feedback.score}/10)` : ""}</Badge> : <Badge color={C.textMuted}>⊘ {t("interview.skippedBadge")}</Badge>}
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>Q{i + 1}. {q.question}</div>
                       {ans ? (
                         <div>
-                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>YOUR ANSWER</div>
+                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>{t("interview.yourAnswerLabel")}</div>
                           <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginBottom: ans.feedback ? 12 : 0 }}>{ans.answer}</div>
                           {ans.feedback && (
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
-                              <div style={{ background: C.greenLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>✓ STRENGTHS</div>{(ans.feedback.strengths || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
-                              <div style={{ background: C.yellowLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 6 }}>↑ IMPROVE</div>{(ans.feedback.improvements || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                              <div style={{ background: C.greenLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>{t("interview.strengths")}</div>{(ans.feedback.strengths || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                              <div style={{ background: C.yellowLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 6 }}>{t("interview.improve")}</div>{(ans.feedback.improvements || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>You skipped this question. The strong answer was: </div>
+                        <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>{t("interview.skippedMsg")}</div>
                       )}
                       {!ans && <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginTop: 6 }}>{q.strongAnswer}</div>}
                     </Card>
@@ -2000,8 +2003,8 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
                 })}
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-                <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>← Back to Question List</Btn>
-                <Btn onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>Retry Mock</Btn>
+                <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>{t("interview.backToList")}</Btn>
+                <Btn onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
               </div>
             </div>
           )}
@@ -2011,46 +2014,46 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
       {/* SINGLE QUESTION DETAIL */}
       {activeQ && (
         <div>
-          <Btn variant="secondary" style={{ marginBottom: 18 }} onClick={() => { setActiveQ(null); setFeedback(null); }}>← Back to Questions</Btn>
+          <Btn variant="secondary" style={{ marginBottom: 18 }} onClick={() => { setActiveQ(null); setFeedback(null); }}>{t("interview.backToQuestions")}</Btn>
           <Card>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}><Badge color={C.purple}>{activeQ.category}</Badge><Badge color={diffColor[activeQ.difficulty]}>{activeQ.difficulty}</Badge>{activeQ.star && <Badge color={C.blue}>STAR</Badge>}</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}><Badge color={C.purple}>{tCat(activeQ.category)}</Badge><Badge color={diffColor[activeQ.difficulty]}>{activeQ.difficulty}</Badge>{activeQ.star && <Badge color={C.blue}>{t("interview.starBadge")}</Badge>}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1.4, marginBottom: 20 }}>{activeQ.question}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }} className="two-col">
-              <div style={{ background: C.blueLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.blue, fontWeight: 700, marginBottom: 8 }}>WHY THEY ASK THIS</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.whyAsked}</div></div>
-              <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>💡 HOW TO ANSWER {activeQ.star ? "(STAR)" : ""}</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.tipToAnswer}</div></div>
+              <div style={{ background: C.blueLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.blue, fontWeight: 700, marginBottom: 8 }}>{t("interview.whyTheyAsk")}</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.whyAsked}</div></div>
+              <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>{activeQ.star ? t("interview.howToAnswerStar") : t("interview.howToAnswer")}</div><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{activeQ.tipToAnswer}</div></div>
             </div>
 
             {isBehavioral(activeQ) && <StarCard />}
 
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 14 }}>
-                {[["strong","💪 Strong Answer"],["weak","❌ Weak Answer"],["ai","✨ AI Recommended"]].map(([id, lbl]) => (
+                {[["strong",t("interview.strongAnswerTab")],["weak",t("interview.weakAnswerTab")],["ai",t("interview.aiRecommendedTab")]].map(([id, lbl]) => (
                   <Btn key={id} variant="ghost" style={{ flex: 1, padding: "9px", borderRadius: 7, border: "none", background: answerTab === id ? "#fff" : "transparent", color: answerTab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setAnswerTab(id)}>{lbl}</Btn>
                 ))}
               </div>
-              {answerTab === "strong" && <div><ContentDisplay content={activeQ.strongAnswer} /><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.strongAnswer} label="📋 Copy Strong Answer" /></div></div>}
-              {answerTab === "weak" && <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: "16px 20px" }}><div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 10 }}>⚠️ COMMON WEAK ANSWER — AVOID THIS</div><div style={{ fontSize: 14, lineHeight: 1.8, color: C.text, whiteSpace: "pre-wrap" }}>{activeQ.weakAnswer}</div></div>}
-              {answerTab === "ai" && <div><div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: "16px 20px" }}><div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>✨ AI-OPTIMIZED ANSWER THAT STANDS OUT</div><div style={{ fontSize: 14, lineHeight: 1.8, color: C.text, whiteSpace: "pre-wrap" }}>{activeQ.aiRecommendedAnswer}</div></div><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.aiRecommendedAnswer} label="📋 Copy AI Answer" /></div></div>}
+              {answerTab === "strong" && <div><ContentDisplay content={activeQ.strongAnswer} /><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.strongAnswer} label={t("interview.copyStrong")} /></div></div>}
+              {answerTab === "weak" && <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: "16px 20px" }}><div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 10 }}>{t("interview.weakAnswerLabel")}</div><div style={{ fontSize: 14, lineHeight: 1.8, color: C.text, whiteSpace: "pre-wrap" }}>{activeQ.weakAnswer}</div></div>}
+              {answerTab === "ai" && <div><div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: "16px 20px" }}><div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>{t("interview.aiAnswerLabel")}</div><div style={{ fontSize: 14, lineHeight: 1.8, color: C.text, whiteSpace: "pre-wrap" }}>{activeQ.aiRecommendedAnswer}</div></div><div style={{ marginTop: 8 }}><CopyBtn text={activeQ.aiRecommendedAnswer} label={t("interview.copyAiAnswer")} /></div></div>}
             </div>
 
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>🎯 Practice Your Answer</div>
-              <Textarea label="Type your answer here" placeholder="Write your answer and get instant AI coaching…" value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
-              <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? "Analyzing…" : "🧠 Get AI Feedback"}</Btn>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("interview.practiceLabel")}</div>
+              <Textarea label={t("interview.typeAnswerLabel")} placeholder={t("interview.typeAnswerPlaceholder")} value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
+              <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? t("interview.analyzing") : t("interview.getFeedback")}</Btn>
             </div>
 
-            {fbLoading && <Spinner steps={["Reading your answer…","Identifying strengths…","Generating improvements…"]} currentStep={1} />}
+            {fbLoading && <Spinner steps={[t("interview.feedbackSpinner1"),t("interview.feedbackSpinner2"),t("interview.feedbackSpinner3")]} currentStep={1} />}
             {feedback && !fbLoading && (
               <div style={{ marginTop: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-                  <span style={{ fontSize: 14, color: C.textMuted }}>Your Answer Score</span>
+                  <span style={{ fontSize: 14, color: C.textMuted }}>{t("interview.yourScore")}</span>
                   <span style={{ fontSize: 36, fontWeight: 800, color: feedback.score >= 8 ? C.green : feedback.score >= 6 ? C.yellow : C.red }}>{feedback.score}/10</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
-                  <div style={{ background: C.greenLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 8 }}>✓ STRENGTHS</div>{feedback.strengths?.map((s, i) => <div key={i} style={{ fontSize: 13, marginBottom: 6, color: C.text, lineHeight: 1.5 }}>• {s}</div>)}</div>
-                  <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>↑ IMPROVE</div>{feedback.improvements?.map((s, i) => <div key={i} style={{ fontSize: 13, marginBottom: 6, color: C.text, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                  <div style={{ background: C.greenLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 8 }}>{t("interview.strengths")}</div>{feedback.strengths?.map((s, i) => <div key={i} style={{ fontSize: 13, marginBottom: 6, color: C.text, lineHeight: 1.5 }}>• {s}</div>)}</div>
+                  <div style={{ background: C.yellowLight, borderRadius: 12, padding: 16 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 8 }}>{t("interview.improve")}</div>{feedback.improvements?.map((s, i) => <div key={i} style={{ fontSize: 13, marginBottom: 6, color: C.text, lineHeight: 1.5 }}>• {s}</div>)}</div>
                 </div>
-                {feedback.revisedAnswer && <div><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><div style={{ fontSize: 12, color: C.purple, fontWeight: 700 }}>✨ STRONGER VERSION OF YOUR ANSWER</div><CopyBtn text={feedback.revisedAnswer} /></div><ContentDisplay content={feedback.revisedAnswer} /></div>}
+                {feedback.revisedAnswer && <div><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><div style={{ fontSize: 12, color: C.purple, fontWeight: 700 }}>{t("interview.strongerVersion")}</div><CopyBtn text={feedback.revisedAnswer} /></div><ContentDisplay content={feedback.revisedAnswer} /></div>}
               </div>
             )}
           </Card>
@@ -2377,6 +2380,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
 function NetworkingPage({ profile }) {
+  const { t } = useI18n();
   const [form, setForm] = useStorage("cp_network_form", { targetName: "", targetRole: "", targetCompany: "", yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "", purpose: "coffee-chat", jobDesc: "" });
   const [results, setResults] = useStorage("cp_network_results", null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
@@ -2385,10 +2389,12 @@ function NetworkingPage({ profile }) {
   const [draft, setDraft] = useStorage("cp_network_draft", null);
   const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
-  const [openStatusMenu, setOpenStatusMenu] = useState(null); // contact id whose status menu is open
+  const [openStatusMenu, setOpenStatusMenu] = useState(null);
   const statusColors = {"Waiting for Reply": C.yellow, "Replied": C.green, "Met": "#7C3AED", "Connected": C.blue, "No Response": C.red};
   const statusEmoji = {"Waiting for Reply": "🟡", "Replied": "🟢", "Met": "🟣", "Connected": "🔵", "No Response": "🔴"};
-  const [fuContact, setFuContact] = useState(null); // selected contact for follow-up generation
+  const NET_STATUS_LABEL_KEY = { "Waiting for Reply": "networking.statusWaiting", "Replied": "networking.statusReplied", "Met": "networking.statusMet", "Connected": "networking.statusConnected", "No Response": "networking.statusNoResponse" };
+  const tStatus = (s) => t(NET_STATUS_LABEL_KEY[s] || s);
+  const [fuContact, setFuContact] = useState(null);
   const [fuDraft, setFuDraft] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
 
@@ -2435,8 +2441,8 @@ Original message: ${(contact.originalMessage || contact.linkedinMessage || "").s
 Method: ${contact.method}
 It has been about 7 days since the original outreach.
 Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it brief, professional, and warm. 2-3 paragraphs max.`, 800);
-      setFuDraft(cleanPlaceholders(raw) || "Could not generate follow-up. Please try again.");
-    } catch { setFuDraft("Could not generate follow-up. Please try again."); }
+      setFuDraft(cleanPlaceholders(raw) || t("networking.followupError"));
+    } catch { setFuDraft(t("networking.followupError")); }
     finally { setFuLoading(false); }
   };
 
@@ -2473,7 +2479,7 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
 
   const updateDraft = (key, val) => setDraft(d => ({ ...(d || {}), [key]: val }));
   const updateIcebreaker = (i, val) => setDraft(d => { const ic = [...(d?.icebreakers || [])]; ic[i] = val; return { ...d, icebreakers: ic }; });
-  const purposes = [{ value: "coffee-chat", label: "☕ Coffee Chat" }, { value: "referral", label: "🤝 Referral Request" }, { value: "informational", label: "🎓 Informational Interview" }, { value: "reconnect", label: "👋 Reconnect" }, { value: "cold-outreach", label: "📨 Cold Outreach" }];
+  const purposes = [{ value: "coffee-chat", label: t("networking.coffeeChatLabel") }, { value: "referral", label: t("networking.referralLabel") }, { value: "informational", label: t("networking.informationalLabel") }, { value: "reconnect", label: t("networking.reconnectLabel") }, { value: "cold-outreach", label: t("networking.coldOutreachLabel") }];
   const txt = (v, fallback = "—") => (v !== undefined && v !== null && String(v).trim() !== "") ? v : fallback;
 
   // Safe JSON parse with truncation recovery
@@ -2490,7 +2496,7 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
   };
 
   const generate = async () => {
-    if (!form.targetCompany || !form.yourBackground) { setError("Please fill in your background and the target company."); return; }
+    if (!form.targetCompany || !form.yourBackground) { setError(t("networking.fillRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
       const raw = await askClaude(`Networking outreach. Return ONLY JSON, no markdown:
@@ -2498,59 +2504,59 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
 To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}${form.purpose === "referral" && form.jobDesc ? `, Referral for: ${form.jobDesc.slice(0,200)}` : ""}`, 2500);
       const parsed = safeParse(raw);
       if (!parsed) {
-        setError("The AI response couldn't be read. Please try again.");
+        setError(t("networking.aiError"));
       } else if (!parsed.linkedinMessage && !parsed.email) {
-        setError("The response came back incomplete. Please try again in a moment.");
+        setError(t("networking.incompleteResponse"));
       } else {
         setResults(parsed); setTab("linkedin");
-        setDraft(null); // clear so the effect re-seeds editable fields from new results
+        setDraft(null);
         setEmailTo("");
       }
     } catch (e) {
-      setError("Couldn't reach the networking service. Check your connection and try again.");
+      setError(t("networking.networkError"));
     } finally { setLoading(false); }
   };
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>Networking Assistant</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>AI writes personalized outreach that feels human — not generic copy-paste templates.</p>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("networking.title")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("networking.subtitle")}</p>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
-          <Input label="Their Name" placeholder="Sarah Chen" value={form.targetName} onChange={e => setForm(f => ({ ...f, targetName: e.target.value }))} />
-          <Input label="Their Role" placeholder="Engineering Manager" value={form.targetRole} onChange={e => setForm(f => ({ ...f, targetRole: e.target.value }))} />
-          <Input label="Company *" placeholder="Stripe, Google, Amazon…" value={form.targetCompany} onChange={e => setForm(f => ({ ...f, targetCompany: e.target.value }))} />
-          <Select label="Purpose" value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>{purposes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</Select>
-          <div style={{ gridColumn: "1 / -1" }}><Textarea label="Your Background *" placeholder="e.g. 4-year software engineer with React experience at a fintech startup, currently exploring senior roles at larger companies…" value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>
-          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label="Job You Want a Referral For" placeholder="Paste the job title and key requirements…" value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>}
+          <Input label={t("networking.theirName")} placeholder={t("networking.theirNamePlaceholder")} value={form.targetName} onChange={e => setForm(f => ({ ...f, targetName: e.target.value }))} />
+          <Input label={t("networking.theirRole")} placeholder={t("networking.theirRolePlaceholder")} value={form.targetRole} onChange={e => setForm(f => ({ ...f, targetRole: e.target.value }))} />
+          <Input label={t("networking.company")} placeholder={t("networking.companyPlaceholder")} value={form.targetCompany} onChange={e => setForm(f => ({ ...f, targetCompany: e.target.value }))} />
+          <Select label={t("networking.purpose")} value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>{purposes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</Select>
+          <div style={{ gridColumn: "1 / -1" }}><Textarea label={t("networking.yourBackground")} placeholder={t("networking.yourBackgroundPlaceholder")} value={form.yourBackground} onChange={e => setForm(f => ({ ...f, yourBackground: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>
+          {form.purpose === "referral" && <div style={{ gridColumn: "1 / -1" }}><Textarea label={t("networking.referralJob")} placeholder={t("networking.referralJobPlaceholder")} value={form.jobDesc} onChange={e => setForm(f => ({ ...f, jobDesc: e.target.value }))} style={{ minHeight: 160, width: "100%" }} /></div>}
         </div>
         {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn onClick={generate} loading={loading} style={{ padding: "13px 28px" }}>{loading ? "Generating…" : "✍️ Generate Outreach Messages"}</Btn>
-          {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); setEmailSent(false); setShowSavePrompt(false); }}>New Message</Btn>}
+          <Btn onClick={generate} loading={loading} style={{ padding: "13px 28px" }}>{loading ? t("networking.generating") : t("networking.generateBtn")}</Btn>
+          {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); setEmailSent(false); setShowSavePrompt(false); }}>{t("networking.newMessageBtn")}</Btn>}
         </div>
       </Card>
-      {loading && <Spinner steps={["Personalizing messages…","Writing LinkedIn outreach…","Crafting email…","Adding icebreakers…"]} currentStep={1} />}
+      {loading && <Spinner steps={[t("networking.spinnerStep1"),t("networking.spinnerStep2"),t("networking.spinnerStep3"),t("networking.spinnerStep4")]} currentStep={1} />}
       {results && (
         <div>
           <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
-            {[["linkedin","💼 LinkedIn"],["email","📧 Email"],["followup","🔁 Follow-up"],["tips","💡 Tips"]].map(([id, lbl]) => (
+            {[["linkedin",t("networking.linkedinTab")],["email",t("networking.emailTab")],["followup",t("networking.followupTab")],["tips",t("networking.tipsTab")]].map(([id, lbl]) => (
               <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
           {tab === "linkedin" && draft && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>CONNECTION REQUEST (MAX 280 CHARS)</Label><CopyBtn text={draft.linkedinMessage} label="📋 Copy LinkedIn Message" /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>{t("networking.connectionRequest")}</Label><CopyBtn text={draft.linkedinMessage} label={t("networking.copyLinkedinMsg")} /></div>
                 <textarea value={draft.linkedinMessage} onChange={e => updateDraft("linkedinMessage", e.target.value)} style={{ width: "100%", minHeight: 90, background: "#fff", border: `1.5px solid ${(draft.linkedinMessage?.length || 0) > 280 ? C.red : C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "12px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                <div style={{ fontSize: 12, color: (draft.linkedinMessage?.length || 0) > 280 ? C.red : C.textMuted, marginTop: 8 }}>{draft.linkedinMessage?.length || 0}/280 characters</div>
+                <div style={{ fontSize: 12, color: (draft.linkedinMessage?.length || 0) > 280 ? C.red : C.textMuted, marginTop: 8 }}>{t("networking.charCount").replace("{count}", draft.linkedinMessage?.length || 0)}</div>
               </Card>
               <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>INMAIL / FULL MESSAGE</Label><CopyBtn text={draft.linkedinNote} label="📋 Copy" /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><Label>{t("networking.inmailLabel")}</Label><CopyBtn text={draft.linkedinNote} label={t("networking.copyBtn")} /></div>
                 <textarea value={draft.linkedinNote} onChange={e => updateDraft("linkedinNote", e.target.value)} style={{ width: "100%", minHeight: 160, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </Card>
               <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>🎯 YOUR SPECIFIC ASK</Label><CopyBtn text={draft.callToAction} label="Copy" /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.yourAsk")}</Label><CopyBtn text={draft.callToAction} label={t("networking.copyBtn")} /></div>
                 <textarea value={draft.callToAction} onChange={e => updateDraft("callToAction", e.target.value)} style={{ width: "100%", minHeight: 60, background: "#fff", border: `1.5px solid ${C.green}30`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.6, padding: "12px 14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
             </div>
@@ -2558,35 +2564,35 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
           {tab === "email" && draft && (
             <Card>
               <div style={{ marginBottom: 14 }}>
-                <Label>TO (recipient email)</Label>
+                <Label>{t("networking.toLabel")}</Label>
                 <input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="name@company.com" style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>SUBJECT LINE</Label><CopyBtn text={draft.emailSubject} label="Copy Subject" /></div>
-                <input value={draft.emailSubject} onChange={e => updateDraft("emailSubject", e.target.value)} placeholder="Email subject" style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 15, fontWeight: 600, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.subjectLabel")}</Label><CopyBtn text={draft.emailSubject} label={t("networking.copySubject")} /></div>
+                <input value={draft.emailSubject} onChange={e => updateDraft("emailSubject", e.target.value)} placeholder={t("networking.emailSubjectPlaceholder")} style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 15, fontWeight: 600, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>EMAIL BODY (edit before sending)</Label><CopyBtn text={draft.emailBody} label="📋 Copy Email" /></div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.emailBodyLabel")}</Label><CopyBtn text={draft.emailBody} label={t("networking.copyEmail")} /></div>
               <textarea value={draft.emailBody} onChange={e => updateDraft("emailBody", e.target.value)} style={{ width: "100%", minHeight: 240, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={() => { handleSendEmail(); setEmailSent(true); }}>
-                  <Btn variant="primary">{emailSent ? "✔ Sent" : "📤 Send Email"}</Btn>
+                  <Btn variant="primary">{emailSent ? t("networking.sentBtn") : t("networking.sendEmailBtn")}</Btn>
                 </a>
-                <span style={{ fontSize: 12, color: C.textMuted }}>Opens your email app with your edits prefilled. You review and send it yourself.</span>
+                <span style={{ fontSize: 12, color: C.textMuted }}>{t("networking.emailDisclaimer")}</span>
               </div>
 
               {/* Save Outreach Popup */}
               {showSavePrompt && (
                 <div style={{ marginTop: 16, background: C.purpleLight, border: `1.5px solid ${C.purple}40`, borderRadius: 12, padding: 20 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: C.purple, marginBottom: 12 }}>📬 Save This Outreach?</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.purple, marginBottom: 12 }}>{t("networking.savePromptTitle")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
                     {form.targetName && <div style={{ fontSize: 14, color: C.text }}>👤 {form.targetName}</div>}
                     {form.targetCompany && <div style={{ fontSize: 14, color: C.text }}>🏢 {form.targetCompany}</div>}
                     {emailTo && <div style={{ fontSize: 14, color: C.text }}>📧 {emailTo}</div>}
                   </div>
-                  <div style={{ fontSize: 13, color: C.textMid, marginBottom: 14 }}>Save this contact for easy follow-up later?</div>
+                  <div style={{ fontSize: 13, color: C.textMid, marginBottom: 14 }}>{t("networking.savePromptBody")}</div>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <Btn onClick={saveContact}>✅ Save Contact</Btn>
-                    <Btn variant="secondary" onClick={() => setShowSavePrompt(false)}>❌ Not Now</Btn>
+                    <Btn onClick={saveContact}>{t("networking.saveContactBtn")}</Btn>
+                    <Btn variant="secondary" onClick={() => setShowSavePrompt(false)}>{t("networking.notNowBtn")}</Btn>
                   </div>
                 </div>
               )}
@@ -2599,7 +2605,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               {savedContacts.length > 0 && (
                 <Card>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <Label>📬 SAVED CONTACTS ({savedContacts.length})</Label>
+                    <Label>{t("networking.savedContactsLabel").replace("{count}", savedContacts.length)}</Label>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {savedContacts.map(c => (
@@ -2614,7 +2620,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <div style={{ position: "relative", display: "inline-block" }}>
                               <Btn variant="secondary" style={{ borderRadius: 20, padding: "5px 14px", fontSize: 12 }} onClick={() => setOpenStatusMenu(openStatusMenu === c.id ? null : c.id)}>
-                                {statusEmoji[c.status] || "⚪"} {c.status} ▾
+                                {statusEmoji[c.status] || "⚪"} {tStatus(c.status)} ▾
                               </Btn>
                               {openStatusMenu === c.id && (
                                 <div>
@@ -2622,15 +2628,15 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                                 <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
                                   {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => (
                                     <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: c.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }}>
-                                      {statusEmoji[s]} {s}
+                                      {statusEmoji[s]} {tStatus(s)}
                                     </Btn>
                                   ))}
                                 </div>
                                 </div>
                               )}
                             </div>
-                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)} loading={fuLoading && fuContact?.id === c.id}>✍️ Generate Follow-up</Btn>
-                            {c.email && <a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}`} style={{ textDecoration: "none" }}><Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }}>📤 Email</Btn></a>}
+                            <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => generateFollowUp(c)} loading={fuLoading && fuContact?.id === c.id}>{t("networking.generateFollowupBtn")}</Btn>
+                            {c.email && <a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}`} style={{ textDecoration: "none" }}><Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }}>{t("networking.emailBtn")}</Btn></a>}
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, color: C.red }} onClick={() => deleteContact(c.id)}>✕</Btn>
                           </div>
                         </div>
@@ -2638,12 +2644,12 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                         {/* Generated follow-up for this contact */}
                         {fuContact?.id === c.id && (
                           <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12, background: "#fff" }}>
-                            {fuLoading && <div style={{ color: C.purple, fontSize: 13, fontWeight: 600 }}>⏳ Generating follow-up…</div>}
+                            {fuLoading && <div style={{ color: C.purple, fontSize: 13, fontWeight: 600 }}>{t("networking.generatingFollowup")}</div>}
                             {!fuLoading && fuDraft && (
                               <div>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>FOLLOW-UP MESSAGE</Label><CopyBtn text={fuDraft} label="📋 Copy" /></div>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.followupMessageLabel")}</Label><CopyBtn text={fuDraft} label={t("networking.copyBtn")} /></div>
                                 <textarea value={fuDraft} onChange={e => setFuDraft(e.target.value)} style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                                {c.email && <div style={{ marginTop: 10 }}><a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}&body=${encodeURIComponent(fuDraft)}`} style={{ textDecoration: "none" }}><Btn variant="primary" style={{ fontSize: 13 }}>📤 Send Follow-up</Btn></a></div>}
+                                {c.email && <div style={{ marginTop: 10 }}><a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}&body=${encodeURIComponent(fuDraft)}`} style={{ textDecoration: "none" }}><Btn variant="primary" style={{ fontSize: 13 }}>{t("networking.sendFollowupBtn")}</Btn></a></div>}
                               </div>
                             )}
                           </div>
@@ -2658,12 +2664,12 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
               {draft && (
                 <Card>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                    <div><Label>FOLLOW-UP TEMPLATE</Label><div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>For your current outreach — send after 7 days of no reply</div></div>
-                    <CopyBtn text={draft.followUp} label="📋 Copy" />
+                    <div><Label>{t("networking.followupTemplateLabel")}</Label><div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{t("networking.followupTemplateSub")}</div></div>
+                    <CopyBtn text={draft.followUp} label={t("networking.copyBtn")} />
                   </div>
                   <textarea value={draft.followUp} onChange={e => updateDraft("followUp", e.target.value)} style={{ width: "100%", minHeight: 140, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   <div style={{ marginTop: 20 }}>
-                    <Label>💬 CONVERSATION ICEBREAKERS (editable)</Label>
+                    <Label>{t("networking.icebreakerLabel")}</Label>
                     {(draft.icebreakers || []).map((ic, i) => (
                       <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
                         <span style={{ color: C.blue, fontWeight: 700, flexShrink: 0, paddingTop: 12 }}>{i+1}.</span>
@@ -2678,11 +2684,11 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
           {tab === "tips" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="two-col">
               <Card>
-                <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 14 }}>✓ DO THIS</div>
+                <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 14 }}>{t("networking.doThisLabel")}</div>
                 {results.doList?.map((t, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12 }}><span style={{ color: C.green, flexShrink: 0, fontWeight: 700 }}>✓</span><span style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{t}</span></div>)}
               </Card>
               <Card>
-                <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 14 }}>✗ AVOID THIS</div>
+                <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 14 }}>{t("networking.avoidThisLabel")}</div>
                 {results.dontList?.map((t, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12 }}><span style={{ color: C.red, flexShrink: 0, fontWeight: 700 }}>✗</span><span style={{ fontSize: 14, lineHeight: 1.7, color: C.text }}>{t}</span></div>)}
               </Card>
             </div>
