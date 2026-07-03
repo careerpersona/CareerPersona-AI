@@ -16,7 +16,7 @@ function getCorsHeaders(request) {
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Origin",
   };
-  const isLanDev = /^http:\/\/(\d{1,3}\.){3}\d{1,3}:5180$/.test(origin);
+  const isLanDev = /^http:\/\/(\d{1,3}\.){3}\d{1,3}:\d+$/.test(origin);
   if (ALLOWED_ORIGINS.includes(origin) || isLanDev) {
     headers["Access-Control-Allow-Origin"] = origin;
   }

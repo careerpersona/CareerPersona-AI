@@ -8,13 +8,19 @@ import { useSmartApplyQueue } from "./data/smartApply";
 import { useInterviewSession } from "./data/interviewSession";
 import { useSalaryResearch } from "./data/salaryResearch";
 import { useNetworkingContacts } from "./data/networkingContacts";
+import { useNetworkingSession } from "./data/networkingSession";
 import { useAssistantChat } from "./data/assistantChat";
 import { useActivityLog } from "./data/activityLog";
 import { useNotifications, insertNotification } from "./data/notifications";
 import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
+import { useUserContext } from "./data/userContext";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { LANGUAGES } from "./i18n/languages";
+
+// Disable browser scroll restoration before React mounts — prevents the
+// browser from jumping to the last scroll position on page refresh.
+if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
 
 const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
@@ -301,7 +307,7 @@ function Card({ children, style = {}, onClick, ...rest }) {
 }
 
 function Label({ children }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 7 }}>{children}</div>;
+  return <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 7 }}>{children}</div>;
 }
 
 function Input({ label, style = {}, ...props }) {
@@ -516,7 +522,7 @@ function AuthPage({ t }) {
             forgotSent ? (
               <div style={{ textAlign: "center", padding: "12px 0" }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check your email</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check Your Email</div>
                 <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
                   We sent a password reset link to <strong>{forgotEmail}</strong>. Open it on this device to set a new password.
                 </div>
@@ -585,17 +591,78 @@ function AuthPage({ t }) {
   );
 }
 
+// Returns true when an ISO timestamp string falls on today's local date.
+const isToday = (iso) => !!iso && iso.slice(0, 10) === new Date().toISOString().slice(0, 10);
+
+// ─── BRIEFING PAYLOAD BUILDER (shared by DashboardPage + BriefingPage) ──────
+async function buildBriefingPayload(ctx) {
+  const raw = await askClaude(`You are CareerPersona AI. Generate a personalized daily briefing based on this user's career data. Be specific, actionable, and encouraging. Return ONLY valid JSON, no markdown:\n{"v":2,"summary":"1-2 personalized sentences about career status today","newMatchingJobs":"1 sentence about job opportunities in their target role","highestPayingJobs":"1 sentence about highest-paying opportunities for their skills","jobsClosingSoon":"1 sentence about application urgency or follow-up timing","priorityRecommendation":"1 specific actionable task for today based on their data","companiesHiringNow":"1 sentence about active hiring in their target sector","newOpportunities":"1 sentence about emerging roles or adjacent opportunities","resumeUpdates":"1 sentence about resume strength or ATS improvement tips","atsScoreChanges":"1 sentence about ATS optimization and score improvements","interviewInvitations":"1 sentence about interview prep or pipeline status","recruiterActivity":"1 sentence about recruiter visibility and profile tips","applicationUpdates":"1 sentence about application pipeline and follow-up strategy","salaryChanges":"1 sentence about salary trends for their role and location","marketUpdates":"1 sentence about job market conditions in their field","careerInsights":"1 strategic career insight specific to their situation","dailyHighlights":["short actionable highlight 1","short actionable highlight 2","short actionable highlight 3"]}\nUser data: ${ctx}`, 1600);
+  let result;
+  try {
+    const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+    const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+    result = parsed?.v === 2 ? { ...parsed, generatedAt: new Date().toISOString() } : null;
+  } catch { result = null; }
+  return result || {
+    v: 2, generatedAt: new Date().toISOString(),
+    summary: "Your career journey is underway with CareerPersona AI. Complete your profile and explore jobs to unlock personalized daily insights.",
+    newMatchingJobs: "Search for jobs matching your target role to see new opportunities added daily in your field.",
+    highestPayingJobs: "Run a salary analysis to discover the highest-paying roles available for your experience level.",
+    jobsClosingSoon: "Save jobs you're interested in and apply promptly — competitive roles often close within days.",
+    priorityRecommendation: "Complete your career profile to 100% — it unlocks all personalized AI features.",
+    companiesHiringNow: "Use Job Search to discover which companies are actively hiring in your target sector this week.",
+    newOpportunities: "New opportunities emerge daily — consistent job searching is the most effective strategy.",
+    resumeUpdates: "Upload your resume to get an instant ATS score and keyword optimization recommendations.",
+    atsScoreChanges: "A resume with 85%+ ATS compatibility gets significantly more interview callbacks.",
+    interviewInvitations: "Practice interview questions daily to build confidence and improve your response quality.",
+    recruiterActivity: "Keep your profile complete and updated to stay visible to recruiters in your field.",
+    applicationUpdates: "Track all applications in the Tracker to manage follow-ups and never miss an opportunity.",
+    salaryChanges: "Research market salaries before your next negotiation to ensure you receive fair compensation.",
+    marketUpdates: "Your target job market is active — consistent daily applications yield the best results.",
+    careerInsights: "Candidates who tailor their resume for each application get 3× more interview invitations.",
+    dailyHighlights: ["Complete your profile to unlock personalized recommendations", "Upload your resume for an AI-powered ATS score", "Search and save your top job matches"]
+  };
+}
+
+// ─── PLAN PAYLOAD BUILDER (shared by DashboardPage + PlanPage) ───────────────
+async function buildPlanPayload(ctx) {
+  const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about the highest-impact resume change>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","skills":"<1 sentence about specific skill to develop>","certifications":"<1 sentence about specific certification recommendation>","careerGoals":"<1 sentence about progress toward career goals>"}\nUser data: ${ctx}`, 900);
+  let result;
+  try {
+    const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+    const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+    result = parsed?.v === 2 && Array.isArray(parsed?.categories) ? { ...parsed, generatedAt: new Date().toISOString() } : null;
+  } catch { result = null; }
+  return result || {
+    v: 2, generatedAt: new Date().toISOString(), productivityScore: 60,
+    categories: [
+      { id: "priorities", category: "Today's Priorities", task: "Complete your career profile to 100% to unlock all personalized AI recommendations.", time: "10 min", status: "pending" },
+      { id: "applications", category: "Recommended Applications", task: "Search for jobs matching your target role and save at least 3 strong matches to apply today.", time: "30 min", status: "pending" },
+      { id: "resume", category: "Resume Improvements", task: "Upload your resume to get an AI-powered ATS score and keyword optimization report.", time: "15 min", status: "pending" },
+      { id: "interview", category: "Interview Practice", task: "Practice 5 STAR method behavioral responses to build interview confidence and readiness.", time: "20 min", status: "pending" }
+    ],
+    followUps: "Check your application tracker and send follow-up emails to any applications older than 5 business days.",
+    networking: "Connect with 1 professional in your target industry and send a personalized introduction message.",
+    skills: "Identify the top 3 in-demand skills listed in your target job descriptions and create a focused learning plan.",
+    certifications: "Research certifications relevant to your target role that could increase your earning potential by 15–20%.",
+    careerGoals: "Set your target role, salary, and timeline in your profile so AI can track and optimize your progress."
+  };
+}
+
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
 function DashboardPage({ profile, applications, savedJobs, setPage }) {
   const { t } = useI18n();
-  const [briefing, setBriefing] = useState(null);
+  const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
-  const [dailyPlan, setDailyPlan] = useState(null);
+  const [briefingError, setBriefingError] = useState(null);
+  const [dailyPlan, setDailyPlan] = useState(() => { try { const c = sessionStorage.getItem("cp_plan_dash"); if (!c) return null; const p = JSON.parse(c); if (p?.v === 2 && Array.isArray(p?.categories) && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_plan_dash"); return null; } catch { return null; } });
   const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef();
+  const chatScrollEnabledRef = useRef(false);
 
   const { messages: savedChatMessages, loading: chatHistoryLoading, loadedFor: chatLoadedFor, addMessage: addChatMessage } = useAssistantChat(profile?.id);
   const chatAppliedForRef = useRef(undefined);
@@ -619,7 +686,10 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     if (briefingHistoryLoading || briefingLoadedFor !== profile?.id) return;
     if (briefingAppliedForRef.current === profile?.id) return;
     briefingAppliedForRef.current = profile?.id;
-    if (savedBriefing) setBriefing(savedBriefing);
+    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) {
+      setBriefing(savedBriefing);
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
+    } else if (profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2)) generateBriefing();
   }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id]);
 
   const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
@@ -630,14 +700,15 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     if (planHistoryLoading || planLoadedFor !== profile?.id) return;
     if (planAppliedForRef.current === profile?.id) return;
     planAppliedForRef.current = profile?.id;
-    if (savedPlan) setDailyPlan(savedPlan);
+    if (savedPlan && savedPlan.v === 2 && Array.isArray(savedPlan.categories) && isToday(savedPlan.generatedAt)) {
+      setDailyPlan(savedPlan);
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
+    } else if (profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
   }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id]);
 
-  // Read additional data from localStorage
-  const readLS = (key, fallback) => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fallback; } catch { return fallback; } };
-  const interviewSession = readLS("cp_interview_session_v1", null);
-  const salaryResults = readLS("cp_salary_results", null);
-  const networkContacts = readLS("cp_network_contacts", []);
+  const { session: interviewSession } = useInterviewSession(profile?.id);
+  const { data: salaryData } = useSalaryResearch(profile?.id);
+  const [networkContacts] = useNetworkingContacts(profile?.id);
   const apps = applications || [];
   const saved = savedJobs || [];
 
@@ -652,49 +723,72 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
   // AI Activity log
   const { activity: aiActivity, logActivity } = useActivityLog(profile?.id);
 
+  // Unified user context — single source of truth for all AI modules.
+  // Phase 2: foundation wired at DashboardPage level where most data is loaded.
+  // Phase 3 will replace inline context strings with userContext.getContextString().
+  const userContext = useUserContext({
+    profile,
+    applications,
+    savedJobs,
+    interviewSession,
+    salaryData,
+    networkContacts,
+    briefing,
+    dailyPlan,
+    activityLog: aiActivity,
+    chatHistory: chatMessages,
+  });
+
   // Generate AI Briefing
   const generateBriefing = async () => {
     setBriefingLoading(true);
+    setBriefingError(null);
+    console.log("[Briefing] Starting generation for user", profile?.id);
     try {
-      const context = `User: ${profile?.full_name || "New user"}. Job title: ${profile?.job_title || "Not set"}. Target: ${profile?.preferred_job_title || "Not set"}. Applications: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved jobs: ${saved.length}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Profile completion: ${profileComplete}%.`;
-      const raw = await askClaude(`You are CareerPersona AI. Generate a brief daily career briefing (4-5 bullet points, each 1 sentence). Be specific and actionable based on this data. If user is new with little data, give encouraging onboarding guidance. Return ONLY a JSON array of strings, no markdown: ["point1","point2","point3","point4"]
-${context}`, 600);
-      let result;
-      try {
-        const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
-        result = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : ["Welcome to CareerPersona AI! Start by completing your profile, uploading a resume, and searching for jobs."];
-      } catch { result = ["Your AI briefing is ready. Complete your profile to get personalized insights."]; }
+      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
+      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Location: ${profile?.location || "not specified"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview practice: ${questionsCount} questions. Network: ${networkContacts.length} contacts. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const result = await buildBriefingPayload(ctx);
+      if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
+      console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
       setBriefing(result);
-      saveBriefing(result).catch(err => console.error("briefing save failed", err));
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
+      saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
       logActivity("Daily briefing generated");
       insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
-    } catch { setBriefing(["Could not generate briefing. Please try again."]); }
+    } catch (e) {
+      console.error("[Briefing] Generation failed:", e?.message || e);
+      setBriefingError("Generation failed. Tap Retry to try again.");
+    }
     finally { setBriefingLoading(false); }
   };
 
   // Generate Daily Plan
   const generatePlan = async () => {
     setPlanLoading(true);
+    setPlanError(null);
+    console.log("[ActionPlan] Starting generation for user", profile?.id);
     try {
-      const context = `Profile complete: ${profileComplete}%. Apps: ${totalApps}. Saved: ${saved.length}. Interviews: ${interviews}. Questions practiced: ${questionsCount}. Target role: ${profile?.preferred_job_title || "not set"}.`;
-      const raw = await askClaude(`You are CareerPersona AI career coach. Generate today's 4-5 action items for this job seeker. Each should be specific and achievable today. Return ONLY JSON array: [{"task":"<task>","priority":"high|medium|low"}]
-${context}`, 600);
-      let result;
-      try {
-        const start = raw.indexOf("["); const end = raw.lastIndexOf("]");
-        result = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : [{task:"Complete your career profile",priority:"high"}];
-      } catch { result = [{task:"Set up your profile to get started",priority:"high"}]; }
+      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
+      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const result = await buildPlanPayload(ctx);
+      if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
+      console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
       setDailyPlan(result);
-      savePlan(result).catch(err => console.error("action plan save failed", err));
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
       logActivity("Daily plan generated");
       insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
-    } catch { setDailyPlan([{task:"Could not generate plan. Try again.",priority:"medium"}]); }
+    } catch (e) {
+      console.error("[ActionPlan] Generation failed:", e?.message || e);
+      setPlanError("Generation failed. Tap Retry to try again.");
+    }
     finally { setPlanLoading(false); }
   };
 
   // Chat
   const sendChat = async () => {
     if (!chatInput.trim() || chatLoading) return;
+    chatScrollEnabledRef.current = true;
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }]);
@@ -711,9 +805,22 @@ ${context}`, 600);
     } finally { setChatLoading(false); }
   };
 
-  useEffect(() => { if (chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+  useEffect(() => { if (!chatScrollEnabledRef.current || chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  const briefingReady = briefing && !Array.isArray(briefing) && briefing.v === 2;
+  const planReady = dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories);
 
   const priorityColor = { high: C.red, medium: C.yellow, low: C.green };
+  const hlBriefing = (text) => {
+    if (!text) return text;
+    const parts = String(text).split(/(\$[\d,]+[kKmMbB]?(?:\s*[-–—]\s*\$[\d,]+[kKmMbB]?)?|\d+\+?(?:,\d{3})*(?:\.\d+)?%?(?:\s+(?:new\s+)?(?:jobs?|roles?|applications?|app(?:s)?|offers?|interviews?|matches?|positions?|opportunities?|companies?|years?|months?|days?|weeks?|hours?|contacts?|connections?|openings?|listings?|results?|candidates?|skills?|points?|times?|responses?|updates?|items?|tips?|insights?|actions?|tasks?|steps?))?)/gi);
+    return parts.map((p, j) => /^\$?\d/.test(p) ? <span key={j} style={{ color: C.purple, fontWeight: 600 }}>{p}</span> : p);
+  };
+  const previewBriefing = (text) => {
+    if (!text) return "";
+    const words = String(text).trim().split(/\s+/);
+    return words.length > 6 ? words.slice(0, 6).join(" ") + "…" : text;
+  };
 
   return (
     <div>
@@ -728,48 +835,102 @@ ${context}`, 600);
       {/* TOP ROW: Briefing + Daily Plan */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
         {/* Daily Briefing */}
-        <Card>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 20 }}>🤖</span><span style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>{t("dashboard.briefingTitle")}</span></div>
-          </div>
-          {!briefing && (
-            <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>{t("dashboard.briefingEmpty")}</div>
-              <Btn onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? t("dashboard.briefingAnalyzing") : t("dashboard.briefingGenerate")}</Btn>
+        <Card style={{ padding: "8px 14px 8px", position: "relative", overflow: "hidden", alignSelf: "flex-start" }}>
+          {/* Flex row: content + mobile spark only — robot is out of flow below */}
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            {/* Left: content */}
+            <div className="briefing-content-col" style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.briefingTitle")}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>Here's what CareerPersona AI accomplished for you today.</div>
+              {!briefingReady && !briefingError && (
+                <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>{briefingLoading || briefingHistoryLoading ? "Generating your daily briefing…" : "Loading briefing…"}</div>
+              )}
+              {!briefingReady && briefingError && (
+                <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: C.red }}>{briefingError}</span>
+                  <button onClick={generateBriefing} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Retry</button>
+                </div>
+              )}
+              {briefingReady && (
+                <div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
+                    {[
+                      briefing.summary,
+                      briefing.newMatchingJobs,
+                      briefing.highestPayingJobs,
+                      briefing.jobsClosingSoon,
+                    ].map((text, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                          <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4 }}>{hlBriefing(previewBriefing(text))}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ paddingTop: 0 }}>
+                    <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("briefing")}>
+                      View Full Briefing →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-          {briefing && (
-            <div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                {briefing.map((b, i) => <div key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.6, padding: "6px 0", borderBottom: i < briefing.length - 1 ? `1px solid ${C.border}` : "none" }}>• {b}</div>)}
+            {/* Mobile-only: AI Spark icon shown instead of robot */}
+            <div className="briefing-spark-mobile" style={{ display: "none", flexShrink: 0, alignItems: "center", justifyContent: "center", alignSelf: "center" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 2px 8px ${C.purple}30` }}>
+                <svg width="18" height="18" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M13 2 L15 10 L23 12 L15 14 L13 22 L11 14 L3 12 L11 10 Z" fill="white"/>
+                </svg>
               </div>
-              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generateBriefing} loading={briefingLoading}>{briefingLoading ? t("dashboard.briefingAnalyzing") : t("dashboard.regenerate")}</Btn>
             </div>
-          )}
+          </div>
+          {/* Robot: absolutely positioned — never contributes to card height */}
+          <div className="briefing-illus briefing-illus-desktop" style={{ display: "none", position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 4px 16px ${C.purple}40` }}>
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 2 L15 10 L23 12 L15 14 L13 22 L11 14 L3 12 L11 10 Z" fill="white"/>
+                <path d="M21 2 L22 4.5 L24.5 5.5 L22 6.5 L21 9 L20 6.5 L17.5 5.5 L20 4.5 Z" fill="white" opacity="0.5"/>
+              </svg>
+            </div>
+          </div>
         </Card>
 
-        {/* Daily Plan */}
-        <Card>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px" }}>{t("dashboard.planTitle")}</div>
-          </div>
-          {!dailyPlan && (
-            <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 14 }}>{t("dashboard.planEmpty")}</div>
-              <Btn onClick={generatePlan} loading={planLoading}>{planLoading ? t("dashboard.planCreating") : t("dashboard.planGenerate")}</Btn>
+        {/* Today's Action Plan */}
+        <Card style={{ padding: "8px 14px 8px", alignSelf: "flex-start" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.planTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>AI-generated career actions to complete today.</div>
+          {!planReady && !planError && (
+            <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>
+              {planLoading || planHistoryLoading ? "Generating your action plan…" : "Loading action plan…"}
             </div>
           )}
-          {dailyPlan && (
+          {!planReady && planError && (
+            <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: C.red }}>{planError}</span>
+              <button onClick={generatePlan} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Retry</button>
+            </div>
+          )}
+          {planReady && (
             <div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
-                {dailyPlan.map((t, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: i < dailyPlan.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: priorityColor[t.priority] || C.textMuted, background: (priorityColor[t.priority] || C.textMuted) + "18", padding: "2px 8px", borderRadius: 6, flexShrink: 0, marginTop: 2 }}>{(t.priority || "").toUpperCase()}</span>
-                    <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{t.task}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
+                {dailyPlan.categories.map((item, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      {item.status === "completed" && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4 }}>
+                      <span>{item.category}</span>
+                      <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
+                    </div>
                   </div>
                 ))}
               </div>
-              <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={generatePlan} loading={planLoading}>{planLoading ? t("dashboard.planCreating") : t("dashboard.regenerate")}</Btn>
+              <div style={{ paddingTop: 0 }}>
+                <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("plan")}>
+                  View Full Action Plan →
+                </button>
+              </div>
             </div>
           )}
         </Card>
@@ -779,7 +940,7 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
         {/* AI Smart Apply Center */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>AI Smart Apply Center</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>AI Smart Apply Center</div>
           <div style={{ textAlign: "center", padding: "20px 0" }}>
             <div style={{ color: C.textMuted, fontSize: 14 }}>Smart Apply content coming soon.</div>
           </div>
@@ -787,7 +948,7 @@ ${context}`, 600);
 
         {/* AI Opportunity Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>AI Opportunity Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>AI Opportunity Intelligence</div>
           <div style={{ textAlign: "center", padding: "20px 0" }}>
             <div style={{ color: C.textMuted, fontSize: 14 }}>Opportunity Intelligence content coming soon.</div>
           </div>
@@ -798,7 +959,7 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* Resume Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.resumeIntelTitle")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.resumeIntelTitle")}</div>
           {totalApps > 0 || profileComplete > 50 ? (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>{t("dashboard.profileStrength")}</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
@@ -813,7 +974,7 @@ ${context}`, 600);
 
         {/* Job Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.jobIntelTitle")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.jobIntelTitle")}</div>
           {saved.length > 0 ? (
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{saved.length}</div>
@@ -831,13 +992,13 @@ ${context}`, 600);
 
         {/* Market Intelligence */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.marketIntelTitle")}</div>
-          {salaryResults ? (
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.marketIntelTitle")}</div>
+          {salaryData?.results ? (
             <div>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.medianSalary")}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>${salaryResults.salaryRange?.median?.toLocaleString() || "—"}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{t("dashboard.demandLabel")} <strong>{salaryResults.demandLevel || "—"}</strong></div>
-              {salaryResults.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, marginTop: 6, lineHeight: 1.5 }}>{salaryResults.marketOutlook.slice(0, 120)}...</div>}
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>${salaryData.results.salaryRange?.median?.toLocaleString() || "—"}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{t("dashboard.demandLabel")} <strong>{salaryData.results.demandLevel || "—"}</strong></div>
+              {salaryData.results.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, marginTop: 6, lineHeight: 1.5 }}>{salaryData.results.marketOutlook.slice(0, 120)}...</div>}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.marketIntelEmpty")}</div>
@@ -850,7 +1011,7 @@ ${context}`, 600);
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* AI Recommendations */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.recommendationsTitle")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.recommendationsTitle")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>{t("dashboard.recCompleteProfile").replace("{pct}", profileComplete)}</div>}
             {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>{t("dashboard.recSaveJobs")}</div>}
@@ -865,7 +1026,7 @@ ${context}`, 600);
 
         {/* Career Progress */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               [t("dashboard.progressProfile"), `${profileComplete}%`, profileComplete, C.purple],
@@ -887,7 +1048,7 @@ ${context}`, 600);
 
         {/* AI Activity */}
         <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("dashboard.activityTitle")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.activityTitle")}</div>
           {aiActivity.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
               {aiActivity.map(a => (
@@ -905,7 +1066,7 @@ ${context}`, 600);
 
       {/* BOTTOM: AI Chat Assistant */}
       <Card>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</div>
         <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           {chatMessages.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 14 }}>
@@ -932,6 +1093,418 @@ ${context}`, 600);
   );
 }
 
+
+// ─── BRIEFING PAGE ──────────────────────────────────────────
+function BriefingPage({ profile, applications, savedJobs, setPage }) {
+  const { t } = useI18n();
+  const { session: interviewSession } = useInterviewSession(profile?.id);
+  const { data: salaryData } = useSalaryResearch(profile?.id);
+  const [networkContacts] = useNetworkingContacts(profile?.id);
+  const apps = applications || [];
+  const saved = savedJobs || [];
+  const totalApps = apps.length;
+  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
+  const offers = apps.filter(a => a.status === "Offer").length;
+  const profileFields = ["full_name", "email_address", "phone", "location", "job_title", "years_experience", "preferred_job_title", "work_type"];
+  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
+  const questionsCount = interviewSession?.questions?.length || 0;
+
+  const [briefing, setBriefing] = useState(null);
+  const [genLoading, setGenLoading] = useState(false);
+  const { briefing: savedBriefing, loading: briefingLoading, loadedFor, save: saveBriefing } = useAiBriefing(profile?.id);
+  const { logActivity } = useActivityLog(profile?.id);
+  const appliedRef = useRef(undefined);
+
+  useEffect(() => {
+    if (briefingLoading || loadedFor !== profile?.id) return;
+    if (appliedRef.current === profile?.id) return;
+    appliedRef.current = profile?.id;
+    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) setBriefing(savedBriefing);
+  }, [savedBriefing, briefingLoading, loadedFor, profile?.id]);
+
+  const generate = async () => {
+    setGenLoading(true);
+    try {
+      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
+      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Location: ${profile?.location || "not specified"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview practice: ${questionsCount} questions. Network: ${networkContacts.length} contacts. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const result = await buildBriefingPayload(ctx);
+      setBriefing(result);
+      saveBriefing(result).catch(err => console.error("briefing save failed", err));
+      logActivity("Daily briefing regenerated");
+      insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
+    } catch { /* keep existing briefing */ }
+    finally { setGenLoading(false); }
+  };
+
+  const isLoading = briefingLoading && !briefing;
+  const b = briefing;
+
+  const GreenCheck = () => (
+    <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>
+    </div>
+  );
+
+  const insightSections = b ? [
+    { label: "New Matching Jobs", text: b.newMatchingJobs },
+    { label: "Highest-Paying Jobs", text: b.highestPayingJobs },
+    { label: "Jobs Closing Soon", text: b.jobsClosingSoon },
+    { label: "AI Priority Recommendation", text: b.priorityRecommendation },
+    { label: "Companies Hiring Now", text: b.companiesHiringNow },
+    { label: "New Opportunities", text: b.newOpportunities },
+    { label: "Resume Updates", text: b.resumeUpdates },
+    { label: "ATS Score Changes", text: b.atsScoreChanges },
+    { label: "Interview Invitations", text: b.interviewInvitations },
+    { label: "Recruiter Activity", text: b.recruiterActivity },
+    { label: "Application Updates", text: b.applicationUpdates },
+    { label: "Salary Changes", text: b.salaryChanges },
+    { label: "Market Updates", text: b.marketUpdates },
+    { label: "Career Insights", text: b.careerInsights },
+  ] : [];
+
+  return (
+    <div>
+      {/* Back navigation */}
+      <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        ← Back to Dashboard
+      </button>
+
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: "#6B21E8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 4px 16px #6B21E840" }}>
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M13 2 L15 10 L23 12 L15 14 L13 22 L11 14 L3 12 L11 10 Z" fill="white"/>
+              <path d="M21 2 L22 4.5 L24.5 5.5 L22 6.5 L21 9 L20 6.5 L17.5 5.5 L20 4.5 Z" fill="white" opacity="0.5"/>
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>AI Daily Briefing</h1>
+            <p style={{ fontSize: 13, color: C.textMuted }}>Here's what CareerPersona AI accomplished for you today.</p>
+          </div>
+        </div>
+        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={generate} loading={genLoading}>
+          {genLoading ? "Generating…" : "↻ Regenerate"}
+        </Btn>
+      </div>
+
+      {b?.generatedAt && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 24 }}>
+          Generated {new Date(b.generatedAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </div>
+      )}
+
+      {/* Loading */}
+      {isLoading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: C.textMuted }}>
+          <div style={{ fontSize: 28, marginBottom: 12 }}>🗞️</div>
+          <div style={{ fontSize: 14 }}>Loading your briefing…</div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!b && !isLoading && (
+        <Card style={{ textAlign: "center", padding: "48px 24px" }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🗞️</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>Generate Your Daily Briefing</div>
+          <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 28, maxWidth: 420, margin: "0 auto 28px" }}>Get a personalized AI briefing with career insights, job opportunities, and today's priority actions.</div>
+          <Btn onClick={generate} loading={genLoading}>{genLoading ? "Generating…" : "✨ Generate Daily Briefing"}</Btn>
+        </Card>
+      )}
+
+      {b && (
+        <div>
+          {/* Personalized AI Summary — highlighted card */}
+          <Card style={{ marginBottom: 20, background: C.purpleLight, border: `1.5px solid ${C.purple}20` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>Personalized AI Summary</span>
+            </div>
+            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.7 }}>{b.summary}</p>
+          </Card>
+
+          {/* All 14 insight sections in 2-column grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }} className="two-col">
+            {insightSections.map(({ label, text }) => (
+              <Card key={label} style={{ padding: 18 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <GreenCheck />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 5 }}>{label}</div>
+                    <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{text}</div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Daily Highlights */}
+          {b.dailyHighlights?.length > 0 && (
+            <Card style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>Daily Highlights</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {b.dailyHighlights.map((h, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>★</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{h}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Bottom back action */}
+          <div style={{ textAlign: "center", paddingBottom: 8 }}>
+            <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Back to Dashboard</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FULL ACTION PLAN PAGE ───────────────────────────────────
+function PlanPage({ profile, applications, savedJobs, setPage }) {
+  const { t } = useI18n();
+  const { session: interviewSession } = useInterviewSession(profile?.id);
+  const { data: salaryData } = useSalaryResearch(profile?.id);
+  const [networkContacts] = useNetworkingContacts(profile?.id);
+  const apps = applications || [];
+  const saved = savedJobs || [];
+  const totalApps = apps.length;
+  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
+  const offers = apps.filter(a => a.status === "Offer").length;
+  const profileFields = ["full_name", "email_address", "phone", "location", "job_title", "years_experience", "preferred_job_title", "work_type"];
+  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
+  const questionsCount = interviewSession?.questions?.length || 0;
+
+  const [plan, setPlan] = useState(null);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState(null);
+
+  const { plan: savedPlan, loading: planLoading, loadedFor, save: savePlan } = useAiActionPlan(profile?.id);
+  const { logActivity } = useActivityLog(profile?.id);
+  const appliedRef = useRef(undefined);
+
+  useEffect(() => {
+    if (planLoading || loadedFor !== profile?.id) return;
+    if (appliedRef.current === profile?.id) return;
+    appliedRef.current = profile?.id;
+
+    // 1. sessionStorage has today's plan (set by Dashboard or a previous PlanPage generate)
+    try {
+      const c = sessionStorage.getItem("cp_plan_dash");
+      if (c) {
+        const cached = JSON.parse(c);
+        if (cached?.v === 2 && Array.isArray(cached?.categories) && isToday(cached.generatedAt)) {
+          setPlan(cached);
+          return;
+        }
+      }
+    } catch {}
+
+    // 2. Supabase has today's plan
+    if (savedPlan && savedPlan.v === 2 && Array.isArray(savedPlan.categories) && isToday(savedPlan.generatedAt)) {
+      setPlan(savedPlan);
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
+      return;
+    }
+
+    // 3. No today's plan anywhere — auto-generate
+    if (profile?.id) generate();
+  }, [savedPlan, planLoading, loadedFor, profile?.id]);
+
+  const generate = async () => {
+    setGenLoading(true);
+    setGenError(null);
+    console.log("[PlanPage] Starting generation for user", profile?.id);
+    try {
+      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
+      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const result = await buildPlanPayload(ctx);
+      console.log("[PlanPage] Generation succeeded");
+      setPlan(result);
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
+      logActivity("Daily plan regenerated");
+      insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
+    } catch (e) {
+      console.error("[PlanPage] Generation failed:", e?.message || e);
+      setGenError("Generation failed. Please try again.");
+    }
+    finally { setGenLoading(false); }
+  };
+
+  const toggleComplete = (id) => {
+    if (!plan) return;
+    const isCategory = plan.categories.some(c => c.id === id);
+    let updated;
+    if (isCategory) {
+      const categories = plan.categories.map(c =>
+        c.id === id ? { ...c, status: c.status === "completed" ? "pending" : "completed" } : c
+      );
+      updated = { ...plan, categories };
+    } else {
+      const sectionCompletions = { ...(plan.sectionCompletions || {}), [id]: !(plan.sectionCompletions?.[id]) };
+      updated = { ...plan, sectionCompletions };
+    }
+    setPlan(updated);
+    try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(updated)); } catch {}
+    savePlan(updated).catch(err => console.error("[PlanPage] completion save failed", err));
+  };
+
+  const isLoading = (planLoading && !plan) || (genLoading && !plan);
+  const p = plan;
+  const completedCategories = p?.categories?.filter(c => c.status === "completed").length || 0;
+  const completedSections = Object.values(p?.sectionCompletions || {}).filter(Boolean).length;
+  const completedCount = completedCategories + completedSections;
+  const productivityScore = p ? Math.min(100, (p.productivityScore || 60) + completedCount * 5) : 0;
+
+  const additionalSections = p ? [
+    { id: "followups", label: "Follow-up Reminders", text: p.followUps, page: "tracker" },
+    { id: "networking", label: "Networking Tasks", text: p.networking, page: "network" },
+    { id: "skills", label: "Skill Recommendations", text: p.skills, page: "resume" },
+    { id: "certifications", label: "Certification Recommendations", text: p.certifications, page: "resume" },
+    { id: "goals", label: "Career Goals", text: p.careerGoals, page: "profile" },
+  ] : [];
+
+  const categoryPageMap = { priorities: null, applications: "jobs", resume: "resume", interview: "interview" };
+
+  const StatusCircle = ({ id, filled }) => (
+    <div onClick={() => toggleComplete(id)} style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${filled ? C.green : C.purple}`, background: filled ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}>
+      {filled && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+    </div>
+  );
+
+  return (
+    <div>
+      <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        ← Back to Dashboard
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.purple}40` }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="4" y="5" width="16" height="17" rx="3" stroke="white" strokeWidth="1.8"/>
+              <line x1="8" y1="10" x2="16" y2="10" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="8" y1="14" x2="13" y2="14" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+              <rect x="9" y="2" width="6" height="5" rx="1.5" fill="white" opacity="0.75"/>
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>Today's Action Plan</h1>
+            <p style={{ fontSize: 13, color: C.textMuted }}>Your personalized AI career actions for today.</p>
+          </div>
+        </div>
+        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={generate} loading={genLoading}>
+          {genLoading ? "Generating…" : "↻ Regenerate"}
+        </Btn>
+      </div>
+
+      {p?.generatedAt && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 24 }}>
+          Generated {new Date(p.generatedAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: C.textMuted }}>
+          <div style={{ fontSize: 28, marginBottom: 12 }}>📋</div>
+          <div style={{ fontSize: 14 }}>{genLoading ? "Generating your action plan…" : "Loading your action plan…"}</div>
+        </div>
+      )}
+
+      {!p && !isLoading && genError && (
+        <Card style={{ textAlign: "center", padding: "32px 24px" }}>
+          <div style={{ fontSize: 14, color: C.red, marginBottom: 16 }}>{genError}</div>
+          <Btn onClick={generate} loading={genLoading}>↻ Try Again</Btn>
+        </Card>
+      )}
+
+      {p && (
+        <div>
+          {/* AI Productivity Score */}
+          <Card style={{ marginBottom: 20, background: C.purpleLight, border: `1.5px solid ${C.purple}20` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>★</span>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>AI Productivity Score</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {completedCount > 0 && <span style={{ fontSize: 12, color: C.textMuted }}>{completedCount} of {p.categories.length + additionalSections.length} completed</span>}
+                <div style={{ fontSize: 28, fontWeight: 900, color: C.purple }}>{productivityScore}<span style={{ fontSize: 14, fontWeight: 600 }}>/100</span></div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ height: 6, borderRadius: 3, background: "#E8D5FF", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${productivityScore}%`, background: C.purple, borderRadius: 3 }} />
+              </div>
+            </div>
+          </Card>
+
+          {/* 4 Main Categories */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
+            {p.categories.map((item) => {
+              const done = item.status === "completed";
+              const goPage = categoryPageMap[item.id];
+              return (
+                <Card key={item.id} style={{ padding: 18 }}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <StatusCircle id={item.id} filled={done} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: done ? C.textMuted : C.text, textDecoration: done ? "line-through" : "none" }}>{item.category}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{item.time}</div>
+                      </div>
+                      <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: goPage ? 10 : 0, textDecoration: done ? "line-through" : "none" }}>{item.task}</div>
+                      {goPage && (
+                        <button onClick={() => setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                          Go to {item.category} →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Additional Sections */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }} className="two-col">
+            {additionalSections.map(({ id, label, text, page: goPage }, idx) => {
+              const done = !!p.sectionCompletions?.[id];
+              return (
+                <Card key={id} style={{ padding: 18, ...(idx === additionalSections.length - 1 && additionalSections.length % 2 !== 0 ? { gridColumn: "1 / -1" } : {}) }}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <StatusCircle id={id} filled={done} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: done ? C.textMuted : C.text, marginBottom: 6, textDecoration: done ? "line-through" : "none" }}>{label}</div>
+                      <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: 10, textDecoration: done ? "line-through" : "none" }}>{text}</div>
+                      <button onClick={() => setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                        Go to {label.split(" ")[0]} →
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div style={{ textAlign: "center", paddingBottom: 8 }}>
+            <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Back to Dashboard</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── RESUME PAGE ───────────────────────────────────────────
 const SAMPLE_RESUME = `John Smith | john@email.com | San Francisco, CA | (415) 555-0123
@@ -1089,7 +1662,7 @@ function ResumePage({ onSave, onNavigate, profile }) {
 RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000);
       setResults(JSON.parse(raw)); setTab("resume");
-    } catch { setError(t("resume.analysisFailed")); }
+    } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
     finally { clearInterval(iv); setLoading(false); }
   };
 
@@ -2065,7 +2638,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
             </div>
 
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>{t("interview.practiceLabel")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("interview.practiceLabel")}</div>
               <Textarea label={t("interview.typeAnswerLabel")} placeholder={t("interview.typeAnswerPlaceholder")} value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
               <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? t("interview.analyzing") : t("interview.getFeedback")}</Btn>
             </div>
@@ -2339,7 +2912,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               {[[t("salary.low"), results.salaryRange?.low, C.textMuted], [t("salary.median"), results.salaryRange?.median, C.purple], [t("salary.high"), results.salaryRange?.high, C.green]].map(([l, v, c]) => (
                 <div key={l} style={{ textAlign: "center", borderRight: l !== t("salary.high") ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
                   <div style={{ fontSize: 28, fontWeight: 800, color: c }}>{fmt(v)}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: "1px", marginTop: 4 }}>{t("salary.salarySuffix").replace("{level}", l)}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{t("salary.salarySuffix").replace("{level}", l)}</div>
                 </div>
               ))}
             </div>
@@ -2354,7 +2927,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </Card>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.salaryByExperience")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>{t("salary.salaryByExperience")}</div>
               {results.salaryByExperience?.map(({ level, salary }) => {
                 const vals = results.salaryByExperience.map(x => Number(x.salary) || 0);
                 const max = Math.max(...vals, 1);
@@ -2362,7 +2935,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               })}
             </Card>
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.skillPremiums")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>{t("salary.skillPremiums")}</div>
               {results.skillPremiums?.map(({ skill, premium }) => (
                 <div key={skill} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <span style={{ fontSize: 14, color: C.text }}>{skill}</span>
@@ -2373,7 +2946,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="two-col">
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.topPayingCompanies")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>{t("salary.topPayingCompanies")}</div>
               {results.topPayingCompanies?.map(({ name, avgComp }, i) => (
                 <div key={name} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -2385,7 +2958,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               ))}
             </Card>
             <Card>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14 }}>{t("salary.negotiationTips")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>{t("salary.negotiationTips")}</div>
               {results.negotiationTips?.map((tip, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                   <span style={{ width: 20, height: 20, background: C.blueLight, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: C.blue, flexShrink: 0 }}>{i+1}</span>
@@ -2409,12 +2982,8 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 // ─── NETWORKING PAGE ───────────────────────────────────────
 function NetworkingPage({ profile }) {
   const { t } = useI18n();
-  const [form, setForm] = useStorage("cp_network_form", { targetName: "", targetRole: "", targetCompany: "", yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "", purpose: "coffee-chat", jobDesc: "" });
-  const [results, setResults] = useStorage("cp_network_results", null);
+  const { form, setForm, results, setResults, draft, setDraft, emailTo, setEmailTo, emailSent, setEmailSent } = useNetworkingSession(profile?.id, { yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "" });
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
-  const [emailTo, setEmailTo] = useStorage("cp_network_emailto", "");
-  const [emailSent, setEmailSent] = useStorage("cp_network_emailsent", false);
-  const [draft, setDraft] = useStorage("cp_network_draft", null);
   const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(null);
@@ -2470,7 +3039,7 @@ Method: ${contact.method}
 It has been about 7 days since the original outreach.
 Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it brief, professional, and warm. 2-3 paragraphs max.`, 800);
       setFuDraft(cleanPlaceholders(raw) || t("networking.followupError"));
-    } catch { setFuDraft(t("networking.followupError")); }
+    } catch (e) { console.error("[Networking] followup", e); setFuDraft(t("networking.followupError")); }
     finally { setFuLoading(false); }
   };
 
@@ -3100,7 +3669,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  const validPages = new Set(["dashboard","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
+  const validPages = new Set(["dashboard","briefing","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -3134,11 +3703,11 @@ export default function App() {
 
   // Scroll to top on every page change
   useEffect(() => {
-    window.scrollTo(0, 0);
-    // Beat browser scroll restoration on refresh
+    window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
     if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
-    const t = setTimeout(() => window.scrollTo(0, 0), 50);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 50);
+    const t2 = setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [page]);
 
   // Handle browser Back/Forward
@@ -3162,7 +3731,7 @@ export default function App() {
     if (updated.id) upsertProfile(updated.id, updates).catch(() => {});
   };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
-  const goHome = () => setPage("dashboard");
+  const goHome = () => { setPage("dashboard"); window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
 
   const { language, setLanguage, t } = useLanguagePreference(profile?.preferred_language, (code) => updateProfile({ preferred_language: code }));
 
@@ -3204,6 +3773,12 @@ export default function App() {
   .hero-section { margin-bottom: 10px !important; }
   .hero-greeting { font-size: 22px !important; margin-bottom: 2px !important; }
   .hero-subtitle { font-size: 12px !important; }
+  .briefing-illus { display: none !important; }
+  .briefing-spark-mobile { display: flex !important; }
+}
+@media (min-width: 701px) {
+  .briefing-illus-desktop { display: flex !important; }
+  .briefing-content-col { padding-right: 76px; }
 }
 @media (min-width: 701px) and (max-width: 1024px) {
   .hero-greeting { font-size: 24px !important; margin-bottom: 4px !important; }
@@ -3296,6 +3871,8 @@ export default function App() {
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}

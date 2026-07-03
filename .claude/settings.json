@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase *)",
+      "Bash(node e2e_assistant2.cjs)",
+      "Bash(node e2e_assistant3.cjs)",
+      "Bash(node e2e_assistant4.cjs)",
+      "Bash(netstat -ano)",
+      "Bash(powershell -Command \"Stop-Process -Id 2696 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(node e2e_race_regression.cjs)",
+      "Bash(powershell -Command \"Stop-Process -Id 25136 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node e2e_notif_activity.cjs)",
+      "Bash(grep -n \"const { notifications, markAllRead }\\\\|toggleNotif\" src/App.jsx)",
+      "Bash(node e2e_notif_activity2.cjs)",
+      "Bash(node e2e_notif_plan.cjs)",
+      "Bash(node e2e_smoke_pages.cjs)",
+      "Bash(powershell -Command \"Stop-Process -Id 31800 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(node e2e_briefing_plan.cjs)",
+      "Bash(node e2e_briefing_plan2.cjs)",
+      "Bash(powershell -Command \"Stop-Process -Id 4440 -Force -ErrorAction SilentlyContinue\")"
+    ]
+  }
+}

@@ -26,16 +26,29 @@ async function syncListDiff(table, prev, next, userId, toRow, key) {
   }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // One-time push of whatever is in localStorage for `localKey` into `table`,
 // guarded by a per-user flag so it only ever runs once per browser/account.
+// Uses upsert (not insert) to handle partial migrations and ID conflicts.
+// Flag is only set on success — if the upsert fails, the next load retries.
+// IDs that are not valid UUIDs are stripped so Supabase auto-generates them.
 async function migrateLocalOnce(table, localKey, userId, toRow) {
-  const flag = `${localKey}_migrated_${userId}`;
+  const flag = `${localKey}_migrated_v2_${userId}`;
   if (localStorage.getItem(flag)) return;
   let local = [];
   try { local = JSON.parse(localStorage.getItem(localKey) || "[]"); } catch {}
   if (local.length) {
-    try { await supabase.from(table).insert(local.map(x => toRow(x, userId))); }
-    catch (err) { console.error(`migrateLocalOnce(${table}) failed`, err); }
+    const rows = local.map(x => {
+      const row = toRow(x, userId);
+      if (!UUID_RE.test(row.id)) delete row.id;
+      return row;
+    });
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+    if (error) {
+      console.error(`migrateLocalOnce(${table}) failed`, error);
+      return; // don't set flag — allow retry on next load
+    }
   }
   localStorage.setItem(flag, "true");
 }
