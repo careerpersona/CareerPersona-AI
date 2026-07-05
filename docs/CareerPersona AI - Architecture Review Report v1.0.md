@@ -3,6 +3,8 @@
 **Codebase reviewed:** `src/App.jsx` (275KB, ~3,800 lines), `src/data/` (14 files), `worker.js`
 **Specification reviewed:** Master Architecture Specification v1.0 (Volumes 1–4)
 
+> **Blueprint update — 2026-07-01**: Smart Apply package expanded. Salary Insight and Company Insight are now **required V1 responsibilities**, not future items. The complete Smart Apply package is 10 items. Implementation requires: (1) `smart_apply_queue` schema migration (+2 columns), (2) AI prompt update in 3 call sites, (3) `markReady` persistence update, (4) UserContext exposure. See Section 1 (Smart Apply) and Phase 5b for full specification.
+
 ---
 
 ## 1. ✅ Already Implemented
@@ -81,8 +83,25 @@ All 14 files exist and are correctly wired:
 - `useNetworkingContacts` with Supabase + localStorage sync
 
 ### Smart Apply (Page — JobsPage)
-- Full application package generation (tailored resume, cover letter, recruiter message)
-- `smart_apply_queue` with 4-status workflow
+- **Complete AI application package — 10 responsibilities, all V1 required (blueprint updated 2026-07-01):**
+  1. Find matching jobs
+  2. Analyze job descriptions
+  3. Select the best resume
+  4. Tailor the resume
+  5. Generate a cover letter
+  6. Generate a recruiter / outreach message
+  7. Generate a networking message
+  8. **Generate Salary Insight** ← promoted from future to V1
+  9. **Generate Company Insight** ← promoted from future to V1
+  10. Prepare the complete AI application package, save history, update UserContext
+- `smart_apply_queue` with 4-status workflow (`queued → ready | failed | applied | skipped`)
+- **Future Version capabilities (not V1 — documented for roadmap continuity):**
+  - AI Auto Fill — automatically populate external ATS/application forms using the generated package
+  - Multi-provider application support — submit directly to LinkedIn Easy Apply, Indeed, Greenhouse, Lever, and other platforms
+  - One-click review before submission — present the complete package in a pre-flight checklist for user confirmation before any external submission fires
+  - Additional future Smart Apply capabilities as approved in the blueprint
+
+> Future capabilities are documented here so promoted items can always be traced (Salary Insight and Company Insight were in this list before their 2026-07-01 promotion to V1). Do not implement future items until they are explicitly promoted via a blueprint update.
 
 ### AI Career Assistant
 - Persistent chat history via `assistant_conversations` + `assistant_messages`
@@ -352,7 +371,7 @@ Decision Engine reads all AI Insights → produces Briefing, Plan, top-4 priorit
 | `saved_jobs` | ✅ | Full CRUD via `syncList.js` |
 | `job_matches` | ✅ | Written by job match agent |
 | `user_resumes` | ✅ | Full CRUD via `resumes.js` |
-| `smart_apply_queue` | ✅ | 4-status workflow, fully wired |
+| `smart_apply_queue` | 🟡 | 4-status workflow wired; **missing `salary_insight` (jsonb) and `company_insight` (jsonb)** columns — migration required for V1 completion |
 | `ai_briefings` | ✅ | Upsert on `(user_id, briefing_date)` |
 | `ai_action_plans` | ✅ | Upsert on `(user_id, plan_date)` |
 | `interview_sessions` | ✅ | Full question/answer storage |
@@ -478,6 +497,38 @@ Add intelligence cards for: Interview (readiness score, active sessions, last pr
 
 ---
 
+### Phase 5b — Complete Smart Apply V1 Package (Salary + Company Insight)
+
+**Effort**: 1 day | **Risk**: Low | **Blueprint updated**: 2026-07-01
+
+Salary Insight and Company Insight are now required V1 Smart Apply outputs. Four code changes are required — in this order:
+
+**Step 1 — Schema migration** (`smart_apply_queue` table):
+```sql
+ALTER TABLE smart_apply_queue ADD COLUMN salary_insight jsonb;
+ALTER TABLE smart_apply_queue ADD COLUMN company_insight jsonb;
+```
+
+**Step 2 — AI prompt** (`autoSmartApply`, manual `smartApply`, `handleRetry` in `src/App.jsx`):
+
+Add to the Claude prompt's requested JSON output:
+- `salaryInsight`: `{ marketRange, userPositioning, negotiationLeverage, benchmarks[] }`
+- `companyInsight`: `{ culture, recentNews, hiringTrend, redFlags[], greenFlags[], talkingPoints[] }`
+
+**Step 3 — `markReady`** (`src/data/smartApply.js`):
+
+Add `salary_insight` and `company_insight` to the upsert payload in the `markReady()` function.
+
+**Step 4 — UserContext** (`src/data/userContext.js`):
+
+Expose `salaryInsight` and `companyInsight` from queue rows inside `buildUserContext` / `getContextString` so other agents (Briefing, Chat, Interview) can read them.
+
+**Step 5 — Display** (Dashboard Smart Apply card, SavedJobsPage queue card):
+
+Add display fields for the two new insight blocks once data is available.
+
+---
+
 ### Phase 6 — Implement AI Insights Standard Format
 
 **Effort**: 2–3 days | **Risk**: Medium | **Spec section**: Volume 1, Part 2, Sections 9–10
@@ -558,11 +609,17 @@ Add structured `skills`, `certifications`, and `career_goals` tables. Migrate fr
 
 ---
 
-### Phase 15 — AI Auto Fill and AI Voice Interview Coach
+### Phase 15 — AI Auto Fill, Multi-Provider Application Support, and AI Voice Interview Coach
 
 **Effort**: Weeks | **Risk**: High (new AI capabilities) | **Spec section**: Volume 4, Sections 43–44
 
-Version 2 features. Require significant infrastructure work before implementation. Auto Fill requires browser automation or ATS integration. Voice Interview Coach requires WebRTC or audio API integration. Separate planning sessions required.
+Future Version features. Require significant infrastructure work before implementation.
+- **AI Auto Fill** — browser automation or ATS API integration required; see also Section 1 Smart Apply future roadmap
+- **Multi-provider application support** (LinkedIn Easy Apply, Indeed, Greenhouse, Lever) — external OAuth + form-submission layer required
+- **One-click review before submission** — pre-flight checklist UI and external submission pipeline required
+- **AI Voice Interview Coach** — WebRTC or audio API integration required
+
+None of these may be implemented until explicitly promoted to a numbered version via a blueprint update. Separate planning sessions required for each.
 
 ---
 

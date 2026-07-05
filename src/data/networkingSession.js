@@ -23,7 +23,14 @@ export function useNetworkingSession(userId, defaultForm = {}) {
   const saveTimer = useRef(null);
 
   useEffect(() => {
-    if (!userId || loadedFor.current === userId) return;
+    if (!userId) {
+      loadedFor.current = null;
+      clearTimeout(saveTimer.current);
+      Object.values(LS).forEach(k => { try { localStorage.removeItem(k); } catch {} });
+      setSession({ form: { targetName: "", targetRole: "", targetCompany: "", yourBackground: "", purpose: "coffee-chat", jobDesc: "" }, results: null, draft: null, emailTo: "", emailSent: false });
+      return;
+    }
+    if (loadedFor.current === userId) return;
     loadedFor.current = userId;
     (async () => {
       const { data, error } = await supabase

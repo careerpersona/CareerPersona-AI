@@ -154,6 +154,11 @@ export default {
     recruiterMessage: "Recruiter Message",
     networkingMessage: "Networking Message",
     likelyQuestions: "Likely Application Questions",
+    statusFailed: "Failed",
+    generationFailed: "⚠️ Generation failed. Click Retry to try again.",
+    retryGeneration: "Retry",
+    retryNoResume: "No resume found. Please add your resume in Job Search first.",
+    retryError: "Retry failed. Please try again.",
   },
   settings: {
     heading: "Settings",
@@ -287,6 +292,7 @@ export default {
     statusGhosted: "Ghosted",
     statusUnknown: "Unknown",
     all: "All",
+    deleteFailed: "Delete failed. Please try again.",
   },
   salary: {
     heading: "Salary Insights",
@@ -460,6 +466,8 @@ export default {
     track: "+ Track",
     preparing: "Preparing…",
     smartApply: "🚀 Smart Apply",
+    tracked: "✓ Tracked",
+    smartApplied: "✅ In Queue",
     match: "Match",
     ats: "ATS",
     interviewPct: "Interview %",

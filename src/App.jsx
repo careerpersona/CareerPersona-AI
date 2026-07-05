@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { supabase, initialLocationHash } from "./lib/supabaseClient";
+import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
-import { useApplications, insertApplicationRow } from "./data/applications";
+import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow } from "./data/applications";
 import { useSavedJobs } from "./data/savedJobs";
-import { useResumes } from "./data/resumes";
+import { useResumes, useResumeHistory } from "./data/resumes";
 import { useSmartApplyQueue } from "./data/smartApply";
 import { useInterviewSession } from "./data/interviewSession";
 import { useSalaryResearch } from "./data/salaryResearch";
@@ -36,6 +36,12 @@ const useStorage = (key, initial) => {
   return [val, set];
 };
 
+const useSessionState = (key, initial) => {
+  const [val, setVal] = useState(() => { try { const d = sessionStorage.getItem(key); return d !== null ? JSON.parse(d) : initial; } catch { return initial; } });
+  const set = useCallback((v) => { setVal(prev => { const next = typeof v === "function" ? v(prev) : v; try { sessionStorage.setItem(key, JSON.stringify(next)); } catch {} return next; }); }, [key]);
+  return [val, set];
+};
+
 // Unique ID generator — crypto.randomUUID with a safe fallback
 const uid = () => {
   try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
@@ -52,6 +58,26 @@ const saveAccount = (profile) => {
   localStorage.setItem("cp_accounts", JSON.stringify(accounts));
 };
 
+// Detect auth callback URLs synchronously at module load so we can show a
+// loading screen instead of the login form while the token is being exchanged.
+// Handles both implicit flow (#access_token=…) and PKCE flow (?code=…).
+const isAuthCallbackUrl =
+  initialLocationHash.includes("access_token=") ||
+  initialLocationHash.includes("token_hash=") ||
+  initialLocationSearch.includes("code=");
+
+// After a successful auth callback, replace the auth params in the address bar
+// with the clean dashboard hash so the token isn't replayed on refresh.
+const cleanAuthCallbackUrl = () => {
+  if (
+    window.location.hash.includes("access_token=") ||
+    window.location.hash.includes("token_hash=") ||
+    window.location.search.includes("code=")
+  ) {
+    window.history.replaceState({ page: "dashboard" }, "", "#dashboard");
+  }
+};
+
 const useAuth = () => {
   // Seed recoveryMode from the hash captured at module load time — before
   // createClient() processes it, before React StrictMode double-mounts effects,
@@ -62,8 +88,12 @@ const useAuth = () => {
     try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; }
   });
   const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
+  // Show a "Completing sign-in…" screen while Supabase exchanges the callback
+  // token. Cleared by the first onAuthStateChange event (success or failure).
+  const [authResolving, setAuthResolving] = useState(isAuthCallbackUrl && !isRecoveryUrl);
   // Sync ref so async callbacks read the latest value without stale closures.
   const recoveryRef = useRef(isRecoveryUrl);
+  const authResolvingRef = useRef(authResolving);
 
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
   const logout = async () => {
@@ -80,10 +110,32 @@ const useAuth = () => {
       const merged = await fetchProfile(session.user.id, session.user.email);
       login(merged);
     };
-    // Don't auto-login if we're already in recovery mode when getSession resolves.
+
+    const resolveAuthCallback = () => {
+      if (authResolvingRef.current) {
+        authResolvingRef.current = false;
+        setAuthResolving(false);
+        cleanAuthCallbackUrl();
+      }
+    };
+
+    // On load: sync from Supabase session, or clear stale cp_user if session is gone.
+    // Without this, an expired refresh token leaves the user visually "signed in"
+    // while every DB write fails silently with an RLS 401.
     supabase.auth.getSession().then(({ data }) => {
-      if (!recoveryRef.current) syncFromSession(data.session);
+      if (recoveryRef.current) return;
+      if (data.session) {
+        syncFromSession(data.session);
+      } else {
+        // No valid session — clear any stale cp_user so the login screen shows.
+        setUser(null);
+        localStorage.removeItem("cp_user");
+      }
+      // If getSession resolves first (can happen in PKCE flow where the code
+      // exchange completes before onAuthStateChange fires), clear the loading screen.
+      resolveAuthCallback();
     });
+
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         // Hold the Supabase internal session (needed for updateUser) but don't
@@ -92,12 +144,27 @@ const useAuth = () => {
         setRecoveryMode(true);
         setUser(null);
         localStorage.removeItem("cp_user");
+        resolveAuthCallback();
         return;
       }
       // Ignore all other events while the user is going through the reset flow
       // (USER_UPDATED fires after updateUser succeeds; we don't want auto-login).
       if (recoveryRef.current) return;
-      if (session?.user) syncFromSession(session);
+      if (session?.user) {
+        syncFromSession(session);
+        resolveAuthCallback();
+      } else if (event === "SIGNED_OUT") {
+        // Explicit sign-out, expired refresh token, or server-side session revocation.
+        // Clear local state so the user sees the login screen rather than a broken
+        // "signed in but can't do anything" state.
+        setUser(null);
+        localStorage.removeItem("cp_user");
+        resolveAuthCallback();
+      } else {
+        // Any other event with no session (e.g. TOKEN_REFRESHED with null) —
+        // don't leave the loading screen stuck.
+        resolveAuthCallback();
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -107,7 +174,7 @@ const useAuth = () => {
     setRecoveryMode(false);
   };
 
-  return { user, login, logout, recoveryMode, clearRecovery };
+  return { user, login, logout, recoveryMode, clearRecovery, authResolving };
 };
 
 async function askClaude(prompt, maxTokens = 2500) {
@@ -346,7 +413,7 @@ function Badge({ children, color = C.purple }) {
 }
 
 function ScoreRing({ score, size = 80 }) {
-  const color = score >= 80 ? C.green : score >= 60 ? C.yellow : C.red;
+  const color = score >= 80 ? C.green : score >= 60 ? C.yellow : score >= 40 ? "#EA580C" : C.red;
   const r = size / 2 - 7; const circ = 2 * Math.PI * r; const dash = (score / 100) * circ;
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
@@ -479,9 +546,14 @@ function AuthPage({ t }) {
     const { data, error: authError } =
       mode === "login"
         ? await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
-        : await supabase.auth.signUp({ email: form.email, password: form.password, options: { data: { full_name: form.name } } });
+        : await supabase.auth.signUp({ email: form.email, password: form.password, options: { data: { full_name: form.name }, emailRedirectTo: window.location.origin } });
     setLoading(false);
-    if (authError) { setError(authError.message); return; }
+    if (authError) {
+      console.error("[Auth] signUp/signIn error:", authError);
+      const detail = [authError.message, authError.status ? `(HTTP ${authError.status})` : null].filter(Boolean).join(" ");
+      setError(detail);
+      return;
+    }
     if (mode === "signup" && !data.session) { setConfirmPending(true); return; }
     // onAuthStateChange (in useAuth) picks up the new session and populates the profile;
     // App re-renders past AuthPage once `user` is set.
@@ -650,7 +722,7 @@ async function buildPlanPayload(ctx) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp }) {
   const { t } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -706,9 +778,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     } else if (profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
   }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id]);
 
-  const { session: interviewSession } = useInterviewSession(profile?.id);
-  const { data: salaryData } = useSalaryResearch(profile?.id);
-  const [networkContacts] = useNetworkingContacts(profile?.id);
+  const networkContacts = networkContactsProp || [];
   const apps = applications || [];
   const saved = savedJobs || [];
 
@@ -720,22 +790,60 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
   const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
   const questionsCount = interviewSession?.questions?.length || 0;
 
+  // Smart Apply derived stats
+  const saQueue = smartApplyQueue || [];
+  const saReady = saQueue.filter(q => q.status === "ready").length;
+  const saWaiting = saQueue.filter(q => q.status === "queued").length;
+  const saApplied = applications.filter(a => saQueue.some(q => q.application_id === a.id)).length;
+  const saHasResume = saQueue.some(q => q.status === "ready" && q.tailored_resume);
+  const saHasCover = saQueue.some(q => q.status === "ready" && q.cover_letter);
+
+  // Opportunity Intelligence derived stats
+  const scoredJobs = saved.filter(j => j.matchScore != null).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  const topOpportunities = scoredJobs.length ? scoredJobs.slice(0, 3) : saved.slice(0, 3);
+  const avgMatchScore = scoredJobs.length ? Math.round(scoredJobs.reduce((s, j) => s + (j.matchScore || 0), 0) / scoredJobs.length) : null;
+  const highPriorityJobs = scoredJobs.filter(j => j.matchScore >= 80).length;
+  const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const newOpportunities = saved.filter(j => j.saved_at && j.saved_at > recentCutoff).length;
+
+  // Resume Intelligence derived stats
+  const resumeCount = (resumes || []).length;
+  const appAtsScores = apps.filter(a => a.atsScore > 0).map(a => a.atsScore);
+  const bestAts = appAtsScores.length ? Math.max(...appAtsScores) : null;
+  const bestResume = (resumes || []).filter(r => r.ats_score != null).sort((a, b) => new Date(b.last_analyzed_at) - new Date(a.last_analyzed_at))[0] ?? null;
+
+  // Job Intelligence derived stats
+  const responseRate = totalApps > 0 ? Math.round(((interviews + offers) / totalApps) * 100) : 0;
+
+  // Interview Intelligence derived stats
+  const interviewAnswers = interviewSession?.answers || [];
+  const answeredCount = interviewAnswers.length;
+  const scoredAnswers = interviewAnswers.filter(a => a.feedback?.score);
+  const avgFeedbackScore = scoredAnswers.length ? Math.round(scoredAnswers.reduce((s, a) => s + a.feedback.score, 0) / scoredAnswers.length * 10) / 10 : null;
+
+  // Networking Intelligence derived stats
+  const followUpNeeded = networkContacts.filter(c => c.status === "Waiting for Reply").length;
+  const replied = networkContacts.filter(c => ["Replied", "Met", "Connected"].includes(c.status)).length;
+  const outreachRate = networkContacts.length > 0 ? Math.round((replied / networkContacts.length) * 100) : 0;
+
   // AI Activity log
   const { activity: aiActivity, logActivity } = useActivityLog(profile?.id);
 
   // Unified user context — single source of truth for all AI modules.
-  // Phase 2: foundation wired at DashboardPage level where most data is loaded.
-  // Phase 3 will replace inline context strings with userContext.getContextString().
   const userContext = useUserContext({
     profile,
     applications,
     savedJobs,
+    resumes: resumes ?? [],
+    smartApplyQueue: smartApplyQueue ?? [],
     interviewSession,
     salaryData,
     networkContacts,
+    networkingSession,
     briefing,
     dailyPlan,
     activityLog: aiActivity,
+    notifications: notifications ?? [],
     chatHistory: chatMessages,
   });
 
@@ -745,8 +853,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     setBriefingError(null);
     console.log("[Briefing] Starting generation for user", profile?.id);
     try {
-      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
-      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Location: ${profile?.location || "not specified"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview practice: ${questionsCount} questions. Network: ${networkContacts.length} contacts. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const ctx = userContext.getContextString();
       const result = await buildBriefingPayload(ctx);
       if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
@@ -768,8 +875,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     setPlanError(null);
     console.log("[ActionPlan] Starting generation for user", profile?.id);
     try {
-      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
-      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const ctx = userContext.getContextString();
       const result = await buildPlanPayload(ctx);
       if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
@@ -795,7 +901,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
     addChatMessage("user", userMsg).catch(err => console.error("assistant chat save failed", err));
     setChatLoading(true);
     try {
-      const context = `You are CareerPersona AI career assistant. User: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "N/A"}. Target: ${profile?.preferred_job_title || "N/A"}. Apps: ${totalApps}. Interviews: ${interviews}. Offers: ${offers}. Saved: ${saved.length}. Profile: ${profileComplete}% complete. Answer concisely (2-3 sentences) using this context.`;
+      const context = `You are CareerPersona AI career assistant. ${userContext.getContextString()} Answer concisely (2-3 sentences) using this context.`;
       const raw = await askClaude(`${context}\nUser question: ${userMsg}`, 400);
       setChatMessages(prev => [...prev, { role: "ai", text: raw }]);
       addChatMessage("ai", raw).catch(err => console.error("assistant chat save failed", err));
@@ -936,53 +1042,134 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
         </Card>
       </div>
 
-      {/* ROW 1B: Smart Apply + Opportunity Intelligence */}
+      {/* ROW 2: Smart Apply + Opportunity Intelligence */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
-        {/* AI Smart Apply Center */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>AI Smart Apply Center</div>
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <div style={{ color: C.textMuted, fontSize: 14 }}>Smart Apply content coming soon.</div>
+        {/* Smart Apply Center */}
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>AI Smart Apply Center</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>Find matching jobs and analyze description fit. Your application preparation pipeline.</div>
+          {saQueue.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>No jobs in your Smart Apply queue yet. Find matching jobs to analyze and add to your pipeline.</div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                {[["Ready", saReady, C.green], ["In Queue", saWaiting, C.yellow], ["Applied", saApplied, C.purple]].map(([label, count, color]) => (
+                  <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 10, padding: "8px 6px", textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color }}>{count}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: saHasResume ? C.green : C.textMuted }}>{saHasResume ? "✓ Tailored resume ready" : "○ Resume not yet tailored"}</div>
+                <div style={{ fontSize: 12, color: saHasCover ? C.green : C.textMuted }}>{saHasCover ? "✓ Cover letter ready" : "○ Cover letter not yet generated"}</div>
+                {saReady > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginTop: 2 }}>{saReady} job{saReady !== 1 ? "s" : ""} ready to apply now</div>}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>Find Matching Jobs →</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("saved")}>View Queue →</Btn>
           </div>
         </Card>
 
-        {/* AI Opportunity Intelligence */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>AI Opportunity Intelligence</div>
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <div style={{ color: C.textMuted, fontSize: 14 }}>Opportunity Intelligence content coming soon.</div>
-          </div>
+        {/* Opportunity Intelligence */}
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Opportunity Intelligence</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>Best matching opportunities from your saved jobs.</div>
+          {saved.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>Save jobs from Job Search to see AI-ranked opportunities and match scores.</div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+                {avgMatchScore != null && (
+                  <div style={{ background: `${avgMatchScore >= 80 ? C.green : avgMatchScore >= 60 ? C.yellow : C.red}12`, borderRadius: 10, padding: "8px 10px", textAlign: "center", minWidth: 68, flexShrink: 0 }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: avgMatchScore >= 80 ? C.green : avgMatchScore >= 60 ? C.yellow : C.red }}>{avgMatchScore}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Avg Match</div>
+                  </div>
+                )}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {highPriorityJobs > 0 && <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{highPriorityJobs} high priority match{highPriorityJobs !== 1 ? "es" : ""} (80+)</div>}
+                  {newOpportunities > 0 && <div style={{ fontSize: 12, color: C.blue }}>{newOpportunities} new this week</div>}
+                  {salaryData?.results?.demandLevel && <div style={{ fontSize: 12, color: C.textMuted }}>Market demand: <strong>{salaryData.results.demandLevel}</strong></div>}
+                  {!avgMatchScore && <div style={{ fontSize: 12, color: C.textMuted }}>{saved.length} saved job{saved.length !== 1 ? "s" : ""}</div>}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 }}>
+                {topOpportunities.map((j, i) => (
+                  <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }}>{j.title || j.jobTitle} — {j.company}</span>
+                    {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: j.matchScore >= 80 ? C.green : j.matchScore >= 60 ? C.yellow : C.red, flexShrink: 0 }}>{j.matchScore}%</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("saved")}>View Saved Jobs →</Btn>
         </Card>
       </div>
 
-      {/* SECOND ROW: Resume + Job + Market Intelligence */}
+      {/* ROW 3: Resume + Job + Interview Intelligence */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
         {/* Resume Intelligence */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.resumeIntelTitle")}</div>
-          {totalApps > 0 || profileComplete > 50 ? (
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.resumeIntelTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Resume strength and ATS readiness.</div>
+          {bestResume ? (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, marginBottom: 6 }}><span>{t("dashboard.profileStrength")}</span><span style={{ fontWeight: 700, color: C.purple }}>{profileComplete}%</span></div>
-              <PBar val={profileComplete} color={C.purple} />
-              <div style={{ marginTop: 12, fontSize: 13, color: C.textMuted }}>{t("dashboard.resumeIntelHint")}</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
+                <ScoreRing score={bestResume.ats_score} size={80} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {(() => {
+                    const s = bestResume.ats_score;
+                    const strength = s >= 80 ? "Strong" : s >= 60 ? "Good" : s >= 40 ? "Fair" : "Needs Work";
+                    const strengthColor = s >= 80 ? C.green : s >= 60 ? C.yellow : s >= 40 ? "#EA580C" : C.red;
+                    const missingCount = (bestResume.keywords_missing || []).length;
+                    const topMissing = (bestResume.keywords_missing || []).slice(0, 3).join(", ");
+                    const suggestCount = (bestResume.suggestions || []).length;
+                    return (
+                      <>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>Resume Strength</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: strengthColor, marginBottom: 6 }}>{strength}</div>
+                        {missingCount > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>Missing Keywords <span style={{ fontWeight: 700, color: "#EA580C" }}>{missingCount}</span></div>
+                            {topMissing && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1, marginBottom: 4 }}>{topMissing}</div>}
+                          </>
+                        )}
+                        {suggestCount > 0 && <div style={{ fontSize: 11, color: C.textMuted }}>AI Suggestions <span style={{ fontWeight: 700, color: C.blue }}>{suggestCount}</span></div>}
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Resume Health <span style={{ fontWeight: 700, color: strengthColor }}>{strength}</span></div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              {bestResume.top_priority && <div style={{ fontSize: 11, color: C.textMid, background: C.bgSoft, borderRadius: 7, padding: "6px 9px", marginBottom: 4, lineHeight: 1.5 }}>⚡ {bestResume.top_priority}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.resumeIntelEmpty")}</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? "Analyze a resume on the Resume page to see insights here." : t("dashboard.resumeIntelEmpty")}</div>
           )}
           <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.jobIntelTitle")}</div>
-          {saved.length > 0 ? (
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.jobIntelTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Saved jobs and application pipeline summary.</div>
+          {saved.length > 0 || totalApps > 0 ? (
             <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{saved.length}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("dashboard.savedJobs")}</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                {[["Saved", saved.length, C.blue], ["Applied", totalApps, C.purple], ["Response", `${responseRate}%`, C.green]].map(([label, val, color]) => (
+                  <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
               {saved.slice(0, 3).map((j, i) => (
-                <div key={j.id || i} style={{ fontSize: 12, color: C.text, padding: "4px 0", borderBottom: `1px solid ${C.border}` }}>{j.title || j.jobTitle} — {j.company}</div>
+                <div key={j.job_id || i} style={{ fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>{j.title || j.jobTitle} — {j.company}</div>
               ))}
-              {saved.length > 3 && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{t("dashboard.moreCount").replace("{n}", saved.length - 3)}</div>}
+              {saved.length > 3 && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{t("dashboard.moreCount").replace("{n}", saved.length - 3)}</div>}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.jobIntelEmpty")}</div>
@@ -990,53 +1177,71 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
           <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>{t("dashboard.goToJobSearch")}</Btn>
         </Card>
 
-        {/* Market Intelligence */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.marketIntelTitle")}</div>
+        {/* Interview Intelligence */}
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Interview Intelligence</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Practice readiness and feedback progress.</div>
+          {questionsCount > 0 ? (
+            <div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                <ScoreRing score={Math.round((answeredCount / questionsCount) * 100)} size={60} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: C.textMid, marginBottom: 2 }}>{questionsCount} question{questionsCount !== 1 ? "s" : ""} generated</div>
+                  <div style={{ fontSize: 12, color: C.textMid }}>{answeredCount} answered</div>
+                  {avgFeedbackScore != null && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginTop: 2 }}>Avg score: {avgFeedbackScore}/10</div>}
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
+                <span style={{ color: C.textMid }}>Readiness</span>
+                <span style={{ fontWeight: 700, color: C.purple }}>{Math.round((answeredCount / questionsCount) * 100)}%</span>
+              </div>
+              <PBar val={Math.round((answeredCount / questionsCount) * 100)} color={C.purple} />
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No interview session yet. Generate questions from a job description to start practicing.</div>
+          )}
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("interview")}>Go to Interview Prep →</Btn>
+        </Card>
+      </div>
+
+      {/* ROW 4: Salary + Career Progress + Networking Intelligence */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
+        {/* Salary Intelligence */}
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.marketIntelTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Market value and salary benchmarks.</div>
           {salaryData?.results ? (
             <div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.medianSalary")}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>${salaryData.results.salaryRange?.median?.toLocaleString() || "—"}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{t("dashboard.demandLabel")} <strong>{salaryData.results.demandLevel || "—"}</strong></div>
-              {salaryData.results.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, marginTop: 6, lineHeight: 1.5 }}>{salaryData.results.marketOutlook.slice(0, 120)}...</div>}
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>{t("dashboard.medianSalary")}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.green, marginBottom: 6 }}>${salaryData.results.salaryRange?.median?.toLocaleString() || "—"}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
+                <span>Low: <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.low || 0).toLocaleString()}</strong></span>
+                <span>High: <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.high || 0).toLocaleString()}</strong></span>
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.demandLabel")} <strong style={{ color: C.text }}>{salaryData.results.demandLevel || "—"}</strong></div>
+              {salaryData.results.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{salaryData.results.marketOutlook.slice(0, 110)}…</div>}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.marketIntelEmpty")}</div>
           )}
           <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
         </Card>
-      </div>
-
-      {/* THIRD ROW: Recommendations + Progress + Activity */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
-        {/* AI Recommendations */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.recommendationsTitle")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {profileComplete < 100 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.purpleLight, borderRadius: 8 }}>{t("dashboard.recCompleteProfile").replace("{pct}", profileComplete)}</div>}
-            {saved.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.blueLight, borderRadius: 8 }}>{t("dashboard.recSaveJobs")}</div>}
-            {totalApps === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.greenLight, borderRadius: 8 }}>{t("dashboard.recFirstApp")}</div>}
-            {questionsCount === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.yellowLight, borderRadius: 8 }}>{t("dashboard.recPracticeInterview")}</div>}
-            {networkContacts.length === 0 && <div style={{ fontSize: 13, color: C.text, padding: "6px 10px", background: C.redLight, borderRadius: 8 }}>{t("dashboard.recBuildNetwork")}</div>}
-            {profileComplete === 100 && saved.length > 0 && totalApps > 0 && questionsCount > 0 && networkContacts.length > 0 && (
-              <div style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{t("dashboard.recGreatProgress")}</div>
-            )}
-          </div>
-        </Card>
 
         {/* Career Progress */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 10 }}>{t("dashboard.progressTitle")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {[
               [t("dashboard.progressProfile"), `${profileComplete}%`, profileComplete, C.purple],
-              [t("dashboard.progressSavedJobs"), saved.length, Math.min(saved.length * 10, 100), C.blue],
-              [t("dashboard.progressApplications"), totalApps, Math.min(totalApps * 10, 100), C.green],
-              [t("dashboard.progressInterviews"), interviews, Math.min(interviews * 20, 100), C.yellow],
-              [t("dashboard.progressOffers"), offers, Math.min(offers * 50, 100), C.green],
+              ["Tracked Jobs",        totalApps,               Math.min(totalApps * 10, 100),               C.blue],
+              [t("dashboard.progressApplications"), totalApps, Math.min(totalApps * 10, 100),               C.green],
+              [t("dashboard.progressInterviews"), interviews,  Math.min(interviews * 20, 100),              "#EA580C"],
+              [t("dashboard.progressOffers"),     offers,      Math.min(offers * 50, 100),                  "#CA8A04"],
+              ["Network Contacts",    networkContacts.length,  Math.min(networkContacts.length * 10, 100),  "#0891B2"],
+              ["Smart Apply",         saApplied,               Math.min(saApplied * 20, 100),               C.purple],
             ].map(([label, value, pct, color]) => (
               <div key={label}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
                   <span style={{ color: C.textMid }}>{label}</span>
                   <span style={{ fontWeight: 700, color }}>{value}</span>
                 </div>
@@ -1046,21 +1251,31 @@ function DashboardPage({ profile, applications, savedJobs, setPage }) {
           </div>
         </Card>
 
-        {/* AI Activity */}
-        <Card>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.activityTitle")}</div>
-          {aiActivity.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-              {aiActivity.map(a => (
-                <div key={a.id} style={{ fontSize: 12, color: C.text, padding: "6px 0", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span>{a.action}</span>
-                  <span style={{ color: C.textMuted, flexShrink: 0, fontSize: 11 }}>{a.time}</span>
-                </div>
-              ))}
+        {/* Networking Intelligence */}
+        <Card style={{ padding: "16px 18px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Networking Intelligence</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Contacts, outreach progress, and follow-ups.</div>
+          {networkContacts.length > 0 ? (
+            <div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                {[["Contacts", networkContacts.length, C.purple], ["Responded", replied, C.green], ["Follow-up", followUpNeeded, followUpNeeded > 0 ? C.yellow : C.textMuted]].map(([label, val, color]) => (
+                  <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
+                <span style={{ color: C.textMid }}>Response rate</span>
+                <span style={{ fontWeight: 700, color: outreachRate >= 50 ? C.green : C.yellow }}>{outreachRate}%</span>
+              </div>
+              <PBar val={outreachRate} color={outreachRate >= 50 ? C.green : C.yellow} />
+              {followUpNeeded > 0 && <div style={{ marginTop: 8, fontSize: 12, color: C.yellow, fontWeight: 600 }}>⚠ {followUpNeeded} contact{followUpNeeded !== 1 ? "s" : ""} waiting for reply</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.activityEmpty")}</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No networking contacts yet. Build your network to track outreach and follow-ups.</div>
           )}
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("network")}>Go to Networking →</Btn>
         </Card>
       </div>
 
@@ -1100,35 +1315,31 @@ function BriefingPage({ profile, applications, savedJobs, setPage }) {
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
-  const apps = applications || [];
-  const saved = savedJobs || [];
-  const totalApps = apps.length;
-  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
-  const offers = apps.filter(a => a.status === "Offer").length;
-  const profileFields = ["full_name", "email_address", "phone", "location", "job_title", "years_experience", "preferred_job_title", "work_type"];
-  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
-  const questionsCount = interviewSession?.questions?.length || 0;
 
-  const [briefing, setBriefing] = useState(null);
+  const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); return (p && !Array.isArray(p) && p.v === 2) ? p : null; } catch { return null; } });
   const [genLoading, setGenLoading] = useState(false);
   const { briefing: savedBriefing, loading: briefingLoading, loadedFor, save: saveBriefing } = useAiBriefing(profile?.id);
   const { logActivity } = useActivityLog(profile?.id);
+  const userContext = useUserContext({ profile, applications, savedJobs, interviewSession, salaryData, networkContacts });
   const appliedRef = useRef(undefined);
 
   useEffect(() => {
     if (briefingLoading || loadedFor !== profile?.id) return;
     if (appliedRef.current === profile?.id) return;
     appliedRef.current = profile?.id;
-    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) setBriefing(savedBriefing);
+    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) {
+      setBriefing(savedBriefing);
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
+    }
   }, [savedBriefing, briefingLoading, loadedFor, profile?.id]);
 
   const generate = async () => {
     setGenLoading(true);
     try {
-      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
-      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Location: ${profile?.location || "not specified"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview practice: ${questionsCount} questions. Network: ${networkContacts.length} contacts. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const ctx = userContext.getContextString();
       const result = await buildBriefingPayload(ctx);
       setBriefing(result);
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
       saveBriefing(result).catch(err => console.error("briefing save failed", err));
       logActivity("Daily briefing regenerated");
       insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
@@ -1273,14 +1484,6 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
-  const apps = applications || [];
-  const saved = savedJobs || [];
-  const totalApps = apps.length;
-  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
-  const offers = apps.filter(a => a.status === "Offer").length;
-  const profileFields = ["full_name", "email_address", "phone", "location", "job_title", "years_experience", "preferred_job_title", "work_type"];
-  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
-  const questionsCount = interviewSession?.questions?.length || 0;
 
   const [plan, setPlan] = useState(null);
   const [genLoading, setGenLoading] = useState(false);
@@ -1288,6 +1491,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
 
   const { plan: savedPlan, loading: planLoading, loadedFor, save: savePlan } = useAiActionPlan(profile?.id);
   const { logActivity } = useActivityLog(profile?.id);
+  const userContext = useUserContext({ profile, applications, savedJobs, interviewSession, salaryData, networkContacts });
   const appliedRef = useRef(undefined);
 
   useEffect(() => {
@@ -1323,8 +1527,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
     setGenError(null);
     console.log("[PlanPage] Starting generation for user", profile?.id);
     try {
-      const maxAts = apps.filter(a => a.atsScore).length > 0 ? Math.max(...apps.filter(a => a.atsScore).map(a => Number(a.atsScore) || 0)) : null;
-      const ctx = `Name: ${profile?.full_name || "User"}. Role: ${profile?.job_title || "not set"}. Target: ${profile?.preferred_job_title || "not set"}. Experience: ${profile?.years_experience || "?"}yrs. Applications: ${totalApps} (interviews: ${interviews}, offers: ${offers}). Saved: ${saved.length} jobs. Profile: ${profileComplete}% complete. Best ATS: ${maxAts ? maxAts + "%" : "not analyzed"}. Interview questions practiced: ${questionsCount}. Network contacts: ${networkContacts.length}. Salary research: ${salaryData?.results ? "done" : "not done"}.`;
+      const ctx = userContext.getContextString();
       const result = await buildPlanPayload(ctx);
       console.log("[PlanPage] Generation succeeded");
       setPlan(result);
@@ -1543,15 +1746,15 @@ Location: Remote-first`;
 
 const RESUME_STEPS = ["Analyzing Resume…", "Calculating ATS Score…", "Generating Tailored Resume…", "Creating Cover Letter…"];
 
-function ResumePage({ onSave, onNavigate, profile }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb }) {
   const { t } = useI18n();
-  const [resume, setResume] = useState("");
-  const [jobDesc, setJobDesc] = useState(profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
+  const [resume, setResume] = useSessionState("cp_resume_text", "");
+  const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
   const [loading, setLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
-  const [results, setResults] = useState(null);
+  const [results, setResults] = useSessionState("cp_resume_results", null);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("resume");
+  const [tab, setTab] = useSessionState("cp_resume_tab", "resume");
   const [saved, setSaved] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -1559,8 +1762,28 @@ function ResumePage({ onSave, onNavigate, profile }) {
   const [resumeSaved, setResumeSaved] = useState(false);
   const [resumeError, setResumeError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
+  const [loadedResumeId, setLoadedResumeId] = useState(null);
+  const [editLabelId, setEditLabelId] = useState(null);
+  const [labelValue, setLabelValue] = useState("");
+  const [resumeSource, setResumeSource] = useState("upload");
+  const [aiForm, setAiForm] = useState({ employment: "", education: "", skills: "", certifications: "" });
+  const [aiBuilding, setAiBuilding] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [selectedKeywords, setSelectedKeywords] = useState([]);
+  const [improving, setImproving] = useState(false);
+  const [improveError, setImproveError] = useState("");
+  const [improveStep, setImproveStep] = useState("");
+  const [improveSuccess, setImproveSuccess] = useState(false);
+  const [animatedAts, setAnimatedAts] = useState(null);
+  const [animatedBreakdown, setAnimatedBreakdown] = useState(null);
+  const [improveStats, setImproveStats] = useState(null);
+  const [improvedBtnDone, setImprovedBtnDone] = useState(false);
+  const [masterMissingKws, setMasterMissingKws] = useState([]);
+  const [isOptimized, setIsOptimized] = useState(false);
+  const [resultsInsights, setResultsInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   const fileRef = useRef();
-  const { resumes, loading: resumesLoading, saveResume, deleteResume, downloadResume } = useResumes(profile?.id);
+  const userContext = useUserContext({ profile, applications, savedJobs });
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -1652,37 +1875,246 @@ function ResumePage({ onSave, onNavigate, profile }) {
     }
   };
 
+  const resumeHealthFrom = (score) => {
+    if (score == null) return null;
+    if (score >= 80) return 'Excellent';
+    if (score >= 60) return 'Good';
+    if (score >= 40) return 'Fair';
+    return 'Poor';
+  };
+
+  const saveHistoryEntry = (parsed, analysisType = 'Initial Analysis', resumeStatus = 'Draft') => {
+    const resumeName = uploadedFile?.name || (loadedResumeId ? (resumes.find(r => r.id === loadedResumeId)?.name || 'Resume') : 'Resume');
+    const entry = {
+      resumeName,
+      atsScore: parsed.atsScore,
+      potentialAtsScore: parsed.potentialAtsScore,
+      jobTitle: parsed.jobTitle || '',
+      company: parsed.company || '',
+      analysisType,
+      analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume',
+      resumeStatus,
+      resumeHealth: resumeHealthFrom(parsed.atsScore),
+    };
+    if (saveHistoryToDb && profile?.id) {
+      // Primary: Supabase. The hook also updates the localStorage cache on success.
+      saveHistoryToDb(entry, loadedResumeId || null).catch(e => {
+        // Supabase failed — write directly to localStorage cache so data is not lost.
+        console.warn('[ResumeHistory] DB write failed, caching locally:', e.message);
+        try {
+          const key = `cp_resume_history_${profile.id}`;
+          const existing = JSON.parse(localStorage.getItem(key) || '[]');
+          localStorage.setItem(key, JSON.stringify([{ ...entry, id: Date.now().toString(), date: new Date().toISOString() }, ...existing].slice(0, 50)));
+        } catch {}
+      });
+    } else {
+      // Not authenticated or hook unavailable — localStorage only.
+      try {
+        const key = `cp_resume_history_${profile?.id || 'guest'}`;
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        localStorage.setItem(key, JSON.stringify([{ ...entry, id: Date.now().toString(), date: new Date().toISOString() }, ...existing].slice(0, 50)));
+      } catch (e) {
+        console.warn('[ResumeHistory]', e.message);
+      }
+    }
+  };
+
   const analyze = async () => {
     if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
     setError(""); setLoading(true); setResults(null); setLoadStep(0);
     const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 3)), 2000);
     try {
-      const raw = await askClaude(`You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
 RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000);
-      setResults(JSON.parse(raw)); setTab("resume");
+      const parsed = JSON.parse(raw);
+      setResults(parsed); setTab("resume");
+      setMasterMissingKws(parsed.keywordsMissing || []);
+      setIsOptimized(false);
+      setSelectedKeywords([]);
+      setResultsInsights(null);
+      saveHistoryEntry(parsed, 'Initial Analysis');
+      setInsightsLoading(true);
+      const capturedResume = resume;
+      const capturedJobDesc = jobDesc;
+      askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
+{"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and ATS score>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
+RESUME:${capturedResume}
+JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
+        try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
+      }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
+      if (loadedResumeId && saveAnalysis) {
+        saveAnalysis(loadedResumeId, parsed).catch(e => console.warn("[Resume] saveAnalysis failed:", e?.message));
+      } else if (saveAnalysis && saveResume && resume.trim() && profile?.id) {
+        const autoName = uploadedFile?.name || (parsed.jobTitle ? `Resume — ${parsed.jobTitle}` : t("resume.myResumeFallback"));
+        saveResume(autoName, resume, null).then(row => {
+          if (row?.id) { setLoadedResumeId(row.id); return saveAnalysis(row.id, parsed); }
+        }).catch(e => console.warn("[Resume] auto-save resume+analysis failed:", e?.message));
+      }
     } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
     finally { clearInterval(iv); setLoading(false); }
   };
 
-  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || t("resume.companyFallback"), jobTitle: results.jobTitle || t("resume.roleFallback"), status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
+  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || t("resume.companyFallback"), jobTitle: results.jobTitle || t("resume.roleFallback"), status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter, resumeId: loadedResumeId }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   const handleSaveResume = async () => {
     if (!resume.trim()) return;
     setResumeError(""); setSavingResume(true);
     try {
-      await saveResume(uploadedFile?.name || t("resume.myResumeFallback"), resume, uploadedFile);
+      const savedRow = await saveResume(uploadedFile?.name || t("resume.myResumeFallback"), resume, null);
+      if (savedRow?.id) {
+        setLoadedResumeId(savedRow.id);
+        if (results && saveAnalysis) {
+          await saveAnalysis(savedRow.id, results).catch(e => console.warn("[Resume] saveAnalysis on new resume failed:", e?.message));
+        }
+      }
       setResumeSaved(true);
       setTimeout(() => setResumeSaved(false), 3000);
-    } catch {
-      setResumeError(t("resume.saveResumeFailed"));
+    } catch (e) {
+      console.error("handleSaveResume failed:", e?.code, e?.message, e);
+      const isSessionError = e?.message?.includes("Session expired") || e?.message?.includes("Not signed in");
+      setResumeError(isSessionError ? e.message : t("resume.saveResumeFailed"));
     } finally {
       setSavingResume(false);
     }
   };
 
-  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); };
+  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); };
+
+  const handleGenerateResume = async () => {
+    if (!profile?.id) return;
+    setAiBuilding(true); setAiError("");
+    try {
+      const identity = [
+        profile?.full_name ? `Name: ${profile.full_name}` : "",
+        profile?.email_address ? `Email: ${profile.email_address}` : "",
+        profile?.phone ? `Phone: ${profile.phone}` : "",
+        profile?.location ? `Location: ${profile.location}` : "",
+        profile?.job_title ? `Current Role: ${profile.job_title}` : "",
+        profile?.preferred_job_title ? `Target Role: ${profile.preferred_job_title}` : "",
+        profile?.years_experience ? `Years of Experience: ${profile.years_experience}` : "",
+        profile?.work_type ? `Work Type: ${profile.work_type}` : "",
+      ].filter(Boolean).join("\n");
+
+      const prompt = `You are an expert resume writer. Create a professional, ATS-optimized resume in plain text format.
+
+PROFILE:
+${identity}
+
+EMPLOYMENT HISTORY:
+${aiForm.employment}
+
+EDUCATION:
+${aiForm.education}
+
+SKILLS: ${aiForm.skills}${aiForm.certifications ? `\n\nCERTIFICATIONS: ${aiForm.certifications}` : ""}
+
+INSTRUCTIONS:
+Write a complete, polished ATS-friendly resume in plain text. Include: Contact Information, Professional Summary, Work Experience (with bullet points and quantified achievements where possible), Skills, Education${aiForm.certifications ? ", Certifications" : ""}. Use UPPERCASE for section headers. Use action verbs. Return ONLY the resume text — no explanation, no markdown, no preamble.`;
+
+      const generated = await askClaude(prompt, 3000);
+      setResume(generated.trim());
+    } catch (e) {
+      console.error("[AIBuilder]", e);
+      setAiError("Could not generate resume. Please check your connection and try again.");
+    } finally {
+      setAiBuilding(false);
+    }
+  };
+
+  const handleImproveResume = async () => {
+    if (!selectedKeywords.length) return;
+    setImproving(true); setImproveError(""); setImproveSuccess(false);
+    const kwList = selectedKeywords.join(", ");
+    const oldAts = results?.atsScore ?? null;
+    const oldBreakdown = results?.scoreBreakdown ?? null;
+    try {
+      setImproveStep("CareerPersona AI is improving your resume…");
+      const stepTimer = setTimeout(() => setImproveStep("Adding selected keywords naturally…"), 7000);
+      const improvePrompt = `You are a professional resume editor. Improve the resume below by naturally incorporating the specified keywords where they genuinely fit the candidate's background.
+
+KEYWORDS TO INCORPORATE: ${kwList}
+
+RULES:
+- Only weave in keywords where they authentically reflect the candidate's existing experience
+- Never fabricate skills, roles, companies, or achievements the candidate does not have
+- Write naturally — do not keyword-stuff or list keywords in isolation
+- Improve grammar, action verbs, and bullet point impact throughout
+- Maintain the original structure and section order exactly
+- Keep ATS-friendly formatting (plain text, clear sections, no tables or graphics)
+- Return ONLY the improved resume text — no explanation, no preamble, no markdown
+
+CURRENT RESUME:
+${resume}`;
+      const improved = await askClaude(improvePrompt, 3500);
+      clearTimeout(stepTimer);
+      const improvedText = improved.trim();
+      const addedCount = selectedKeywords.length;
+      const addedKws = [...selectedKeywords]; // save before clearing for post-processing
+      setResume(improvedText);
+      setSelectedKeywords([]);
+      if (jobDesc.trim()) {
+        setImproveStep("Recalculating your ATS score…");
+        const ctx = userContext.getContextString({ identity: true });
+        const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation.
+Note: This resume was just improved by naturally incorporating the following keywords: ${kwList}. Score it accurately and fairly based on the current content — the ATS score should reflect the improvement.
+{"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
+RESUME:${improvedText}
+JOB DESCRIPTION:${jobDesc}`, 4000);
+        setImproveStep("Refreshing Resume Intelligence…");
+        const parsed = JSON.parse(raw);
+        // One improvement cycle → always complete. Move added keywords into Found,
+        // clear Missing entirely. User must click New Analysis to start over.
+        const mergedFound = [
+          ...(parsed.keywordsFound || []),
+          ...addedKws.filter(k => !(parsed.keywordsFound || []).some(f => f.toLowerCase() === k.toLowerCase())),
+        ];
+        const finalParsed = { ...parsed, keywordsFound: mergedFound, keywordsMissing: [] };
+        setIsOptimized(true);
+        if (oldAts != null) setAnimatedAts(oldAts);
+        if (oldBreakdown) setAnimatedBreakdown(oldBreakdown);
+        setResults(finalParsed); setTab("resume");
+        setTimeout(() => {
+          if (oldAts != null) {
+            const from = oldAts; const to = finalParsed.atsScore;
+            const start = Date.now();
+            const tick = () => {
+              const t2 = Math.min((Date.now() - start) / 1000, 1);
+              const eased = 1 - Math.pow(1 - t2, 3);
+              setAnimatedAts(Math.round(from + (to - from) * eased));
+              if (t2 < 1) setTimeout(tick, 16); else { setAnimatedAts(to); setTimeout(() => setAnimatedAts(null), 200); }
+            };
+            tick();
+          }
+          if (oldBreakdown && finalParsed.scoreBreakdown) {
+            setTimeout(() => setAnimatedBreakdown(finalParsed.scoreBreakdown), 100);
+            setTimeout(() => setAnimatedBreakdown(null), 2000);
+          }
+        }, 150);
+        if (loadedResumeId && saveAnalysis) {
+          saveAnalysis(loadedResumeId, finalParsed).catch(e => console.warn("[Resume] saveAnalysis failed:", e?.message));
+        } else if (saveAnalysis && saveResume && improvedText && profile?.id) {
+          const autoName = uploadedFile?.name || (finalParsed.jobTitle ? `Resume — ${finalParsed.jobTitle}` : t("resume.myResumeFallback"));
+          saveResume(autoName, improvedText, null).then(row => {
+            if (row?.id) { setLoadedResumeId(row.id); return saveAnalysis(row.id, finalParsed); }
+          }).catch(e => console.warn("[Resume] auto-save resume+analysis failed:", e?.message));
+        }
+        saveHistoryEntry(finalParsed, 'Resume Improvement', 'Optimized');
+        setImproveStats({ oldAts, newAts: finalParsed.atsScore, addedCount });
+        setImprovedBtnDone(true);
+        setTimeout(() => setImprovedBtnDone(false), 3000);
+        setImproveSuccess(true);
+        setTimeout(() => { setImproveSuccess(false); setImproveStats(null); }, 8000);
+      }
+    } catch (e) {
+      console.error("[ImproveResume]", e);
+      setImproveError("Could not improve resume. Please check your connection and try again.");
+    } finally {
+      setImproving(false); setImproveStep("");
+    }
+  };
 
   const handleDeleteResume = async (r) => {
     setDeletingId(r.id);
@@ -1701,82 +2133,240 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     }
   };
 
-  return (
-    <div>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("resume.heading")}</h1>
-        <p style={{ color: C.textMuted, fontSize: 15 }}>{t("resume.subtitle")}</p>
-      </div>
-      {!results && (
-        <>
-          {resumes.length > 0 && (
-            <Card style={{ marginBottom: 20 }}>
-              <Label>{t("resume.myResumes")}</Label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-                {resumes.map(r => (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 8, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("resume.default")}</span>}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}{r.file_type ? ` · ${r.file_type.toUpperCase()}` : ""}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleLoadResume(r)}>{t("resume.load")}</Btn>
-                      <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => handleDownloadResume(r)}>{t("resume.download")}</Btn>
-                      <Btn variant="danger" style={{ padding: "5px 10px", fontSize: 12 }} loading={deletingId === r.id} onClick={() => handleDeleteResume(r)}>✕</Btn>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }} className="two-col">
-            <Card>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <Label>{t("resume.yourResume")}</Label>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={handleFile} />
-                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={extracting} onClick={() => fileRef.current.click()}>{extracting ? t("resume.extracting") : t("resume.uploadFile")}</Btn>
-                  <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume}>{resumeSaved ? t("resume.savedShort") : savingResume ? t("resume.saving") : t("resume.saveResume")}</Btn>
+  const isFirstTime = resumes.length === 0 && !results;
+
+  const hubHealthColor = (s) => s == null ? C.textMuted : s >= 80 ? C.green : s >= 60 ? "#0891B2" : s >= 40 ? C.yellow : C.red;
+  const hubHealthLabel = (s) => s == null ? null : s >= 80 ? "Excellent" : s >= 60 ? "Good" : s >= 40 ? "Fair" : "Poor";
+
+  const newAnalysisReset = () => {
+    setResults(null); setResume(""); setJobDesc(""); setLoadedResumeId(null);
+    setImproveSuccess(false); setSelectedKeywords([]); setMasterMissingKws([]);
+    setIsOptimized(false); setResultsInsights(null); setInsightsLoading(false);
+  };
+
+  const workspaceInputsJSX = (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }} className="two-col">
+            <Card style={{ display: "flex", flexDirection: "column" }}>
+              {/* Always-mounted hidden file input — triggered by the Upload Resume selector */}
+              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={handleFile} />
+
+              {/* Resume Source Selector */}
+              <div className="resume-source-selector" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <div onClick={() => { setResumeSource("upload"); fileRef.current?.click(); }} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 9, cursor: "pointer", border: `1.5px solid ${resumeSource === "upload" ? C.purple : C.border}`, background: resumeSource === "upload" ? C.purpleLight : "transparent" }}>
+                  <span style={{ fontSize: 15 }}>📤</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "upload" ? C.purple : C.textMid }}>{extracting ? t("resume.extracting") : "Upload Resume"}</span>
+                </div>
+                <div onClick={() => setResumeSource("ai")} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 9, cursor: "pointer", border: `1.5px solid ${resumeSource === "ai" ? C.purple : C.border}`, background: resumeSource === "ai" ? C.purpleLight : "transparent" }}>
+                  <span style={{ fontSize: 15 }}>✨</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "ai" ? C.purple : C.textMid }}>Create with AI</span>
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{t("resume.supportsHint")}</div>
-              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.resumePlaceholder")} value={resume} onChange={e => setResume(e.target.value)} />
-              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("resume.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("resume.plainTextHint")}</div>
-              {resumeError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginTop: 8 }}>{resumeError}</div>}
+
+              {/* Upload mode */}
+              {resumeSource === "upload" && (
+                <>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{t("resume.supportsHint")}</div>
+                  <textarea style={{ flex: 1, width: "100%", minHeight: 200, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.resumePlaceholder")} value={resume} onChange={e => setResume(e.target.value)} />
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("resume.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("resume.plainTextHint")}</div>
+                  {resumeError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginTop: 8 }}>{resumeError}</div>}
+                </>
+              )}
+
+              {/* AI Builder: form (resume not yet generated) */}
+              {resumeSource === "ai" && !resume.trim() && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6 }}>Pre-filled from your profile</div>
+                    {(profile?.full_name || profile?.email_address || profile?.job_title) ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 11, color: C.textMid }}>
+                        {profile?.full_name && <span style={{ whiteSpace: "nowrap" }}>👤 {profile.full_name}</span>}
+                        {profile?.email_address && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>✉️ {profile.email_address}</span>}
+                        {profile?.phone && <span style={{ whiteSpace: "nowrap" }}>📞 {profile.phone}</span>}
+                        {profile?.location && <span style={{ whiteSpace: "nowrap" }}>📍 {profile.location}</span>}
+                        {profile?.job_title && <span style={{ whiteSpace: "nowrap" }}>💼 {profile.job_title}</span>}
+                        {profile?.preferred_job_title && <span style={{ whiteSpace: "nowrap" }}>🎯 {profile.preferred_job_title}</span>}
+                        {profile?.years_experience && <span style={{ whiteSpace: "nowrap" }}>⏱️ {profile.years_experience}yrs exp</span>}
+                        {profile?.work_type && <span style={{ whiteSpace: "nowrap" }}>🏢 {profile.work_type}</span>}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#CA8A04" }}>⚠️ Complete your profile for better results. <span style={{ cursor: "pointer", textDecoration: "underline", color: C.purple }} onClick={() => onNavigate?.("profile")}>Go to Profile →</span></div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Employment History <span style={{ color: C.red }}>*</span></div>
+                    <textarea value={aiForm.employment} onChange={e => setAiForm(f => ({ ...f, employment: e.target.value }))} placeholder={"e.g. Software Engineer at Acme Corp (2021–2024)\n• Led migration to React — reduced load time by 40%\n• Built reporting dashboard used by 50k users"} style={{ width: "100%", minHeight: 90, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Education <span style={{ color: C.red }}>*</span></div>
+                    <textarea value={aiForm.education} onChange={e => setAiForm(f => ({ ...f, education: e.target.value }))} placeholder={"e.g. B.S. Computer Science, MIT, 2019"} style={{ width: "100%", minHeight: 55, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Skills <span style={{ color: C.red }}>*</span></div>
+                    <input value={aiForm.skills} onChange={e => setAiForm(f => ({ ...f, skills: e.target.value }))} placeholder="React, TypeScript, Python, SQL, AWS, Leadership..." style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Certifications <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted }}>(optional)</span></div>
+                    <input value={aiForm.certifications} onChange={e => setAiForm(f => ({ ...f, certifications: e.target.value }))} placeholder="AWS Solutions Architect, PMP, Google Analytics..." style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  </div>
+                  {aiError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{aiError}</div>}
+                  <Btn onClick={handleGenerateResume} loading={aiBuilding} disabled={!aiForm.employment.trim() || !aiForm.education.trim() || !aiForm.skills.trim()} style={{ width: "100%", padding: "11px", fontSize: 14 }}>
+                    {aiBuilding ? "Generating your resume…" : "✨ Generate Resume with AI"}
+                  </Btn>
+                </div>
+              )}
+
+              {/* AI Builder: generated resume (editable textarea) */}
+              {resumeSource === "ai" && resume.trim() && (
+                <>
+                  <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>✓ Resume generated — review and edit as needed</div>
+                  <textarea style={{ flex: 1, width: "100%", minHeight: 200, background: "#fff", border: `1.5px solid ${C.green}40`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} value={resume} onChange={e => setResume(e.target.value)} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>{resume.split(/\s+/).filter(Boolean).length} words</div>
+                    <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => { setResume(""); setAiForm({ employment: "", education: "", skills: "", certifications: "" }); }}>← Rebuild</Btn>
+                  </div>
+                </>
+              )}
             </Card>
-            <Card>
-              <Label>{t("resume.jobDescription")}</Label>
+            <Card style={{ display: "flex", flexDirection: "column" }}>
+              {/* Header area: same padding + border as selector buttons → identical rendered height across platforms */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: "1.5px solid transparent", borderRadius: 9, marginBottom: 14 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.textMid }}>{t("resume.jobDescription")}</span>
+              </div>
               <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>{t("resume.jobDescHint")}</div>
-              <textarea style={{ width: "100%", minHeight: 260, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.jobDescPlaceholder")} value={jobDesc} onChange={e => setJobDesc(e.target.value)} />
+              <textarea style={{ flex: 1, width: "100%", minHeight: 200, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("resume.jobDescPlaceholder")} value={jobDesc} onChange={e => setJobDesc(e.target.value)} />
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{jobDesc ? t("resume.wordCount").replace("{n}", jobDesc.split(/\s+/).filter(Boolean).length) : t("resume.jobDescTip")}</div>
             </Card>
           </div>
           {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            <Btn onClick={analyze} loading={loading} style={{ padding: "13px 32px", fontSize: 15 }}>{loading ? t("resume.analyzing") : t("resume.analyzeAndTailor")}</Btn>
-            <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }}>{t("resume.trySample")}</Btn>
+          <div className="resume-action-bar" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, maxWidth: 600, margin: "0 auto", width: "100%" }}>
+            <Btn variant="secondary" loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{resumeSaved ? "✓ Saved" : savingResume ? t("resume.saving") : "💾 Save Resume"}</Btn>
+            <Btn onClick={analyze} loading={loading} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{loading ? t("resume.analyzing") : t("resume.analyzeAndTailor")}</Btn>
+            <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{t("resume.trySample")}</Btn>
           </div>
         </>
-      )}
-      {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
-      {results && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("resume.analysisComplete")}</div>
-              {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{t("resume.roleAtCompany").replace("{role}", results.jobTitle).replace("{company}", results.company)}</div>}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Btn onClick={handleSave}>{saved ? t("resume.savedToTrackerDone") : t("resume.saveToTracker")}</Btn>
-              <Btn variant="secondary" onClick={() => { setResults(null); setResume(""); setJobDesc(""); }}>{t("resume.newAnalysis")}</Btn>
-            </div>
+  );
+
+  return (
+    <div>
+      {/* FIRST-TIME USER: no saved resumes and no current analysis — show workspace only */}
+      {isFirstTime && (
+        <>
+          <div style={{ marginBottom: 28 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 8 }}>{t("resume.heading")}</h1>
+            <p style={{ fontSize: 15, color: C.textMuted }}>{t("resume.subtitle")}</p>
           </div>
+          {workspaceInputsJSX}
+          {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
+        </>
+      )}
+
+      {/* RESUME HUB: returning user or active analysis */}
+      {!isFirstTime && (
+        <div>
+          {!results && (
+            <div style={{ marginBottom: 24 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 8 }}>Resume Hub</h1>
+              <p style={{ fontSize: 15, color: C.textMuted }}>Your resume workspace, history, and AI tools — all in one place.</p>
+            </div>
+          )}
+
+          {/* SECTION 1 — Resume Library */}
+          {resumes.length > 0 && !results && (
+            <Card style={{ marginBottom: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📁 Resume Library</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {resumes.slice(0, 6).map(r => {
+                  const hl = hubHealthLabel(r.ats_score);
+                  const hc = hubHealthColor(r.ats_score);
+                  return (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: loadedResumeId === r.id ? C.purpleLight : C.bgSoft, border: `1.5px solid ${loadedResumeId === r.id ? C.purple : C.border}`, borderRadius: 10, cursor: "pointer", flexWrap: "wrap" }} onClick={() => { setResume(r.content || ""); setLoadedResumeId(r.id); setResumeSource("upload"); }}>
+                      <div style={{ flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}</div>
+                        {r.version_label && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{r.version_label}</div>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {r.ats_score != null && <span style={{ fontSize: 11, fontWeight: 700, color: hc, background: `${hc}20`, borderRadius: 6, padding: "3px 8px" }}>ATS {r.ats_score}%</span>}
+                        {hl && <span style={{ fontSize: 11, fontWeight: 600, color: hc, background: `${hc}15`, borderRadius: 6, padding: "3px 8px" }}>{hl}</span>}
+                        {r.last_analyzed_at && <span style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.last_analyzed_at).toLocaleDateString()}</span>}
+                        {r.is_default && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>Default</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={e => { e.stopPropagation(); downloadResume?.(r).then(url => { if (url) { const a = document.createElement("a"); a.href = url; a.download = r.name; a.click(); } }); }}>⬇ Download</Btn>
+                        <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px", color: C.red }} onClick={e => { e.stopPropagation(); deleteResume?.(r); }}>🗑</Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* SECTION 2 — Resume Workspace */}
+          {!results && !loading && workspaceInputsJSX}
+          {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
+          {results && !loading && (
+            <Card style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Current Analysis</div>
+                  {results.company && <div style={{ fontSize: 12, color: C.textMuted }}>{results.jobTitle} at {results.company}</div>}
+                </div>
+                <Btn variant="secondary" disabled={improving} onClick={newAnalysisReset} style={{ fontSize: 12 }}>{t("resume.newAnalysis")}</Btn>
+              </div>
+            </Card>
+          )}
+
+          {/* SECTION 3 — Resume Analysis */}
+          {results && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("resume.analysisComplete")}</div>
+                  {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{t("resume.roleAtCompany").replace("{role}", results.jobTitle).replace("{company}", results.company)}</div>}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn onClick={handleSave} disabled={improving}>{saved ? t("resume.savedToTrackerDone") : t("resume.saveToTracker")}</Btn>
+                </div>
+              </div>
+
+          {/* Improvement loading overlay */}
+          {improving && (
+            <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 20, height: 20, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{improveStep || "Improving your resume…"}</div>
+                <div style={{ fontSize: 11, color: C.textMid, marginTop: 2 }}>Please wait while CareerPersona AI processes your changes</div>
+              </div>
+            </div>
+          )}
+
+          {/* Success banner */}
+          {improveSuccess && !improving && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>✅</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Resume successfully improved</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 20px", fontSize: 11, color: C.textMid, marginTop: 4 }}>
+                  {improveStats?.oldAts != null && <span>ATS score {improveStats.oldAts < improveStats.newAts ? "increased" : "updated"} from <strong>{improveStats.oldAts}</strong> → <strong>{improveStats.newAts}</strong></span>}
+                  {improveStats?.addedCount > 0 && <span><strong>{improveStats.addedCount}</strong> keyword{improveStats.addedCount > 1 ? "s" : ""} added successfully</span>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loadedResumeId && !improveSuccess && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 12, color: C.green }}>
+              <span style={{ fontWeight: 700 }}>✓ Analysis saved to Resume Intelligence Dashboard</span>
+              <span style={{ color: C.textMuted, fontWeight: 400 }}>— visible on your Dashboard now</span>
+            </div>
+          )}
 
           {/* ATS Score Section */}
           <Card style={{ marginBottom: 20, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
               <div style={{ textAlign: "center" }}>
-                <ScoreRing score={results.atsScore} size={90} />
+                <ScoreRing score={animatedAts ?? results.atsScore} size={90} />
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
               </div>
               <div style={{ fontSize: 28, color: C.textMuted }}>→</div>
@@ -1788,7 +2378,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.potentialAtsScore")}</div>
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
-                {[[t("resume.keywordMatch"), results.scoreBreakdown?.keywordMatch], [t("resume.formatting"), results.scoreBreakdown?.formatting], [t("resume.relevance"), results.scoreBreakdown?.relevance]].map(([l, v]) => (
+                {[[t("resume.keywordMatch"), (animatedBreakdown ?? results.scoreBreakdown)?.keywordMatch], [t("resume.formatting"), (animatedBreakdown ?? results.scoreBreakdown)?.formatting], [t("resume.relevance"), (animatedBreakdown ?? results.scoreBreakdown)?.relevance]].map(([l, v]) => (
                   <div key={l} style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}><span style={{ color: C.textMid, fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 700, color: v >= 80 ? C.green : v >= 60 ? C.yellow : C.red }}>{v}%</span></div>
                     <PBar val={v} />
@@ -1804,15 +2394,53 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsFound")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsFound?.map(k => <Badge key={k} color={C.green}>{k}</Badge>)}</div>
             </div>
-            <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsMissing")}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsMissing?.map(k => <Badge key={k} color={C.red}>{k}</Badge>)}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {isOptimized ? (
+                <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 10 }}>🎉 Resume Successfully Optimized</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11 }}>
+                    <div style={{ color: C.green }}>✅ ATS score updated</div>
+                    <div style={{ color: C.green }}>✅ Resume tailored for this job</div>
+                    <div style={{ color: C.green }}>✅ Missing keywords successfully added</div>
+                    <div style={{ color: C.green }}>✅ Ready to apply</div>
+                    <div style={{ color: C.textMid }}>✅ Use "New Analysis" to optimize for another job or updated resume</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("resume.keywordsMissing")}</div>
+                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 10, lineHeight: 1.5 }}>📝 Note: Only select the keywords that match your real skills and career experience. CareerPersona AI will use your selected keywords to naturally improve your resume.</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {results.keywordsMissing?.map(k => {
+                        const sel = selectedKeywords.includes(k);
+                        return (
+                          <div key={k} onClick={() => setSelectedKeywords(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", userSelect: "none", background: sel ? C.purpleLight : "#fff", color: sel ? C.purple : C.red, border: `1.5px solid ${sel ? C.purple : C.red}40`, transition: "all 0.15s", touchAction: "manipulation" }}>
+                            {sel && <span style={{ fontSize: 10 }}>✓</span>}
+                            {k}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {results.keywordsMissing?.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {improveError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{improveError}</div>}
+                      <Btn onClick={handleImproveResume} loading={improving} disabled={!selectedKeywords.length || improving || improvedBtnDone} style={{ width: "100%", ...(improvedBtnDone ? { background: C.green } : {}) }}>
+                        {improving ? "Improving your resume…" : improvedBtnDone ? "✅ Resume Improved" : selectedKeywords.length ? `✨ Improve My Resume (${selectedKeywords.length} keyword${selectedKeywords.length > 1 ? "s" : ""} selected)` : "✨ Improve My Resume"}
+                      </Btn>
+                      {!selectedKeywords.length && <div style={{ fontSize: 11, color: C.textMuted }}>Select missing keywords above to enable</div>}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
-            {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")]].map(([id, lbl]) => (
+            {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")],["insights", "Insights"]].map(([id, lbl]) => (
               <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
@@ -1847,6 +2475,180 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               </div>
             </div>
           )}
+          {tab === "insights" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {insightsLoading && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                  <div style={{ width: 18, height: 18, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  <span style={{ fontSize: 13, color: C.textMid }}>Generating resume insights…</span>
+                </div>
+              )}
+              {isOptimized && !insightsLoading && (
+                <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 12, padding: "14px 16px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>✅ Resume optimized for this job.</div>
+                  <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6 }}>These insights are based on the original analysis. Run <strong>New Analysis</strong> after updating your resume or selecting another job to generate new insights.</div>
+                </div>
+              )}
+              {resultsInsights && (
+                <>
+                  <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 10 }}>💪 Resume Strengths</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {resultsInsights.strengths?.map((s, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <span style={{ color: C.green, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>✓</span>
+                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 10 }}>⚠️ Highest Priority Improvements</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(resultsInsights.highPriorityImprovements || resultsInsights.weaknesses)?.map((w, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <span style={{ color: C.red, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>{i + 1}.</span>
+                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ background: "#FFF7ED", border: "1px solid #EA580C25", borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#EA580C", marginBottom: 6 }}>🎯 Missing Skills for This Role</div>
+                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 10 }}>Broader skills and qualifications this role requires that your resume doesn't yet demonstrate:</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {resultsInsights.missingSkills?.map((s, i) => (
+                        <span key={i} style={{ background: "#fff", border: "1.5px solid #EA580C40", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: "#EA580C" }}>{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 10 }}>✨ Tailoring Opportunities</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {resultsInsights.tailoringOpportunities?.map((o, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <span style={{ color: C.purple, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>{i + 1}.</span>
+                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{o}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+              {!resultsInsights && !insightsLoading && (
+                <div style={{ padding: 24, background: C.bgSoft, borderRadius: 12, fontSize: 13, color: C.textMuted, textAlign: "center" }}>
+                  Insights will appear here after your analysis completes.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 4 — Analysis History */}
+      {analysisHistory?.length > 0 && (
+        <Card style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📊 Analysis History</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {analysisHistory.slice(0, 15).map((entry, i) => (
+              <div key={entry.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: C.bgSoft, borderRadius: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{entry.resumeName || "Resume"}</div>
+                  {(entry.jobTitle || entry.company) && <div style={{ fontSize: 11, color: C.textMuted }}>{[entry.jobTitle, entry.company].filter(Boolean).join(" · ")}</div>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  {entry.atsScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(entry.atsScore), background: `${hubHealthColor(entry.atsScore)}20`, borderRadius: 6, padding: "2px 8px" }}>ATS {entry.atsScore}%</span>}
+                  {entry.resumeHealth && <span style={{ fontSize: 11, fontWeight: 600, color: hubHealthColor(entry.atsScore), background: `${hubHealthColor(entry.atsScore)}15`, borderRadius: 6, padding: "2px 8px" }}>{entry.resumeHealth}</span>}
+                  <span style={{ fontSize: 10, color: C.textMuted, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px" }}>{entry.analysisType}</span>
+                  {entry.resumeStatus === "Optimized" && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 8px" }}>✅ Optimized</span>}
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{entry.date ? new Date(entry.date).toLocaleDateString() : ""}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* SECTION 5 — Performance Analytics */}
+      {analysisHistory?.length > 0 && (() => {
+        const total = analysisHistory.length;
+        const improved = analysisHistory.filter(h => h.analysisType === "Resume Improvement").length;
+        const scores = analysisHistory.map(h => h.atsScore).filter(s => s != null);
+        const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+        const latest = scores[0] ?? null;
+        const oldest = scores[scores.length - 1] ?? null;
+        const trend = latest != null && oldest != null ? latest - oldest : null;
+        const healthCounts = { Excellent: 0, Good: 0, Fair: 0, Poor: 0 };
+        analysisHistory.forEach(h => { if (h.resumeHealth && healthCounts[h.resumeHealth] != null) healthCounts[h.resumeHealth]++; });
+        return (
+          <Card style={{ marginBottom: 24 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📈 Performance Analytics</div>
+            <div className="hub-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+              {[
+                { label: "Total Analyses", value: total, color: C.purple },
+                { label: "Improvements", value: improved, color: C.green },
+                { label: "Avg ATS Score", value: avgScore != null ? `${avgScore}%` : "—", color: C.yellow },
+                { label: "Score Trend", value: trend != null ? `${trend > 0 ? "+" : ""}${trend}%` : "—", color: trend != null && trend > 0 ? C.green : trend != null && trend < 0 ? C.red : C.textMuted },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background: C.bgSoft, borderRadius: 12, padding: "16px 14px", textAlign: "center" }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            {scores.length > 1 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>ATS Score Trend (last {Math.min(scores.length, 10)} analyses)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {scores.slice(0, 10).reverse().map((s, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontSize: 11, color: C.textMuted, width: 24, textAlign: "right" }}>{i + 1}</div>
+                      <PBar val={s} />
+                      <div style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(s), width: 36 }}>{s}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>Resume Health Distribution</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {Object.entries(healthCounts).filter(([, v]) => v > 0).map(([k, v]) => (
+                  <div key={k} style={{ background: C.bgSoft, borderRadius: 10, padding: "8px 14px", textAlign: "center" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: hubHealthColor(k === "Excellent" ? 85 : k === "Good" ? 65 : k === "Fair" ? 45 : 20) }}>{v}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted }}>{k}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* SECTION 6 — AI Toolkit */}
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>🤖 AI Resume Toolkit</div>
+        <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {[
+            { icon: "🎯", title: "Resume Tailor", desc: "Match your resume to any job with AI", active: true },
+            { icon: "✨", title: "AI Resume Builder", desc: "Generate a professional resume from scratch", active: true },
+            { icon: "💡", title: "Resume Insights", desc: "Strengths, gaps, and tailoring opportunities", active: true },
+            { icon: "📄", title: "Cover Letter Writer", desc: "AI-crafted cover letters for every role", active: true },
+            { icon: "🔧", title: "Resume Improver", desc: "One-click keyword and structure optimization", active: true },
+            { icon: "📊", title: "Score Benchmarking", desc: "Compare against industry standards", active: false },
+            { icon: "🔍", title: "Job Fit Analyzer", desc: "Deep role compatibility analysis", active: false },
+            { icon: "📝", title: "LinkedIn Optimizer", desc: "Sync your resume with your LinkedIn profile", active: false },
+          ].map(({ icon, title, desc, active }) => (
+            <div key={title} style={{ background: active ? C.bgSoft : `${C.bgSoft}80`, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "16px 14px", opacity: active ? 1 : 0.55 }}>
+              <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: active ? C.text : C.textMuted, marginBottom: 4 }}>{title}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>{desc}</div>
+              {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 8 }}>Coming Soon</div>}
+            </div>
+          ))}
+        </div>
+      </Card>
+
         </div>
       )}
     </div>
@@ -1861,16 +2663,52 @@ const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employment
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId }) {
   const { t } = useI18n();
-  const [filters, setFilters] = useState({ title: profile?.preferred_job_title || "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
-  const [jobs, setJobs] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useState(false); const [page, setPage] = useState(1); const [hasMore, setHasMore] = useState(false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useState({}); const [resume, setResume] = useState(""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useState(null);
+  const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
+  const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
   const resumeFileRef = useRef();
   const [uploadingResume, setUploadingResume] = useState(false);
-  const [resumeFileName, setResumeFileName] = useState("");
+  const [resumeFileName, setResumeFileName] = useSessionState("cp_jobs_resumefilename", "");
   const [dragActive, setDragActive] = useState(false);
   const [smartApplying, setSmartApplying] = useState(null);
-  const { enqueue: enqueueSmartApply, markReady: markSmartApplyReady, markFailed: markSmartApplyFailed } = useSmartApplyQueue(profile?.id);
+  const [selectedResumeId, setSelectedResumeId] = useState(null);
+  const [autoApplyingCount, setAutoApplyingCount] = useState(0);
+  const userContext = useUserContext({ profile, applications, savedJobs });
+  const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
+  const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
+
+  // Auto-load the default saved resume the first time resumes arrive from Supabase.
+  // Without this, resume is always empty on first visit and autoSmartApply never fires.
+  useEffect(() => {
+    if (resume) return; // textarea already has content — don't overwrite
+    if (!resumes || resumes.length === 0) return;
+    const def = resumes.find(r => r.is_default) || resumes[0];
+    if (def?.content) {
+      setResume(def.content);
+      setResumeFileName(def.name);
+      setSelectedResumeId(def.id);
+    }
+  }, [resumes]);
+
+  // Once per session: when resume becomes available, auto-process any saved jobs
+  // that don't already have a queued/ready package. enqueueSmartApply handles dedup
+  // so jobs with existing packages are skipped instantly with one DB round-trip.
+  const autoApplySavedRef = useRef(null);
+  useEffect(() => {
+    if (!resume.trim() || !profile?.id) return;
+    if (autoApplySavedRef.current === profile.id) return; // already fired this session
+    if (!savedJobs.length) return;
+    autoApplySavedRef.current = profile.id;
+    const unprocessed = savedJobs.filter(j =>
+      !queue.some(q => q.job_id === j.job_id && (q.status === "queued" || q.status === "ready"))
+    );
+    if (unprocessed.length > 0) {
+      console.log(`[SmartApply] 🔄 Auto-processing ${unprocessed.length} saved job(s) with no package`);
+      autoSmartApply(unprocessed);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resume, profile?.id, savedJobs, queue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Shared extraction core — accepts a File object
   const extractResumeFile = async (file) => {
@@ -1897,7 +2735,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
           const content = await pageObj.getTextContent();
           text += content.items.map(it => it.str).join(" ") + "\n";
         }
-        if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
+        if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); setSelectedResumeId(null); }
         else { setError(t("jobSearch.pdfExtractFailed")); }
       } else if (ext === "docx" || ext === "doc" || ext === "txt") {
         const text = await file.text();
@@ -1905,7 +2743,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
         if (ext === "docx" || ext === "doc") {
           clean = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         }
-        if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
+        if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); setSelectedResumeId(null); }
         else { setError(t("jobSearch.fileReadFailed")); }
       } else {
         setError(t("jobSearch.unsupportedFileType"));
@@ -1965,9 +2803,10 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
       setHasMore(newJobs.length >= 10); // if we got results, there may be more
       if (data.sources) setSourceCounts(data.sources);
 
-      // Auto AI-match all jobs if resume is provided
-      if (resume.trim() && newJobs.length > 0) {
-        autoMatchAll(newJobs);
+      // Auto AI-match + auto Smart Apply on initial searches when resume is present
+      if (!loadMore && resume.trim() && newJobs.length > 0) {
+        autoMatchAll(newJobs); // scores job cards (fire and forget)
+        autoSmartApply(newJobs); // generates full packages for top 3 (fire and forget)
       }
     } catch (e) {
       setError(t("jobSearch.searchFailed").replace("{message}", e.message));
@@ -1981,7 +2820,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, profile }) {
     if (!resume.trim()) { setShowResume(true); return; }
     setAnalyzing(job.id);
     try {
-      const raw = await askClaude(`Analyze resume-job match. Return ONLY valid JSON, no markdown:
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Analyze resume-job match. Return ONLY valid JSON, no markdown:
 {"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
 
 RESUME (first 600 chars):
@@ -2010,9 +2850,21 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
     setSmartApplying(job.id);
     let queued;
     try {
-      queued = await enqueueSmartApply(profile.id, job, null);
-      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
-{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"]}
+      console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id})`);
+      queued = await enqueue(profile.id, job, selectedResumeId);
+      if (!queued) {
+        console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
+        return; // existing queued/ready row — no generation needed
+      }
+      console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}, status=${queued.status}`);
+
+      console.log(`[SmartApply] ⏳ [2/6] Building context for "${job.title}"`);
+      const ctx = userContext.getContextString({ identity: true, applications: true });
+      console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
+
+      console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
 
 RESUME:
 ${resume}
@@ -2020,24 +2872,42 @@ ${resume}
 JOB:
 Title: ${job.title}
 Company: ${job.company}
-Description: ${(job.description || "").slice(0, 1200)}`, 4000);
-      const result = JSON.parse(raw);
-      await markSmartApplyReady(queued.id, result);
+Description: ${(job.description || "").slice(0, 1200)}`, 8000);
+      console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
+
+      console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
+      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+      const result = JSON.parse(cleanRaw);
+      console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
+
+      console.log(`[SmartApply] ⏳ [5/6] Validating fields for "${job.title}"`);
+      const trLen = (result.tailoredResume || "").trim().length;
+      const clLen = (result.coverLetter || "").trim().length;
+      console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c, interviewProb=${result.interviewProbability}, hiringProb=${result.hiringProbability}`);
+      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+
+      console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
+      await markReady(queued.id, result);
+      console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
     } catch (e) {
-      console.error("Smart Apply failed:", e);
-      if (queued) await markSmartApplyFailed(queued.id);
-      setError(t("jobSearch.smartApplyFailed"));
+      console.error(`[SmartApply] ❌ MANUAL failed for "${job.title}":`, e?.code, e?.message, e);
+      if (queued) await markFailed(queued.id);
+      const isRls = e?.code === "42501" || e?.message?.includes("row-level security");
+      setError(isRls ? t("jobSearch.signInForSmartApply") : t("jobSearch.smartApplyFailed"));
     } finally {
       setSmartApplying(null);
+      onQueueChange?.(); // keep root-level queue and Dashboard in sync
     }
   };
 
   // Auto-match up to 5 jobs silently when resume is present
   const autoMatchAll = async (newJobs) => {
+    const ctx = userContext.getContextString({ identity: true });
     const toMatch = newJobs.slice(0, 5);
     for (const job of toMatch) {
       try {
-        const raw = await askClaude(`Match score only. Return ONLY JSON:
+        const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
 {"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
 RESUME:${resume.slice(0, 300)}
 JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
@@ -2046,9 +2916,92 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
     }
   };
 
-  const toggleSave = (job) => { const s = savedJobs.find(j => j.job_id === job.id); if (s) { setSavedJobs(p => p.filter(j => j.job_id !== job.id)); } else { setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]); } };
+  // Auto-generate full Smart Apply packages for all provided jobs after search or save.
+  // Runs in the background — queue cards appear in Saved Jobs as each completes.
+  // enqueueSmartApply handles dedup: already-queued/ready jobs are skipped instantly.
+  const autoSmartApply = async (newJobs) => {
+    if (!profile?.id || !resume.trim()) return;
+
+    console.log(`[SmartApply] 🚀 AUTO — starting for ${newJobs.length} job(s)`);
+    setAutoApplyingCount(newJobs.length);
+    let succeeded = 0;
+    for (const job of newJobs) {
+      let queued;
+      try {
+        console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id || job.job_id})`);
+        queued = await enqueue(profile.id, job, selectedResumeId);
+        // Dedup: row already queued/ready — skip AI generation; finally still decrements counter.
+        if (!queued) {
+          console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
+          succeeded++;
+          continue;
+        }
+        console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}, status=${queued.status}`);
+
+        console.log(`[SmartApply] ⏳ [2/6] Building context for "${job.title}"`);
+        const ctx = userContext.getContextString({ identity: true, applications: true });
+        console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
+
+        console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
+        const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
+
+RESUME:
+${resume}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}
+Description: ${(job.description || "").slice(0, 1200)}`, 8000);
+        console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
+
+        console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
+        const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+        const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+        const result = JSON.parse(cleanRaw);
+        console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
+
+        console.log(`[SmartApply] ⏳ [5/6] Validating fields for "${job.title}"`);
+        const trLen = (result.tailoredResume || "").trim().length;
+        const clLen = (result.coverLetter || "").trim().length;
+        console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c, interviewProb=${result.interviewProbability}, hiringProb=${result.hiringProbability}`);
+        if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+
+        console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
+        await markReady(queued.id, result);
+        console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
+        succeeded++;
+      } catch (e) {
+        console.error(`[SmartApply] ❌ AUTO failed for "${job.title}":`, e?.code, e?.message, e);
+        if (queued) await markFailed(queued.id);
+      } finally {
+        setAutoApplyingCount(c => Math.max(0, c - 1));
+        onQueueChange?.(); // refresh Dashboard + SavedJobs after each job completes
+      }
+    }
+    console.log(`[SmartApply] 🏁 AUTO complete: ${succeeded}/${newJobs.length} succeeded`);
+    // If every job failed, surface a visible error so the user isn't left confused
+    if (succeeded === 0 && newJobs.length > 0) {
+      setError(t("jobSearch.smartApplyFailed"));
+    }
+  };
+
+  const toggleSave = (job) => {
+    const s = savedJobs.find(j => j.job_id === job.id);
+    if (s) {
+      setSavedJobs(p => p.filter(j => j.job_id !== job.id));
+      purgeQueueByJobId(job.id); // remove stale queue entry so it doesn't linger in Saved Jobs
+    } else {
+      setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]);
+      if (resume.trim() && profile?.id) autoSmartApply([job]); // generate package immediately (fire and forget)
+    }
+  };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
-  const addTracker = (job) => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
+  const addTracker = async (job) => {
+    const newApp = { id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl };
+    try { await insertApplicationRow(profile.id, newApp); } catch (e) { console.error("[JobSearch] addTracker DB insert failed:", e.message); }
+    setApplications(p => [newApp, ...p]);
+  };
   const fmtSalary = (min, max) => { if (!min && !max) return t("jobSearch.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("jobSearch.upTo").replace("{v}", f(max)); };
   const matchColor = s => s >= 85 ? C.green : s >= 70 ? C.yellow : C.red;
 
@@ -2074,6 +3027,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
+          {autoApplyingCount > 0 && <span style={{ color: C.purple, fontSize: 13 }}>✨ AI is preparing {autoApplyingCount} application{autoApplyingCount !== 1 ? "s" : ""}…</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? t("jobSearch.resumeAdded") : t("jobSearch.addResumeForMatch")}</Btn>
             <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? t("jobSearch.searching") : t("jobSearch.searchJobs")}</Btn>
@@ -2120,8 +3074,28 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
             )}
           </div>
 
+          {/* Saved resume picker — select from user_resumes library */}
+          {(resumes || []).length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 8 }}>Or select a saved resume:</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(resumes || []).map(r => (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: selectedResumeId === r.id ? C.purpleLight : C.bgSoft, border: `1px solid ${selectedResumeId === r.id ? C.purple : C.border}`, borderRadius: 9, padding: "8px 12px", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>Default</span>}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <Btn variant={selectedResumeId === r.id ? "secondary" : "ghost"} style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => { setResume(r.content || ""); setResumeFileName(r.name); setSelectedResumeId(r.id); }}>
+                      {selectedResumeId === r.id ? "Selected ✓" : "Select"}
+                    </Btn>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Resume textarea */}
-          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("jobSearch.resumeTextareaPlaceholder")} value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); }} />
+          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("jobSearch.resumeTextareaPlaceholder")} value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); if (selectedResumeId) setSelectedResumeId(null); }} />
           <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("jobSearch.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("jobSearch.extractTip")}</div>
           {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>{t("jobSearch.saveAndClose")}</Btn>}
         </div>}
@@ -2168,8 +3142,12 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
                       <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>{t("jobSearch.applyNow")}</a>
                       <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? t("jobSearch.preparing") : t("jobSearch.smartApply")}</Btn>
+                      {isTracked(job)
+                        ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
+                        : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
+                      {isSmartApplied(job)
+                        ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.smartApplied")}</Btn>
+                        : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? t("jobSearch.preparing") : t("jobSearch.smartApply")}</Btn>}
                     </div>
                   </div>
                   {mr && (
@@ -2207,11 +3185,11 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
-function InterviewPage({ profile }) {
+function InterviewPage({ profile, applications, savedJobs }) {
   const { t } = useI18n();
   const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
   const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
-  const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
+  const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useSessionState("cp_interview_filter", "All");
   const [error, setError] = useState("");
   const [resume, setResume] = useState("");
   const [showResume, setShowResume] = useState(false);
@@ -2229,6 +3207,7 @@ function InterviewPage({ profile }) {
   const [answerTab, setAnswerTab] = useState("strong");
   const [restored, setRestored] = useState(false);
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
+  const userContext = useUserContext({ profile, applications, savedJobs });
 
   const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, save: saveSession, clear: clearSessionRow } = useInterviewSession(profile?.id);
   const [loadApplied, setLoadApplied] = useState(false);
@@ -2245,6 +3224,7 @@ function InterviewPage({ profile }) {
     appliedForRef.current = profile?.id;
     if (session?.questions?.length) {
       setQuestions(session.questions);
+      setFilterCat("All");
       setJobDesc(session.jobDesc || "");
       setResume(session.resume || "");
       setResumeFileName(session.resumeFileName || "");
@@ -2343,8 +3323,9 @@ function InterviewPage({ profile }) {
     if (!jobDesc.trim()) { setError(t("interview.noJobDesc")); return; }
     setLoading(true); setQuestions([]); setError("");
     try {
+      const ctx = userContext.getContextString({ identity: true });
       const resumeBlock = resume.trim() ? `\nCANDIDATE RESUME (tailor questions to this background):\n${resume.slice(0, 1000)}` : "";
-      const raw = await askClaude(`You are an expert interview coach. Generate 8 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert interview coach. Generate 8 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
 [{"id":1,"category":"Behavioral|Technical|Situational|Culture Fit","difficulty":"Easy|Medium|Hard","question":"<question>","whyAsked":"<1 sentence>","tipToAnswer":"<1-2 sentences; STAR for behavioral>","strongAnswer":"<2-3 sentences>","weakAnswer":"<1-2 sentences>","aiRecommendedAnswer":"<2-3 sentences>","star":true}]
 JOB:
 ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
@@ -2353,7 +3334,10 @@ ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
         setError(t("interview.parseError"));
       } else {
         setQuestions(parsed);
+        setFilterCat("All");
         setRestored(false);
+        // Save immediately so quick navigation doesn't race the 600ms debounce
+        saveSession({ questions: parsed, jobDesc, resume, resumeFileName, savedFeedback: {}, mockAnswers: {}, mockSummary: null, mode: "browse", mockIdx: 0, mockAnswerDraft: "", activeQ: null, showReview: false }).catch(() => {});
       }
     } catch (e) {
       setError(t("interview.generationFailed").replace("{msg}", e.message || "please try again."));
@@ -2362,9 +3346,10 @@ ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
 
   // ── Feedback for a single answer (now includes JD + resume context) ──
   const getFeedbackFor = async (question, ans) => {
+    const ctx = userContext.getContextString({ identity: true });
     const resumeBlock = resume.trim() ? `\nCANDIDATE BACKGROUND:${resume.slice(0, 600)}` : "";
     const jdBlock = jobDesc.trim() ? `\nJOB CONTEXT:${jobDesc.slice(0, 600)}` : "";
-    const raw = await askClaude(`You are an interview coach. Rate this practice answer for the given question and role. Return ONLY JSON:
+    const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an interview coach. Rate this practice answer for the given question and role. Return ONLY JSON:
 {"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<stronger version using STAR if behavioral>"}
 QUESTION:${question.question}${jdBlock}${resumeBlock}
 CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
@@ -2670,16 +3655,20 @@ const SCOLOR = { Saved: C.textMuted, Applied: C.blue, "Phone Screen": C.yellow, 
 
 const STATUS_LABEL_KEY = { Saved: "statusSaved", Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
 
-function TrackerPage({ applications, setApplications }) {
+function TrackerPage({ applications, deleteApplication, saveApplication, resumes }) {
   const { t } = useI18n();
   const tStatus = s => t(`tracker.${STATUS_LABEL_KEY[s]}`, s);
-  const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useState("All"); const [viewApp, setViewApp] = useState(null);
+  const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useSessionState("cp_tracker_filter", "All"); const [viewApp, setViewApp] = useState(null);
   const [formErrors, setFormErrors] = useState({});
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useSessionState("cp_tracker_search", "");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const blankForm = { company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" };
 
-  const save = () => {
+  const save = async () => {
     const errors = {};
     if (!form.company.trim()) errors.company = t("tracker.companyRequired");
     if (!form.jobTitle.trim()) errors.jobTitle = t("tracker.jobTitleRequired");
@@ -2702,19 +3691,38 @@ function TrackerPage({ applications, setApplications }) {
 
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     setFormErrors({});
+    setSaveError("");
 
     const cleanForm = { ...form, atsScore: atsClean };
-    if (editId) {
-      setApplications(p => p.map(a => a.id === editId ? { ...a, ...cleanForm } : a));
+    const fullApp = editId
+      ? { ...(applications.find(a => a.id === editId) || {}), ...cleanForm }
+      : { ...cleanForm, id: uid() };
+
+    setSaving(true);
+    try {
+      await saveApplication(fullApp); // DB upsert + root setApplications
       setEditId(null);
-    } else {
-      setApplications(p => [{ ...cleanForm, id: uid() }, ...p]);
+      setForm(blankForm);
+      setShowForm(false);
+    } catch {
+      setSaveError(t("tracker.saveFailed") || "Save failed. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setForm(blankForm);
-    setShowForm(false);
   };
 
-  const del = id => { setApplications(p => p.filter(a => a.id !== id)); if (viewApp?.id === id) setViewApp(null); };
+  const del = async (id) => {
+    setDeleteError("");
+    setDeletingId(id);
+    try {
+      await deleteApplication(id); // confirmed Supabase delete first
+      if (viewApp?.id === id) setViewApp(null);
+    } catch {
+      setDeleteError(t("tracker.deleteFailed"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
   const edit = app => { setForm({ ...blankForm, ...app }); setEditId(app.id); setShowForm(true); setViewApp(null); setFormErrors({}); };
   const closeForm = () => { setShowForm(false); setEditId(null); setFormErrors({}); setForm(blankForm); };
 
@@ -2731,6 +3739,8 @@ function TrackerPage({ applications, setApplications }) {
 
   return (
     <div>
+      {deleteError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{deleteError}</div>}
+      {saveError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{saveError}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
         <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p></div>
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
@@ -2770,7 +3780,7 @@ function TrackerPage({ applications, setApplications }) {
             <div style={{ gridColumn: "1 / -1" }}><Input label={t("tracker.jobUrlLabel")} placeholder={t("tracker.jobUrlPlaceholder")} value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
           <div style={{ marginBottom: 16 }}><Textarea label={t("tracker.notesLabel")} placeholder={t("tracker.notesPlaceholder")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
-          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save}>{t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm}>{t("tracker.cancel")}</Btn></div>
+          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save} disabled={saving}>{saving ? "Saving…" : t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm} disabled={saving}>{t("tracker.cancel")}</Btn></div>
         </Card>
       )}
       {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{applications.length === 0 ? t("tracker.noApplicationsYet") : t("tracker.noMatchesFound")}</div><div style={{ fontSize: 14, color: C.textMuted }}>{applications.length === 0 ? t("tracker.addManuallyHint") : t("tracker.tryDifferentSearch")}</div></Card>}
@@ -2783,6 +3793,7 @@ function TrackerPage({ applications, setApplications }) {
                 <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{app.company || t("tracker.unknownCompany")}{app.date ? t("tracker.appliedOn").replace("{date}", app.date) : ""}</div>
                 {app.followUpDate && <div style={{ fontSize: 12, color: C.yellow, marginTop: 3, fontWeight: 500 }}>{t("tracker.followUp").replace("{date}", app.followUpDate)}</div>}
                 {app.contactName && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>👤 {app.contactName}{app.contactEmail ? ` · ${app.contactEmail}` : ""}</div>}
+                {app.resumeId && resumes && (() => { const r = resumes.find(x => x.id === app.resumeId); return r ? <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>📄 {r.name}{r.version_label ? ` · ${r.version_label}` : ""}</div> : null; })()}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
@@ -2790,7 +3801,7 @@ function TrackerPage({ applications, setApplications }) {
                 {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>{t("tracker.job")}</a>}
                 <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
-                <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => del(app.id)}>✕</Btn>
+                <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
               </div>
             </div>
           </div>
@@ -2812,7 +3823,7 @@ function TrackerPage({ applications, setApplications }) {
 }
 
 // ─── SALARY PAGE ───────────────────────────────────────────
-function SalaryPage({ profile }) {
+function SalaryPage({ profile, applications, savedJobs }) {
   const { t } = useI18n();
   const [form, setForm] = useState({ jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
   const [results, setResults] = useState(null);
@@ -2822,6 +3833,7 @@ function SalaryPage({ profile }) {
   const [loadApplied, setLoadApplied] = useState(false);
   const appliedForRef = useRef(undefined);
   const saveTimerRef = useRef(null);
+  const userContext = useUserContext({ profile, applications, savedJobs });
 
   // ── Load once the Supabase fetch for this user resolves ──
   // Gated on `searchLoadedFor === profile?.id` (not just `!searchLoading`) so a
@@ -2867,8 +3879,9 @@ function SalaryPage({ profile }) {
     if (!form.jobTitle || !form.location) { setError(t("salary.titleLocationRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
+      const ctx = userContext.getContextString({ identity: true, applications: true });
       const companyBlock = form.company ? `, company type: ${form.company}` : "";
-      const raw = await askClaude(`2026 salary data. Return ONLY JSON, no markdown:
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}2026 salary data. Return ONLY JSON, no markdown:
 {"salaryRange":{"low":<n>,"median":<n>,"high":<n>},"totalComp":{"median":<n>},"equityRange":"<range>","bonusRange":"<range>","topPayingCompanies":[{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"}],"salaryByExperience":[{"level":"Entry","salary":<n>},{"level":"Mid","salary":<n>},{"level":"Senior","salary":<n>}],"negotiationTips":["<t1>","<t2>","<t3>"],"marketOutlook":"<2 sentence outlook>","skillPremiums":[{"skill":"<s>","premium":"<p>"},{"skill":"<s>","premium":"<p>"}],"benchmarkInsight":"<1 sentence>","demandLevel":"<High|Medium|Low>","jobOpenings":"<estimate>"}
 ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: ${form.skills || "general"}${companyBlock}`, 2500);
       const parsed = safeParse(raw);
@@ -2876,6 +3889,8 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
         setError(t("salary.incompleteData"));
       } else {
         setResults(parsed);
+        // Save immediately so quick navigation doesn't race the 600ms debounce
+        saveSearch(form, parsed).catch(() => {});
       }
     } catch (e) {
       setError(t("salary.serviceUnreachable"));
@@ -2980,10 +3995,10 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 }
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
-function NetworkingPage({ profile }) {
+function NetworkingPage({ profile, applications, savedJobs }) {
   const { t } = useI18n();
   const { form, setForm, results, setResults, draft, setDraft, emailTo, setEmailTo, emailSent, setEmailSent } = useNetworkingSession(profile?.id, { yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "" });
-  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useState("linkedin");
+  const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useSessionState("cp_net_tab", "linkedin");
   const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(null);
@@ -2994,6 +4009,7 @@ function NetworkingPage({ profile }) {
   const [fuContact, setFuContact] = useState(null);
   const [fuDraft, setFuDraft] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
+  const userContext = useUserContext({ profile, applications, savedJobs });
 
   const handleSendEmail = () => {
     // Trigger save prompt after user clicks Send Email (the mailto fires via the <a> tag)
@@ -3031,7 +4047,8 @@ function NetworkingPage({ profile }) {
   const generateFollowUp = async (contact) => {
     setFuContact(contact); setFuDraft(""); setFuLoading(true);
     try {
-      const raw = await askClaude(`Write a professional follow-up message. Context:
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Write a professional follow-up message. Context:
 Original outreach to ${contact.name || "contact"}${contact.company ? " at " + contact.company : ""}.
 Original subject: ${contact.subject || "N/A"}
 Original message: ${(contact.originalMessage || contact.linkedinMessage || "").slice(0, 400)}
@@ -3096,7 +4113,8 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
     if (!form.targetCompany || !form.yourBackground) { setError(t("networking.fillRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
-      const raw = await askClaude(`Networking outreach. Return ONLY JSON, no markdown:
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Networking outreach. Return ONLY JSON, no markdown:
 {"linkedinMessage":"<280 chars max>","linkedinNote":"<2 para InMail>","email":{"subject":"<subject>","body":"<100 word email>"},"followUp":"<follow up>","icebreakers":["<i1>","<i2>"],"doList":["<d1>","<d2>"],"dontList":["<dont1>","<dont2>"],"callToAction":"<ask>"}
 To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}${form.purpose === "referral" && form.jobDesc ? `, Referral for: ${form.jobDesc.slice(0,200)}` : ""}`, 2500);
       const parsed = safeParse(raw);
@@ -3297,17 +4315,18 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 }
 
 // ─── SAVED JOBS ────────────────────────────────────────────
-function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
+function SmartApplyQueueCard({ item, onApply, onSkip, onRetry, applying, retrying, resumes, justApplied }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued") }[item.status] || item.status;
+  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued"), failed: t("savedJobs.statusFailed") }[item.status] || item.status;
+  const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{item.job_title}</div>
-            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : C.yellow}>{statusLabel}</Badge>
+            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : item.status === "failed" ? C.red : C.yellow}>{statusLabel}</Badge>
           </div>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{item.company}</div>
           {item.status === "ready" && (
@@ -3317,25 +4336,76 @@ function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
             </div>
           )}
         </div>
-        {item.status === "ready" && (
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
-            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
-            <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>{t("savedJobs.markApplied")}</Btn>
+        {(item.status === "ready" || justApplied) && (
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+            {!justApplied && (
+              <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
+            )}
+            {!justApplied && (
+              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
+            )}
+            {justApplied ? (
+              <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
+            ) : (
+              <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>
+                {applying ? "Applying…" : "Mark as Applied"}
+              </Btn>
+            )}
           </div>
         )}
       </div>
       {item.status === "queued" && <div style={{ fontSize: 13, color: C.textMuted, marginTop: 10 }}>{t("savedJobs.preparingApplication")}</div>}
+      {item.status === "failed" && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 13, color: C.red, marginBottom: 8 }}>{t("savedJobs.generationFailed")}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
+          </div>
+        </div>
+      )}
       {expanded && item.status === "ready" && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Application Package header — organizes all assets for this application */}
+          <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: C.purple, letterSpacing: 1, marginBottom: 8 }}>APPLICATION PACKAGE</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
+            {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Resume: {selectedResumeName}</div>}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Badge color={C.green}>{statusLabel}</Badge>
+              {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
+              {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
+            </div>
+          </div>
+
           {item.missing_skills?.length > 0 && (
             <div>
               <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
             </div>
           )}
-          {item.cover_letter && <div><Label>{t("savedJobs.coverLetter")}</Label><ContentDisplay content={item.cover_letter} /></div>}
-          {item.tailored_resume && <div><Label>{t("savedJobs.tailoredResume")}</Label><ContentDisplay content={item.tailored_resume} /></div>}
+          {item.cover_letter && (
+            <div>
+              <Label>{t("savedJobs.coverLetter")}</Label>
+              <ContentDisplay content={item.cover_letter} />
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <CopyBtn text={item.cover_letter} label="Copy" />
+                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>Download PDF</Btn>
+                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>Download DOCX</Btn>
+              </div>
+            </div>
+          )}
+          {item.tailored_resume && (
+            <div>
+              <Label>{t("savedJobs.tailoredResume")}</Label>
+              <ContentDisplay content={item.tailored_resume} />
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <CopyBtn text={item.tailored_resume} label="Copy" />
+                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>Download PDF</Btn>
+                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>Download DOCX</Btn>
+              </div>
+            </div>
+          )}
           {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /></div>}
           {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /></div>}
           {item.application_questions?.length > 0 && (
@@ -3346,21 +4416,143 @@ function SmartApplyQueueCard({ item, onApply, onSkip, applying }) {
               </div>
             </div>
           )}
+
+          {item.salary_insight && (() => {
+            const si = item.salary_insight;
+            const r = si.marketRange || {};
+            const fmt = n => n ? `$${Math.round(n / 1000)}K` : null;
+            const low = fmt(r.low); const med = fmt(r.median); const high = fmt(r.high);
+            return (
+              <div>
+                <Label>💰 Salary Insight</Label>
+                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {(low || med || high) && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>MARKET RANGE</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {[["Low", low, C.yellow], ["Median", med, C.green], ["High", C.blue === C.blue ? high : high, C.blue]].filter(([, v]) => v).map(([label, val, color]) => (
+                          <div key={label} style={{ flex: 1, background: `${color}12`, border: `1px solid ${color}30`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
+                            <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, marginTop: 2 }}>{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {si.userPositioning && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>YOUR POSITIONING</div>
+                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.userPositioning}</div>
+                    </div>
+                  )}
+                  {si.negotiationLeverage && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>NEGOTIATION LEVERAGE</div>
+                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.negotiationLeverage}</div>
+                    </div>
+                  )}
+                  {si.benchmarks?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>BENCHMARKS</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {si.benchmarks.map((b, i) => <Badge key={i} color={C.textMuted}>{b}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {item.company_insight && (() => {
+            const ci = item.company_insight;
+            const trendColor = ci.hiringTrend === "growing" ? C.green : ci.hiringTrend === "shrinking" ? C.red : C.yellow;
+            const trendLabel = ci.hiringTrend === "growing" ? "↑ Growing" : ci.hiringTrend === "shrinking" ? "↓ Shrinking" : "→ Stable";
+            return (
+              <div>
+                <Label>🏢 Company Insight</Label>
+                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {ci.hiringTrend && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>HIRING TREND</div>
+                      <Badge color={trendColor}>{trendLabel}</Badge>
+                    </div>
+                  )}
+                  {ci.culture && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>CULTURE</div>
+                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.culture}</div>
+                    </div>
+                  )}
+                  {ci.recentNews && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>RECENT NEWS</div>
+                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.recentNews}</div>
+                    </div>
+                  )}
+                  {ci.greenFlags?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>GREEN FLAGS</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {ci.greenFlags.map((f, i) => (
+                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span>
+                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {ci.redFlags?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>RED FLAGS</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {ci.redFlags.map((f, i) => (
+                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span>
+                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {ci.talkingPoints?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>INTERVIEW TALKING POINTS</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {ci.talkingPoints.map((p, i) => (
+                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span>
+                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </Card>
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId }) {
   const { t } = useI18n();
-  const remove = id => setSavedJobs(p => p.filter(j => j.job_id !== id));
-  const addTracker = job => setApplications(p => [{ id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl }, ...p]);
+  const remove = id => { setSavedJobs(p => p.filter(j => j.job_id !== id)); purgeQueueByJobId?.(id); };
+  const addTracker = async (job) => {
+    const newApp = { id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl };
+    try { await insertApplicationRow(profile.id, newApp); } catch (e) { console.error("[SavedJobs] addTracker DB insert failed:", e.message); }
+    setApplications(p => [newApp, ...p]);
+  };
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
-  const { queue, markApplied, skip } = useSmartApplyQueue(profile?.id);
   const [applyingId, setApplyingId] = useState(null);
+  const [appliedId, setAppliedId] = useState(null);
+  const [retryingId, setRetryingId] = useState(null);
   const [queueError, setQueueError] = useState("");
-  const visibleQueue = queue.filter(q => q.status !== "applied" && q.status !== "skipped");
+  const visibleQueue = queue.filter(q => (q.status !== "applied" && q.status !== "skipped") || q.id === appliedId);
 
   const handleMarkApplied = async (item) => {
     setApplyingId(item.id);
@@ -3374,6 +4566,10 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
       await insertApplicationRow(profile.id, newApp);
       setApplications(p => [newApp, ...p]);
       await markApplied(item.id, appId);
+      onQueueChange?.();
+      // Show "✓ Applied" state briefly before the card disappears from the queue.
+      setAppliedId(item.id);
+      setTimeout(() => setAppliedId(null), 1500);
     } catch {
       setQueueError(t("savedJobs.markAppliedError"));
     } finally {
@@ -3383,8 +4579,62 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
 
   const handleSkip = async (item) => {
     setQueueError("");
-    try { await skip(item.id); }
+    try { await skip(item.id); onQueueChange?.(); }
     catch { setQueueError(t("savedJobs.skipError")); }
+  };
+
+  const handleRetry = async (item) => {
+    const resumeText = (resumes || []).find(r => r.id === item.resume_id)?.content ||
+      (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("cp_jobs_resume") || "" : "");
+    if (!resumeText.trim()) { setQueueError(t("savedJobs.retryNoResume")); return; }
+    setRetryingId(item.id);
+    setQueueError("");
+    try {
+      console.log(`[SmartApply] 🔄 RETRY — "${item.job_title}" at ${item.company} (queue_id: ${item.id})`);
+
+      console.log(`[SmartApply] ⏳ [1/6] Resetting to queued (queue_id: ${item.id})`);
+      await resetToQueued(item.id);
+      console.log(`[SmartApply] ✅ [1/6] Status reset to queued`);
+
+      console.log(`[SmartApply] ⏳ [2/6] Building prompt (resume: ${resumeText.length} chars)`);
+      // Note: job description is not stored in smart_apply_queue; retry uses title + company only
+      console.log(`[SmartApply] ✅ [2/6] Prompt ready`);
+
+      console.log(`[SmartApply] ⏳ [3/6] Calling Claude API (max 8000 tokens)`);
+      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
+
+RESUME:
+${resumeText}
+
+JOB:
+Title: ${item.job_title}
+Company: ${item.company}`, 8000);
+      console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
+
+      console.log(`[SmartApply] ⏳ [4/6] Parsing JSON`);
+      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+      const result = JSON.parse(cleanRaw);
+      console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
+
+      console.log(`[SmartApply] ⏳ [5/6] Validating fields`);
+      const trLen = (result.tailoredResume || "").trim().length;
+      const clLen = (result.coverLetter || "").trim().length;
+      console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+
+      console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${item.id})`);
+      await markReady(item.id, result);
+      console.log(`[SmartApply] ✅ [6/6] Retry complete — status: ready ✓`);
+    } catch (e) {
+      console.error(`[SmartApply] ❌ RETRY failed for "${item.job_title}":`, e?.code, e?.message, e);
+      await markFailed(item.id);
+      setQueueError(t("savedJobs.retryError"));
+    } finally {
+      setRetryingId(null);
+      onQueueChange?.(); // sync Dashboard + SavedJobsPage regardless of success/failure
+    }
   };
 
   return (
@@ -3398,7 +4648,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile }) {
           {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 12 }}>{queueError}</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
-              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onSkip={handleSkip} applying={applyingId === item.id} />
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onSkip={handleSkip} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} />
             ))}
           </div>
         </div>
@@ -3665,7 +4915,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
-  const { user, logout, recoveryMode, clearRecovery } = useAuth();
+  const { user, logout, recoveryMode, clearRecovery, authResolving } = useAuth();
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
@@ -3722,7 +4972,15 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const handleLogout = async () => { await logout(); setProfile(null); };
+  const handleLogout = async () => {
+    await logout();
+    setProfile(null);
+    // Session state — scoped to current tab, always cleared on logout
+    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+    // User-specific localStorage — cleared so a subsequent login (same or different account)
+    // starts from Supabase, not from the previous user's stale cached data
+    ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch {} });
+  };
   const updateProfile = (updates) => {
     const updated = { ...profile, ...updates };
     setProfile(updated);
@@ -3749,7 +5007,58 @@ export default function App() {
   const planName = (profile?.plan || "free").toUpperCase();
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
 
+  // Data lifted to App level so UserContext can aggregate them as the single
+  // source of truth. Page-level hook instances keep their full mutation APIs.
+  const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel } = useResumes(profile?.id);
+  const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
+
+  // Confirmed Tracker delete — awaits Supabase before updating local state.
+  // Prevents the "deleted items return on refresh" ghost caused by syncListDiff's
+  // fire-and-forget DELETE failing silently without reverting optimistic state.
+  const handleDeleteApplication = async (id) => {
+    console.log(`[Tracker] handleDeleteApplication called id=${id} profile.id=${profile?.id}`);
+    if (!profile?.id) throw new Error("Cannot delete: not signed in");
+    await deleteApplicationRow(profile.id, id); // throws only on real DB error
+    setApplications(p => p.filter(a => a.id !== id));
+    console.log(`[Tracker] State updated — id=${id} removed`);
+  };
+
+  // Confirmed Tracker save/edit — upserts to Supabase first, then updates React state.
+  // This prevents ghost-restores caused by syncListDiff swallowing upsert errors silently.
+  const handleSaveApplication = async (app) => {
+    console.log(`[Tracker] handleSaveApplication called id=${app.id} profile.id=${profile?.id}`);
+    if (!profile?.id) throw new Error("Cannot save: not signed in");
+    await upsertApplicationRow(profile.id, app); // throws on DB error
+    setApplications(p => {
+      const exists = p.some(a => a.id === app.id);
+      if (exists) return p.map(a => a.id === app.id ? app : a);
+      return [app, ...p];
+    });
+    console.log(`[Tracker] State updated — id=${app.id} saved`);
+  };
+  const { queue: smartApplyQueue, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, skip: rootSkip, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
+  // Lifted to App root so Dashboard always sees current values without remounting.
+  // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
+  const { session: rootInterviewSession } = useInterviewSession(profile?.id);
+  const { data: rootSalaryData } = useSalaryResearch(profile?.id);
+  const [rootNetworkContacts] = useNetworkingContacts(profile?.id);
+  const networkingSessionCtx = useNetworkingSession(profile?.id);
+
   if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;
+  // Show a branded loading screen while Supabase exchanges the auth callback
+  // token (email verification, magic link, OAuth). This replaces the confusing
+  // login-form flash that users would otherwise see before the session resolves.
+  if (authResolving) return (
+    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+      <Logo size={52} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 28, height: 28, border: `3px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: C.textMid }}>Completing sign-in…</div>
+        <div style={{ fontSize: 12, color: C.textMuted }}>This only takes a moment</div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
   if (!user) return <AuthPage t={t} />;
 
   return (
@@ -3768,8 +5077,18 @@ export default function App() {
         .nav-pill:hover { color: ${C.navHover} !important; opacity: 1 !important; }
         button:active:not(:disabled), .btn-link:active { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
-        @media (max-width: 700px) {
+        @media (max-width: 400px) {
+  .resume-source-selector { flex-direction: column !important; }
+}
+@media (max-width: 900px) {
+  .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .hub-toolkit-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 700px) {
   .two-col, .three-col { grid-template-columns: 1fr !important; }
+  .resume-action-bar { grid-template-columns: 1fr !important; max-width: 100% !important; }
+  .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .hub-toolkit-grid { grid-template-columns: 1fr !important; }
   .hero-section { margin-bottom: 10px !important; }
   .hero-greeting { font-size: 22px !important; margin-bottom: 2px !important; }
   .hero-subtitle { font-size: 12px !important; }
@@ -3870,16 +5189,16 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} />}
-        {page === "interview" && <InterviewPage profile={profile} />}
-        {page === "tracker" && <TrackerPage applications={applications} setApplications={setApplications} />}
-        {page === "salary" && <SalaryPage profile={profile} />}
-        {page === "network" && <NetworkingPage profile={profile} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} />}
+        {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
+        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
+        {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
+        {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "pricing" && <PricingPage profile={profile} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}

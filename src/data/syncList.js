@@ -3,7 +3,10 @@ import { supabase } from "../lib/supabaseClient";
 
 // Diffs `prev` vs `next` (plain arrays, compared by `key`) and fires the
 // minimal insert/update/delete calls against `table` in the background.
-async function syncListDiff(table, prev, next, userId, toRow, key) {
+// `upsertConflict` lets callers specify the ON CONFLICT column(s) — required
+// for tables whose unique key differs from the primary key (e.g. saved_jobs
+// uses "user_id,job_id" so saves are idempotent before a _db_id is assigned).
+async function syncListDiff(table, prev, next, userId, toRow, key, upsertConflict) {
   if (!userId) return;
   const prevById = new Map(prev.map(x => [x[key], x]));
   const nextIds = new Set(next.map(x => x[key]));
@@ -16,10 +19,13 @@ async function syncListDiff(table, prev, next, userId, toRow, key) {
 
   try {
     if (removed.length) {
-      await supabase.from(table).delete().eq("user_id", userId).in(key, removed.map(x => x[key]));
+      const { error } = await supabase.from(table).delete().eq("user_id", userId).in(key, removed.map(x => x[key]));
+      if (error) console.error(`syncListDiff(${table}) delete error`, error);
     }
     if (changed.length) {
-      await supabase.from(table).upsert(changed.map(x => toRow(x, userId)));
+      const upsertOpts = upsertConflict ? { onConflict: upsertConflict } : undefined;
+      const { error } = await supabase.from(table).upsert(changed.map(x => toRow(x, userId)), upsertOpts);
+      if (error) console.error(`syncListDiff(${table}) upsert error`, error);
     }
   } catch (err) {
     console.error(`syncListDiff(${table}) failed`, err);
@@ -28,12 +34,12 @@ async function syncListDiff(table, prev, next, userId, toRow, key) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// One-time push of whatever is in localStorage for `localKey` into `table`,
-// guarded by a per-user flag so it only ever runs once per browser/account.
-// Uses upsert (not insert) to handle partial migrations and ID conflicts.
-// Flag is only set on success — if the upsert fails, the next load retries.
-// IDs that are not valid UUIDs are stripped so Supabase auto-generates them.
-async function migrateLocalOnce(table, localKey, userId, toRow) {
+// One-time push of whatever is in localStorage for `localKey` into `table`.
+// `migrateConflict` is the ON CONFLICT column(s) for the upsert — defaults to
+// "id" for tables keyed by UUID, but must be "user_id,job_id" for saved_jobs
+// (which has a UNIQUE (user_id, job_id) constraint and rows without a _db_id
+// during migration would otherwise conflict and fail).
+async function migrateLocalOnce(table, localKey, userId, toRow, migrateConflict = "id") {
   const flag = `${localKey}_migrated_v2_${userId}`;
   if (localStorage.getItem(flag)) return;
   let local = [];
@@ -44,7 +50,7 @@ async function migrateLocalOnce(table, localKey, userId, toRow) {
       if (!UUID_RE.test(row.id)) delete row.id;
       return row;
     });
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: migrateConflict });
     if (error) {
       console.error(`migrateLocalOnce(${table}) failed`, error);
       return; // don't set flag — allow retry on next load
@@ -57,22 +63,24 @@ async function migrateLocalOnce(table, localKey, userId, toRow) {
 // Supabase table instead of localStorage, while keeping the exact same
 // [value, setValue] interface so existing components need no changes.
 //
-// The diff-and-sync side effect runs in a useEffect (not inside the setVal
-// updater) so it stays StrictMode-safe — React 18 dev mode double-invokes
-// updater functions to test purity, which would otherwise double-fire writes.
-export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "id") {
+// opts.upsertConflict — passed to syncListDiff; use when the table's effective
+//   unique key for upsert differs from its primary key.
+// opts.migrateConflict — passed to migrateLocalOnce; same reason.
+export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "id", opts = {}) {
   const [val, setVal] = useState(() => { try { return JSON.parse(localStorage.getItem(localKey) || "[]"); } catch { return []; } });
   const loadedForUser = useRef(null);
   const prevRef = useRef(val);
   const skipNextSync = useRef(false);
 
   useEffect(() => {
-    if (!userId || loadedForUser.current === userId) return;
+    if (!userId) { loadedForUser.current = null; setVal([]); return; }
+    if (loadedForUser.current === userId) return;
     loadedForUser.current = userId;
     (async () => {
-      await migrateLocalOnce(table, localKey, userId, toRow);
+      await migrateLocalOnce(table, localKey, userId, toRow, opts.migrateConflict);
       const { data, error } = await supabase.from(table).select("*").eq("user_id", userId).order("created_at", { ascending: false });
-      if (!error && data) {
+      if (error) { console.error(`useSyncedList(${table}) load error`, error); return; }
+      if (data) {
         const mapped = data.map(fromRow);
         skipNextSync.current = true;
         prevRef.current = mapped;
@@ -86,7 +94,7 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     localStorage.setItem(localKey, JSON.stringify(val));
     if (skipNextSync.current) { skipNextSync.current = false; prevRef.current = val; return; }
     if (val !== prevRef.current) {
-      syncListDiff(table, prevRef.current, val, userId, toRow, idKey);
+      syncListDiff(table, prevRef.current, val, userId, toRow, idKey, opts.upsertConflict);
       prevRef.current = val;
     }
   }, [val]);

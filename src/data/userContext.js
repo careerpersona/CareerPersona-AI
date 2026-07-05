@@ -81,11 +81,18 @@ export function buildUserContext({
 
   // ── Smart Apply ───────────────────────────────────────────────────────────
   const queue = smartApplyQueue ?? [];
+  // Collect the most recent salary_insight and company_insight from ready rows
+  // so AI agents (Briefing, Chat, Interview) can read them without another DB call.
+  const readyRows = queue.filter(i => i.status === "ready");
+  const latestSalaryInsight = readyRows.find(i => i.salary_insight)?.salary_insight ?? null;
+  const latestCompanyInsight = readyRows.find(i => i.company_insight)?.company_insight ?? null;
   const smartApply = {
     total: queue.length,
     queued: queue.filter(i => i.status === "queued").length,
-    ready: queue.filter(i => i.status === "ready").length,
+    ready: readyRows.length,
     applied: queue.filter(i => i.status === "applied").length,
+    latestSalaryInsight,
+    latestCompanyInsight,
   };
 
   // ── Interview ─────────────────────────────────────────────────────────────
@@ -185,6 +192,17 @@ export function buildUserContext({
       );
     }
 
+    if ((all || sections?.smartApply) && smartApply.latestSalaryInsight) {
+      const si = smartApply.latestSalaryInsight;
+      const range = si.marketRange;
+      if (range?.median) {
+        parts.push(
+          `Salary market data: median $${Math.round(range.median / 1000)}K (range $${Math.round((range.low || range.median * 0.85) / 1000)}K–$${Math.round((range.high || range.median * 1.15) / 1000)}K). ` +
+          (si.userPositioning ? si.userPositioning : "")
+        );
+      }
+    }
+
     return parts.join(" ");
   };
 
@@ -198,6 +216,8 @@ export function buildUserContext({
     defaultResume,
     smartApply,
     smartApplyQueue: queue,
+    latestSalaryInsight,
+    latestCompanyInsight,
     interview,
     salary,
     networking,
