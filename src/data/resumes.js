@@ -12,7 +12,15 @@ export function useResumes(userId) {
     if (!userId) { setResumes([]); return; }
     setLoading(true);
     const { data, error } = await supabase.from(TABLE).select("*").eq("user_id", userId).order("created_at", { ascending: false });
-    if (!error && data) setResumes(data);
+    if (!error && data) {
+      // Sort by most-recently-analyzed first; fall back to created_at for unanalyzed resumes.
+      const sorted = [...data].sort((a, b) => {
+        const aTime = new Date(a.last_analyzed_at || a.created_at);
+        const bTime = new Date(b.last_analyzed_at || b.created_at);
+        return bTime - aTime;
+      });
+      setResumes(sorted);
+    }
     setLoading(false);
   }, [userId]);
 
@@ -22,6 +30,22 @@ export function useResumes(userId) {
   // extracted/pasted text that's already shown in the page's textarea.
   const saveResume = useCallback(async (name, content, file) => {
     if (!userId) throw new Error("Not signed in");
+
+    // Deduplicate: if the same resume content is already saved, update the name
+    // and return the existing record instead of creating a duplicate entry.
+    if (content?.trim()) {
+      const fingerprint = content.trim().slice(0, 400);
+      const { data: existing } = await supabase.from(TABLE).select("id, name, content").eq("user_id", userId);
+      const match = existing?.find(r => r.content?.trim().slice(0, 400) === fingerprint);
+      if (match) {
+        if (name && match.name !== name) {
+          await supabase.from(TABLE).update({ name }).eq("id", match.id).eq("user_id", userId);
+        }
+        await refresh();
+        return { ...match, name: name || match.name };
+      }
+    }
+
     let file_url = null;
     let file_type = null;
     if (file) {
@@ -100,9 +124,9 @@ export function useResumes(userId) {
     await refresh();
   }, [userId, refresh]);
 
-  const saveAnalysis = useCallback(async (resumeId, analysis) => {
+  const saveAnalysis = useCallback(async (resumeId, analysis, content = null) => {
     if (!userId || !resumeId || !analysis) return;
-    const { error } = await supabase.from(TABLE).update({
+    const updateData = {
       ats_score: analysis.atsScore ?? null,
       potential_ats_score: analysis.potentialAtsScore ?? null,
       keywords_found: analysis.keywordsFound ?? null,
@@ -111,7 +135,9 @@ export function useResumes(userId) {
       score_breakdown: analysis.scoreBreakdown ?? null,
       top_priority: analysis.suggestions?.[0] ?? null,
       last_analyzed_at: new Date().toISOString(),
-    }).eq("id", resumeId).eq("user_id", userId);
+    };
+    if (content?.trim()) updateData.content = content.trim();
+    const { error } = await supabase.from(TABLE).update(updateData).eq("id", resumeId).eq("user_id", userId);
     if (error) throw error;
     await refresh();
   }, [userId, refresh]);
@@ -161,27 +187,69 @@ export function useResumeHistory(userId) {
 
   const saveEntry = useCallback(async (entry, resumeId = null) => {
     if (!userId) return;
-    const { data, error } = await supabase
-      .from(HISTORY_TABLE)
-      .insert({
-        user_id: userId,
-        resume_id: resumeId || null,
-        resume_name: entry.resumeName || null,
-        ats_score: entry.atsScore ?? null,
-        potential_ats_score: entry.potentialAtsScore ?? null,
-        job_title: entry.jobTitle || null,
-        company: entry.company || null,
-        analysis_type: entry.analysisType || "Initial Analysis",
-        analysis_mode: entry.analysisMode || null,
-        resume_status: entry.resumeStatus || null,
-        resume_health: entry.resumeHealth || null,
-      })
-      .select()
-      .single();
+
+    // Prevent duplicate history entries: if a row already exists for the same
+    // resume + job title + analysis type, update it instead of inserting a new one.
+    let existingId = null;
+    try {
+      const analysisType = entry.analysisType || "Initial Analysis";
+      let query = supabase
+        .from(HISTORY_TABLE)
+        .select("id")
+        .eq("user_id", userId)
+        .eq("analysis_type", analysisType);
+      if (resumeId) {
+        query = query.eq("resume_id", resumeId);
+      } else if (entry.resumeName) {
+        query = query.eq("resume_name", entry.resumeName);
+      }
+      if (entry.jobTitle) query = query.eq("job_title", entry.jobTitle);
+      const { data: found } = await query.order("created_at", { ascending: false }).limit(1);
+      if (found?.[0]?.id) existingId = found[0].id;
+    } catch {}
+
+    let data, error;
+    if (existingId) {
+      const result = await supabase
+        .from(HISTORY_TABLE)
+        .update({
+          ats_score: entry.atsScore ?? null,
+          potential_ats_score: entry.potentialAtsScore ?? null,
+          resume_status: entry.resumeStatus || null,
+          resume_health: entry.resumeHealth || null,
+          analysis_mode: entry.analysisMode || null,
+        })
+        .eq("id", existingId)
+        .select()
+        .single();
+      data = result.data; error = result.error;
+    } else {
+      const result = await supabase
+        .from(HISTORY_TABLE)
+        .insert({
+          user_id: userId,
+          resume_id: resumeId || null,
+          resume_name: entry.resumeName || null,
+          ats_score: entry.atsScore ?? null,
+          potential_ats_score: entry.potentialAtsScore ?? null,
+          job_title: entry.jobTitle || null,
+          company: entry.company || null,
+          analysis_type: entry.analysisType || "Initial Analysis",
+          analysis_mode: entry.analysisMode || null,
+          resume_status: entry.resumeStatus || null,
+          resume_health: entry.resumeHealth || null,
+        })
+        .select()
+        .single();
+      data = result.data; error = result.error;
+    }
+
     if (error) throw error;
     const normalised = rowToEntry(data);
     setEntries(prev => {
-      const updated = [normalised, ...prev].slice(0, 50);
+      // Remove the old entry (if updated) so it re-appears at the top with fresh data.
+      const filtered = existingId ? prev.filter(e => e.id !== existingId) : prev;
+      const updated = [normalised, ...filtered].slice(0, 50);
       try { localStorage.setItem(HISTORY_CACHE_KEY(userId), JSON.stringify(updated)); } catch {}
       return updated;
     });

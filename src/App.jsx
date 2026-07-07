@@ -26,7 +26,7 @@ const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
   purple: "#6B21E8", purpleLight: "#F3EEFF", purpleMid: "#9B59F5", text: "#0F172A", textMid: "#334155",
   textMuted: "#64748B", green: "#059669", greenLight: "#ECFDF5", red: "#DC2626", redLight: "#FEF2F2",
-  yellow: "#D97706", yellowLight: "#FFFBEB", blue: "#2563EB", blueLight: "#EFF6FF",
+  yellow: "#D97706", yellowLight: "#FFFBEB", orange: "#F97316", orangeLight: "#FFF7ED", blue: "#2563EB", blueLight: "#EFF6FF",
   navText: "#3B2A1F", navHover: "#6B21E8",
 };
 
@@ -177,7 +177,19 @@ const useAuth = () => {
   return { user, login, logout, recoveryMode, clearRecovery, authResolving };
 };
 
+// ─── DEVELOPMENT MODE ────────────────────────────────────────────────────────
+// Toggle below to switch between Development (mock AI) and Production (real API).
+//   DEV_MODE = true  → no Anthropic API calls, no credits consumed, instant mocks
+//   DEV_MODE = false → real Claude API via Cloudflare Worker (production behavior)
+const DEV_MODE = true;
+
 async function askClaude(prompt, maxTokens = 2500) {
+  if (DEV_MODE) {
+    // Simulate realistic network latency so all loading states, progress bars,
+    // banners, and animations behave exactly as they do in production.
+    await new Promise(r => setTimeout(r, 850 + Math.random() * 400));
+    return _devMockRoute(prompt);
+  }
   const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
   const res = await fetch(WORKER_URL, {
     method: "POST",
@@ -189,18 +201,299 @@ async function askClaude(prompt, maxTokens = 2500) {
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
 }
 
-function downloadPDF(content, filename) {
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:20px;line-height:1.6;color:#333;white-space:pre-wrap;}</style></head><body>${content.replace(/\n/g, '<br>')}</body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename + '.html'; a.click();
-  URL.revokeObjectURL(url);
+// Routes every askClaude prompt to the appropriate mock response.
+// Checks for distinguishing keywords present in each prompt string.
+function _devMockRoute(prompt) {
+  const p = prompt.toLowerCase();
+
+  // ── Daily Briefing ─────────────────────────────────────────────────────────
+  if (p.includes("daily briefing")) {
+    return JSON.stringify({ v: 2, summary: "You have 3 active applications in progress and your ATS score is trending up. Today is a strong day to follow up with recruiters.", newMatchingJobs: "23 new Software Engineer roles posted this week matching your skills.", highestPayingJobs: "Senior roles at Series B startups offer $150K–$185K with strong equity packages.", jobsClosingSoon: "2 applications haven't received a response in 7 days — now is the right time to follow up.", priorityRecommendation: "Add Docker, Kubernetes, and CI/CD to your resume to push your ATS score above 85.", companiesHiringNow: "Amazon, Stripe, and Notion are actively sourcing for mid-senior engineers this month.", newOpportunities: "Staff Engineer and Tech Lead roles are open in adjacent areas matching your trajectory.", resumeUpdates: "Your resume is scoring 82 — one targeted keyword pass could push you into the top 20% of applicants.", atsScoreChanges: "Your ATS score improved 8 points after the last resume update. Keep the momentum.", interviewInvitations: "1 interview stage pending — prep a strong STAR answer for 'Tell me about a time you led a project.'", recruiterActivity: "Your LinkedIn profile is at 87% completeness — adding 2 skills boosts recruiter visibility.", applicationUpdates: "3 applications are in 'Under Review' — follow up with a brief check-in email.", salaryChanges: "Median comp for Senior Software Engineers in your location increased 6% YoY.", marketUpdates: "Demand for full-stack engineers remains high. Your skills are in demand.", careerInsights: "Candidates who customize their resume per application see a 40% higher interview rate.", dailyHighlights: ["Follow up on 2 applications", "Add Docker & Kubernetes to resume", "Check 3 new job matches"] });
+  }
+
+  // ── Action Plan ────────────────────────────────────────────────────────────
+  if (p.includes("action plan") || p.includes("productivityscore")) {
+    return JSON.stringify({ v: 2, productivityScore: 72, categories: [{ id: "priorities", category: "Today's Priorities", task: "Follow up on your Stripe application — it's been 6 days since submission.", time: "10 min", status: "pending" }, { id: "applications", category: "Recommended Applications", task: "Apply to the Staff Engineer role at Notion — it's a strong match for your background.", time: "30 min", status: "pending" }, { id: "resume", category: "Resume Improvements", task: "Add Docker and Kubernetes to your skills section to improve ATS score by ~8 points.", time: "15 min", status: "pending" }, { id: "interview", category: "Interview Practice", task: "Practice STAR method for 'Tell me about a time you handled a production incident.'", time: "20 min", status: "pending" }], followUps: "Send a brief check-in email to the recruiter at Amazon who reached out last week.", networking: "Connect with 2 engineers at Notion on LinkedIn and mention your shared interest in developer tools.", skills: "Spend 30 minutes on a Docker tutorial — it appears in 68% of your target job descriptions.", certifications: "AWS Solutions Architect certification would strengthen 40% of your target roles.", careerGoals: "You're on track for a Senior→Staff promotion path if you land a role with system design scope." });
+  }
+
+  // ── AI Career Chat ─────────────────────────────────────────────────────────
+  if (p.includes("user question:") || (p.includes("careerpersona ai career assistant") && p.includes("answer concisely"))) {
+    return "Great question! Based on your profile and application history, I'd recommend focusing on roles that leverage your full-stack background with cloud experience. Make sure to tailor your resume for each application and highlight measurable achievements. Would you like specific advice on your next steps?";
+  }
+
+  // ── Resume Analysis (main analyze + keyword-improve re-score) ──────────────
+  if (p.includes("ats resume coach") && p.includes("tailoredresume") && p.includes("keywordsfound")) {
+    const improved = p.includes("note: this resume was just improved");
+    const base = improved ? 88 : 72;
+    return JSON.stringify({ atsScore: base, potentialAtsScore: Math.min(base + 14, 97), scoreBreakdown: { keywordMatch: base - 4, formatting: 85, relevance: Math.min(base + 2, 98) }, keywordsFound: ["Python", "JavaScript", "React", "SQL", "AWS", "Node.js"], keywordsMissing: improved ? [] : ["Docker", "Kubernetes", "TypeScript", "CI/CD"], tailoredResume: _devExtractResume(prompt) || _devMockResume(), suggestions: ["Add measurable outcomes to bullet points (e.g. 'Reduced latency by 40%')", "Include Docker and Kubernetes in your skills section", "Add a brief professional summary at the top", "Quantify team sizes and project scopes where possible", "Use stronger action verbs: 'Architected' instead of 'Built'"], coverLetter: "Dear Hiring Manager,\n\nI am excited to apply for this position. With 5+ years of software engineering experience building scalable, high-performance systems, I am confident my background aligns closely with your requirements.\n\nAt Acme Corp I drove a 40% reduction in API latency and led a team of 5 engineers delivering critical data pipelines ahead of schedule. My expertise in Python, React, and AWS enables me to contribute immediately.\n\nI would welcome the opportunity to discuss how my experience can contribute to your team's success.\n\nBest regards,\nJohn Smith", jobTitle: "Senior Software Engineer", company: "Amazon" });
+  }
+
+  // ── Resume Quick Insights (strengths / improvements panel) ────────────────
+  if (p.includes("highpriorityimprovements") || p.includes("tailoringopportunities")) {
+    return JSON.stringify({ strengths: ["Strong technical breadth across frontend and backend with React, Python, and AWS.", "Demonstrated leadership managing cross-functional teams of 5+ engineers.", "Quantified achievements (40% latency reduction) stand out to ATS systems and recruiters."], highPriorityImprovements: ["Add a 3–4 line professional summary at the top to immediately capture recruiter attention.", "Include Docker and Kubernetes — they appear in 80%+ of Senior Engineer job descriptions.", "Replace passive language ('responsible for') with strong action verbs ('architected', 'drove', 'spearheaded')."], missingSkills: ["Container orchestration (Docker, Kubernetes)", "Infrastructure as Code (Terraform, Pulumi)", "System design at scale (millions of users)", "Machine learning or data pipeline experience", "Observability tooling (Datadog, Prometheus, Grafana)"], tailoringOpportunities: ["Mirror the job posting's language around 'distributed systems' and 'high availability'.", "Move AWS experience to the top of your skills list — it's the primary requirement.", "Add your largest system's scale (users, requests/sec) to signal senior-level scope."] });
+  }
+
+  // ── AI Resume Builder (returns plain text, not JSON) ──────────────────────
+  if (p.includes("expert resume writer") && p.includes("ats-optimized")) {
+    return _devMockResume();
+  }
+
+  // ── Score Benchmarking ─────────────────────────────────────────────────────
+  if (p.includes("market benchmark") || p.includes("industryaverage")) {
+    return JSON.stringify({ atsScore: 72, industryAverage: 61, topCandidateAverage: 87, percentile: 68, percentileLabel: "Top 32%", keywordCoverage: 74, formattingScore: 88, experienceScore: 80, skillsScore: 76, educationScore: 85, overallRanking: "Above Average", industryLabel: "Software Engineering", recommendations: ["Add Docker/Kubernetes to reach the top 20% keyword coverage for this role", "Add a professional summary — 78% of top candidates include one", "Quantify more achievements — top candidates average 4.2 metrics per role"] });
+  }
+
+  // ── Job Fit Analyzer ───────────────────────────────────────────────────────
+  if (p.includes("how well this resume matches") || p.includes("applicationreadiness")) {
+    return JSON.stringify({ overallMatch: 76, matchLabel: "Good Match", requiredSkillsMatch: [{ skill: "Python", found: true, evidence: "5+ years Python in current role" }, { skill: "AWS", found: true, evidence: "AWS Lambda and S3 mentioned" }, { skill: "React", found: true, evidence: "React frontend development" }, { skill: "Docker", found: false, evidence: null }, { skill: "Kubernetes", found: false, evidence: null }], preferredSkillsMatch: [{ skill: "TypeScript", found: true }, { skill: "PostgreSQL", found: true }, { skill: "GraphQL", found: false }], missingSkills: ["Docker", "Kubernetes", "GraphQL"], keywordMatchScore: 74, experienceMatch: { score: 82, status: "Well-matched", detail: "5 years aligns with the 4–6 year requirement." }, educationMatch: { score: 90, status: "Meets requirement", detail: "B.S. Computer Science meets the listed requirement." }, seniorityMatch: { score: 78, status: "Well-matched", detail: "Senior experience aligns with the role seniority." }, applicationReadiness: "Almost Ready", topRecommendations: ["Add Docker and Kubernetes to close the main skill gap", "Mirror the job description language around 'distributed systems'", "Quantify the scale of your AWS usage with metrics"], coverLetterTip: "Mention your 40% latency reduction — it maps directly to their performance engineering requirements." });
+  }
+
+  // ── LinkedIn Optimizer ─────────────────────────────────────────────────────
+  if (p.includes("linkedin profile expert") || (p.includes("linkedin") && p.includes("headline") && p.includes("aboutsection"))) {
+    return JSON.stringify({ headline: "Senior Software Engineer | Python · AWS · React | Building Scalable Systems That Perform", aboutSection: "I'm a software engineer with 5+ years building high-performance distributed systems. I specialize in Python, AWS, and React — with a track record of shipping products used by tens of thousands of users and driving a 40% reduction in API latency.\n\nI'm passionate about clean architecture, developer experience, and working on teams that care about engineering quality. Currently exploring Senior and Staff Engineer opportunities where I can drive technical strategy alongside great people.", experienceOptimizations: [{ company: "Acme Corp", title: "Senior Software Engineer", optimizedBullets: ["Architected microservices platform handling 2M+ daily requests using Python and AWS Lambda, reducing infrastructure costs by 35%", "Drove 40% API latency reduction through Redis caching strategy and query optimization", "Led cross-functional team of 5 engineers delivering real-time data pipeline 2 weeks ahead of schedule"] }, { company: "Tech Startup", title: "Software Engineer", optimizedBullets: ["Built React/TypeScript frontend serving 50K+ monthly active users, improving Core Web Vitals by 28%", "Established CI/CD pipeline with Docker and Jenkins, reducing deployment time from 45 to 8 minutes", "Integrated Stripe and Twilio APIs processing $2M+ in annual transactions"] }], topSkillsToAdd: ["System Design", "Microservices Architecture", "PostgreSQL", "Terraform", "GraphQL", "Data Engineering"], keywordsToFeature: ["distributed systems", "high availability", "cloud architecture", "API design", "performance optimization", "agile"], recruiterVisibilityTips: ["Set your profile to 'Open to Work' with specific role titles to appear in recruiter searches", "Post one technical insight per week — LinkedIn algorithm boosts profiles with consistent engagement", "Request recommendations from managers who can speak to your leadership and technical impact"], atsAlignmentScore: 81, profileCompleteness: 78, headlineScore: 88 });
+  }
+
+  // ── Cover Letter Versions ──────────────────────────────────────────────────
+  if (p.includes("cover letter writer") || p.includes("4 distinct cover letter")) {
+    return JSON.stringify({ professional: "Dear Hiring Manager,\n\nI am writing to express my strong interest in the Senior Software Engineer position. With over five years building scalable, high-performance distributed systems, I am confident my background aligns closely with your requirements.\n\nAt Acme Corp I architected microservices handling 2M+ daily requests, drove a 40% API latency reduction, and led a team of 5 engineers to deliver a data pipeline ahead of schedule. My expertise spans Python, React, AWS, and SQL.\n\nI would welcome the opportunity to discuss how I can contribute to your engineering team.\n\nRespectfully,\nJohn Smith", friendly: "Hi there!\n\nI spotted the Senior Software Engineer opening and honestly, it reads like it was written with my background in mind — so I had to apply.\n\nI've spent 5 years building things I'm proud of: microservices handling millions of daily requests, a caching strategy that cut API latency by 40%, and a CI/CD pipeline that went from 45-minute deploys to 8 minutes. I love hard technical problems with people who care about quality.\n\nI'd love to chat and learn more about what you're building!\n\nThanks,\nJohn", executive: "Dear Search Committee,\n\nAs a senior software engineering leader with a history of driving technical excellence and organizational impact, I am compelled by the opportunity to bring my expertise to your organization.\n\nAt Acme Corp I designed a microservices platform scaling to 2M+ daily requests while reducing infrastructure costs by 35%, and built and mentored a team of five engineers establishing practices that outlasted any single project.\n\nI am seeking an environment where engineering decisions have real business impact. I look forward to discussing how I can accelerate your team's trajectory.\n\nSincerely,\nJohn Smith", ats: "SENIOR SOFTWARE ENGINEER APPLICATION\n\nDear Hiring Manager,\n\nI am applying for the Senior Software Engineer position. I bring 5+ years of expertise in Python, AWS, React, Node.js, SQL, and microservices architecture — skills that align directly with your stated requirements.\n\nKey qualifications:\n• Python backend: 5+ years production APIs and microservices\n• AWS: Lambda, S3, EC2, RDS deployment and optimization\n• React/TypeScript frontend: 50K+ user application\n• Team leadership: 5-engineer cross-functional team, Agile/Scrum\n• Performance: 40% API latency reduction\n\nThank you,\nJohn Smith" });
+  }
+
+  // ── Deep Resume Insights ───────────────────────────────────────────────────
+  if (p.includes("grammarscore") || p.includes("weakbullets") || (p.includes("deep analysis") && p.includes("resume quality"))) {
+    return JSON.stringify({ grammarScore: 84, readabilityScore: 79, formattingScore: 88, keywordDensity: 72, actionVerbScore: 76, overallQualityScore: 80, issues: [{ category: "Action Verbs", problem: "Passive phrase 'responsible for managing'", reason: "Passive language reduces impact and ATS keyword density", fix: "Replace 'responsible for managing' with 'Managed' or 'Directed'", severity: "medium" }, { category: "ATS", problem: "Skills section missing Docker and Kubernetes", reason: "These keywords appear in 80%+ of Senior Engineer job descriptions", fix: "Add 'Docker, Kubernetes' to your skills section", severity: "high" }, { category: "Structure", problem: "Professional summary section missing", reason: "Top 30% of candidates include a 3–4 line summary — it's the first thing recruiters read", fix: "Add a professional summary: 2 sentences on role + 1 on your strongest achievement", severity: "high" }, { category: "Formatting", problem: "Inconsistent date format across roles", reason: "ATS systems may misparse inconsistent date formats", fix: "Use consistent format throughout: '2020–Present' or 'Jan 2020 – Present'", severity: "low" }], weakBullets: [{ original: "Led team of 5 engineers", improved: "Led cross-functional team of 5 engineers to deliver real-time data pipeline 2 weeks ahead of schedule" }, { original: "Built scalable microservices", improved: "Architected microservices platform processing 2M+ daily requests with 99.9% uptime" }], weakActionVerbs: [{ original: "Helped", stronger: "Spearheaded" }, { original: "Worked on", stronger: "Delivered" }, { original: "Did", stronger: "Executed" }], missingSections: ["Professional Summary"], resumeLengthStatus: "Optimal", contactInfoStatus: "Complete", sectionOrderIssue: null });
+  }
+
+  // ── Issue Fix (single fix — returns plain text resume) ────────────────────
+  if (p.includes("apply exactly this fix")) {
+    const r = _devExtractResume(prompt);
+    return r ? r.replace(/responsible for/gi, "managed").replace(/\bhelped\b/gi, "spearheaded") : _devMockResume();
+  }
+
+  // ── Apply All Fixes (batch — returns plain text resume) ───────────────────
+  if (p.includes("apply all of the following improvements")) {
+    const r = _devExtractResume(prompt);
+    return (r || _devMockResume()).replace(/responsible for/gi, "managed").replace(/\bhelped\b/gi, "spearheaded");
+  }
+
+  // ── Keyword Improve (returns plain text resume, no JSON) ──────────────────
+  if (p.includes("keywords to incorporate") && p.includes("current resume")) {
+    const r = _devExtractResume(prompt);
+    return (r || _devMockResume()) + "\n• Containerized services using Docker and Kubernetes, improving deployment reliability by 60%\n• Implemented CI/CD pipelines reducing time-to-production by 75%\n• Leveraged TypeScript for type-safe frontend development across React applications";
+  }
+
+  // ── Job Search AI Match (per-job match score) ──────────────────────────────
+  if (p.includes("analyze resume-job match") || (p.includes("matchscore") && p.includes("interviewprobability"))) {
+    return JSON.stringify({ matchScore: 76, atsScore: 74, interviewProbability: 62, matchingSkills: ["Python", "AWS", "React"], missingSkills: ["Docker", "Kubernetes", "GraphQL"], summary: "Strong technical match with core requirements; adding container experience would close the remaining gap." });
+  }
+
+  // ── Smart Apply Full Package ───────────────────────────────────────────────
+  if (p.includes("application package") || (p.includes("tailoredresume") && p.includes("recruitermessage"))) {
+    return JSON.stringify({ tailoredResume: _devMockResume(), coverLetter: "Dear Hiring Manager,\n\nI am excited to apply for this position. My background in Python, AWS, and scalable system design aligns directly with your requirements.\n\nAt Acme Corp I drove a 40% reduction in API latency and led a team of 5 engineers delivering critical data pipelines ahead of schedule. I would welcome the opportunity to discuss how I can contribute.\n\nBest regards,\nJohn Smith", recruiterMessage: "Hi [Name], I came across this role and was immediately drawn to the distributed systems work your team is doing. I have 5 years of Python/AWS experience and a track record of 40% latency improvements. Would you be open to a quick chat?", networkingMessage: "Hi [Name], I saw you work at [company] — I've been following the engineering blog and am very interested in the team's infrastructure work. Would love to connect if you have 15 minutes!", missingSkills: ["Docker", "Kubernetes", "Terraform"], interviewProbability: 68, hiringProbability: 42, applicationQuestions: ["Describe your experience with distributed systems at scale.", "How do you approach debugging a production incident with no runbook?", "Tell me about a time you led a technical project from design to deployment."], salaryInsight: { marketRange: { low: 140000, median: 165000, high: 195000 }, userPositioning: "Your experience level positions you in the 55th–70th percentile of the market range.", negotiationLeverage: "Your measurable 40% latency reduction is strong negotiation leverage — it demonstrates direct business impact.", benchmarks: ["Staff Engineer at similar-stage companies: $170K–$200K total comp"] }, companyInsight: { culture: "Engineering-driven culture with strong emphasis on technical excellence and ownership.", recentNews: "Recently announced Series C of $150M — actively expanding engineering headcount across platform teams.", hiringTrend: "growing", redFlags: ["High interview bar may result in extended hiring timeline"], greenFlags: ["Strong eng culture with open-source contributions", "Competitive equity refreshes"], talkingPoints: ["Their caching architecture work aligns directly with your Redis optimization experience"] } });
+  }
+
+  // ── Match Score Only (lightweight call in job search) ─────────────────────
+  if (p.includes("match score only")) {
+    return JSON.stringify({ matchScore: 74, explanation: "Strong Python/AWS match; missing container orchestration skills." });
+  }
+
+  // ── Interview Questions ────────────────────────────────────────────────────
+  if ((p.includes("interview questions") || p.includes("interview coach")) && p.includes("behavioral")) {
+    return JSON.stringify([{ question: "Tell me about a time you led a complex technical project from design to delivery.", category: "Behavioral", difficulty: "Medium", tipToAnswer: "Use the STAR method: Situation (project scope and stakes), Task (your role), Action (key decisions you made and why), Result (measurable outcome — timeline, performance, business value).", starGuidance: { situation: "Describe the project context and why it was complex", task: "Explain your specific responsibilities", action: "Walk through 2–3 key decisions and the reasoning behind each", result: "Quantify the outcome: timeline, performance, team impact, business value" } }, { question: "How do you approach debugging a production incident with no runbook and customers impacted?", category: "Technical", difficulty: "Hard", tipToAnswer: "Walk through your mental model: triage by impact, isolate the failure domain, form hypotheses, test carefully. Show you can stay calm, communicate status, and learn from post-mortems.", starGuidance: null }, { question: "Describe a system you designed that needed to scale significantly. What tradeoffs did you navigate?", category: "Technical", difficulty: "Hard", tipToAnswer: "Pick a concrete example. Name the scale target, bottlenecks identified, architectural options considered, and what you chose — and why. Acknowledge tradeoffs honestly.", starGuidance: null }, { question: "Tell me about a time you disagreed with a technical decision your team made. How did you handle it?", category: "Behavioral", difficulty: "Medium", tipToAnswer: "Use STAR. Show you can advocate constructively with data and reasoning, not just opinion.", starGuidance: { situation: "Describe the decision and its context", task: "Explain your concern and why it mattered", action: "Describe how you raised it — data, framing, the conversation", result: "Outcome and what you learned about technical advocacy" } }, { question: "How do you prioritize technical debt against product feature delivery?", category: "Situational", difficulty: "Medium", tipToAnswer: "Show you think in tradeoffs, not absolutes. Name a framework (risk-based, velocity-based). Give an example.", starGuidance: null }, { question: "Tell me about your experience with cloud infrastructure and cost optimization.", category: "Technical", difficulty: "Easy", tipToAnswer: "Be specific: which services, at what scale, and what you optimized. Quantify savings if possible.", starGuidance: null }, { question: "How do you ensure code quality across a team with varying experience levels?", category: "Culture Fit", difficulty: "Medium", tipToAnswer: "Talk about systems, not just standards: code review culture, pair programming, automated testing, documentation. Show you think about enablement, not enforcement.", starGuidance: null }, { question: "Where do you see your engineering career in 3–5 years?", category: "Culture Fit", difficulty: "Easy", tipToAnswer: "Be genuine but frame it around growth in the domain they care about. Show ambition balanced with commitment to this role.", starGuidance: null }]);
+  }
+
+  // ── Interview Answer Rating ────────────────────────────────────────────────
+  if (p.includes("rate this practice answer") || (p.includes("interview coach") && p.includes("score"))) {
+    return JSON.stringify({ score: 7.8, scoreLabel: "Strong", strengths: ["Clear structure with specific details", "Good use of quantifiable outcome", "Confident delivery without hedging"], improvements: ["Could be 15% more concise — trim the setup to get to the action faster", "Add the business impact beyond the technical result"], starFeedback: { situation: "Well set — 8/10", task: "Clear ownership stated — 9/10", action: "Good detail on decisions — 8/10", result: "Solid quantification — add business impact — 7/10" }, revisedAnswer: "At Acme Corp I inherited a system with 800ms API latency causing cart abandonment. I analyzed query patterns, identified N+1 database calls, and implemented Redis caching for the hot path. Latency dropped 40% to 480ms, cart completion improved 12%, and database load fell 30% — saving $1,800/month in RDS costs.", paceWpm: 142, fillerWordCount: 2 });
+  }
+
+  // ── Salary Research ────────────────────────────────────────────────────────
+  if (p.includes("salary") && (p.includes("2026 salary") || p.includes("marketrange") || p.includes("salary data"))) {
+    return JSON.stringify({ jobTitle: "Senior Software Engineer", location: "San Francisco, CA", experience: "5 years", marketRange: { low: 140000, median: 168000, high: 215000 }, totalCompRange: { low: 180000, median: 235000, high: 310000 }, equityRange: { low: 50000, median: 85000, high: 160000 }, percentiles: { p25: 148000, p50: 168000, p75: 195000, p90: 218000 }, trend: "+6.2% YoY", trendDirection: "up", demandLevel: "High", topPayingCompanies: ["Google", "Meta", "Stripe", "Airbnb", "OpenAI"], skills: ["Go", "Rust", "Kubernetes", "ML/AI", "Platform Engineering"], negotiationTips: ["Anchor at the 75th percentile ($195K base) — your measurable achievements support it", "Frame your 40% latency reduction as direct revenue impact, not just a technical win", "Ask about RSU vesting schedule and refresh cadence — total comp often varies 30–50%"], locationComparison: [{ city: "San Francisco, CA", median: 168000, costAdjusted: 104000 }, { city: "New York, NY", median: 158000, costAdjusted: 108000 }, { city: "Seattle, WA", median: 162000, costAdjusted: 128000 }, { city: "Austin, TX", median: 142000, costAdjusted: 130000 }] });
+  }
+
+  // ── Networking Follow-up Message (plain text) ──────────────────────────────
+  if (p.includes("follow-up message") || p.includes("write a professional follow-up")) {
+    return "Subject: Quick follow-up — Senior Software Engineer Application\n\nHi [Name],\n\nI wanted to follow up on my application for the Senior Software Engineer role I submitted last week. I remain very enthusiastic about the opportunity and would love to learn more about the team's work.\n\nPlease let me know if there's any additional information I can provide.\n\nBest regards,\nJohn Smith";
+  }
+
+  // ── Networking Outreach ────────────────────────────────────────────────────
+  if (p.includes("networking outreach") || (p.includes("linkedin") && p.includes("networkin"))) {
+    return JSON.stringify({ linkedinMessage: "Hi [Name], I've been following [Company]'s engineering blog and was really impressed by the distributed systems work your team published. I'm a Senior Software Engineer with 5 years of Python/AWS experience exploring new opportunities, and [Company] is at the top of my list. Would you be open to a 15-minute chat?", emailSubject: "Software Engineer curious about the [Team] team at [Company]", emailBody: "Hi [Name],\n\nMy name is John Smith and I'm a Senior Software Engineer with 5 years of experience building scalable backend systems at Acme Corp.\n\nI came across your profile while researching [Company]'s engineering team and would love to learn more about the distributed systems and infrastructure challenges your team is solving.\n\nIf you have 15 minutes for a quick chat I'd really appreciate it.\n\nThanks,\nJohn Smith", followUpMessage: "Hi [Name], just wanted to resurface my message from last week! Totally understand if now isn't a good time — but if you ever have 10 minutes to chat about [Company]'s engineering team, I'd love to connect. No pressure!", tips: ["Personalize the opening with a specific observation about their work or company", "Keep the ask small — '15-minute chat' is less intimidating than 'informational interview'", "Mention a mutual connection or shared interest if one exists", "Follow up once after 7 days — most people just forget, they're not saying no"] });
+  }
+
+  // ── Fallback ───────────────────────────────────────────────────────────────
+  return "{}";
 }
 
-function downloadDOCX(content, filename) {
-  const blob = new Blob([content], { type: 'text/plain' });
+function _devMockResume() {
+  return `John Smith
+Senior Software Engineer | San Francisco, CA
+john.smith@email.com | (555) 123-4567 | linkedin.com/in/johnsmith
+
+PROFESSIONAL SUMMARY
+Results-driven Senior Software Engineer with 5+ years architecting scalable, high-performance distributed systems. Proven track record of reducing infrastructure costs by 35% and driving 40% API latency improvements. Expertise in Python, AWS, and React with strong leadership experience managing cross-functional engineering teams.
+
+EXPERIENCE
+
+Senior Software Engineer — Acme Corp (2020–Present)
+• Architected microservices platform handling 2M+ daily requests using Python and AWS Lambda, reducing costs by 35%
+• Drove 40% API latency reduction through Redis caching strategy and systematic query optimization
+• Led cross-functional team of 5 engineers delivering real-time data pipeline 2 weeks ahead of schedule
+• Containerized services using Docker and Kubernetes, improving deployment reliability by 60%
+
+Software Engineer — Tech Startup (2018–2020)
+• Built React/TypeScript frontend serving 50K+ monthly active users, improving Core Web Vitals by 28%
+• Established CI/CD pipeline with Docker and Jenkins, reducing deployment time from 45 minutes to 8 minutes
+• Integrated Stripe and Twilio APIs processing $2M+ in annual transactions with 99.9% uptime
+
+SKILLS
+Python, JavaScript, TypeScript, React, Node.js, AWS (Lambda, S3, EC2, RDS), Docker, Kubernetes, PostgreSQL, Redis, SQL, Git, CI/CD, Agile/Scrum
+
+EDUCATION
+B.S. Computer Science — UC Berkeley (2018) | GPA: 3.7`;
+}
+
+function _devExtractResume(prompt) {
+  for (const marker of ["CURRENT RESUME:\n", "RESUME:\n", "RESUME:"]) {
+    const idx = prompt.indexOf(marker);
+    if (idx !== -1) {
+      const text = prompt.slice(idx + marker.length).trim();
+      if (text.length > 50) return text.slice(0, 3000);
+    }
+  }
+  return null;
+}
+
+async function downloadPDF(content, filename) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 18;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxWidth = pageW - margin * 2;
+  let y = margin;
+
+  const checkPage = (needed) => { if (y + needed > pageH - margin) { doc.addPage(); y = margin; } };
+  const isHeading = (t) => t === t.toUpperCase() && t.length >= 3 && t.length <= 40 && !/[.@\d]/.test(t);
+  const isBullet  = (t) => /^[•\-\*]\s/.test(t);
+  const isContact = (t) => /[|@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
+
+  let firstNonBlank = true;
+  for (const rawLine of (content || '').split('\n')) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) { y += 2.8; continue; }
+
+    if (firstNonBlank) {
+      firstNonBlank = false;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20, 20, 20);
+      checkPage(9);
+      doc.text(trimmed, pageW / 2, y, { align: 'center' });
+      y += 9;
+      continue;
+    }
+
+    if (isContact(trimmed)) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      for (const l of doc.splitTextToSize(trimmed, maxWidth)) {
+        checkPage(5.2); doc.text(l, pageW / 2, y, { align: 'center' }); y += 5.2;
+      }
+      continue;
+    }
+
+    if (isHeading(trimmed)) {
+      y += 3;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(30, 30, 30);
+      checkPage(9); doc.text(trimmed, margin, y); y += 2;
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.25);
+      doc.line(margin, y, pageW - margin, y); y += 4.5;
+      continue;
+    }
+
+    if (isBullet(trimmed)) {
+      const bulletText = trimmed.replace(/^[•\-\*]\s*/, '');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(50, 50, 50);
+      const wrapped = doc.splitTextToSize(bulletText, maxWidth - 7);
+      checkPage(5.5 * wrapped.length);
+      doc.text('•', margin + 1.5, y);
+      for (const l of wrapped) { checkPage(5.5); doc.text(l, margin + 5, y); y += 5.5; }
+      continue;
+    }
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(50, 50, 50);
+    for (const l of doc.splitTextToSize(trimmed, maxWidth)) {
+      checkPage(5.8); doc.text(l, margin, y); y += 5.8;
+    }
+  }
+
+  doc.save(filename + '.pdf');
+}
+
+async function downloadDOCX(content, filename) {
+  const { Document, Paragraph, TextRun, Packer, AlignmentType } = await import('docx');
+
+  const isHeading = (t) => t === t.toUpperCase() && t.length >= 3 && t.length <= 40 && !/[.@\d]/.test(t);
+  const isBullet  = (t) => /^[•\-\*]\s/.test(t);
+  const isContact = (t) => /[|@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
+
+  const paragraphs = [];
+  let firstNonBlank = true;
+
+  for (const rawLine of (content || '').split('\n')) {
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: '', font: 'Calibri', size: 20 })], spacing: { after: 60 } }));
+      continue;
+    }
+
+    if (firstNonBlank) {
+      firstNonBlank = false;
+      paragraphs.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: trimmed, bold: true, size: 30, font: 'Calibri', color: '111111' })],
+        spacing: { after: 80 },
+      }));
+      continue;
+    }
+
+    if (isContact(trimmed)) {
+      paragraphs.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: trimmed, size: 18, font: 'Calibri', color: '555555' })],
+        spacing: { after: 40 },
+      }));
+      continue;
+    }
+
+    if (isHeading(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, bold: true, size: 22, font: 'Calibri', color: '111111' })],
+        spacing: { before: 220, after: 80 },
+        border: { bottom: { color: 'CCCCCC', space: 1, style: 'single', size: 6 } },
+      }));
+      continue;
+    }
+
+    if (isBullet(trimmed)) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: `• ${trimmed.replace(/^[•\-\*]\s*/, '')}`, size: 20, font: 'Calibri', color: '333333' })],
+        indent: { left: 360 },
+        spacing: { after: 40 },
+      }));
+      continue;
+    }
+
+    paragraphs.push(new Paragraph({
+      children: [new TextRun({ text: trimmed, size: 20, font: 'Calibri', color: '333333' })],
+      spacing: { after: 40 },
+    }));
+  }
+
+  const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
+  const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename + '.txt'; a.click();
+  const a = document.createElement('a');
+  a.href = url; a.download = filename + '.docx'; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -454,9 +747,9 @@ function Spinner({ steps = [], currentStep = 0 }) {
   );
 }
 
-function CopyBtn({ text, label = "Copy", variant = "ghost" }) {
+function CopyBtn({ text, label = "Copy", variant = "ghost", style: outerStyle }) {
   const [c, setC] = useState(false);
-  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 2000); }}>{c ? "✓ Copied!" : label}</Btn>;
+  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 2000); }}>{c ? "✓ Copied!" : label}</Btn>;
 }
 
 function ContentDisplay({ content }) {
@@ -1744,7 +2037,7 @@ Requirements:
 Salary: $140,000–$180,000 + equity + benefits
 Location: Remote-first`;
 
-const RESUME_STEPS = ["Analyzing Resume…", "Calculating ATS Score…", "Generating Tailored Resume…", "Creating Cover Letter…"];
+const RESUME_STEPS = ["Reading your resume…", "Extracting skills & keywords…", "Calculating ATS score…", "Generating AI analysis…", "Building recommendations…"];
 
 function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb }) {
   const { t } = useI18n();
@@ -1755,35 +2048,166 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [results, setResults] = useSessionState("cp_resume_results", null);
   const [error, setError] = useState("");
   const [tab, setTab] = useSessionState("cp_resume_tab", "resume");
-  const [saved, setSaved] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [savingResume, setSavingResume] = useState(false);
   const [resumeSaved, setResumeSaved] = useState(false);
   const [resumeError, setResumeError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
-  const [loadedResumeId, setLoadedResumeId] = useState(null);
+  const [loadedResumeId, setLoadedResumeId] = useSessionState("cp_resume_loaded_id", null);
   const [editLabelId, setEditLabelId] = useState(null);
   const [labelValue, setLabelValue] = useState("");
-  const [resumeSource, setResumeSource] = useState("upload");
+  // Session-persistent: survive navigation away and back without losing the active session.
+  const [resumeSource, setResumeSource] = useSessionState("cp_resume_source", "upload");
+  const [selectedKeywords, setSelectedKeywords] = useSessionState("cp_resume_selected_kws", []);
+  const [improveStats, setImproveStats] = useSessionState("cp_resume_improve_stats", null);
+  const [masterMissingKws, setMasterMissingKws] = useSessionState("cp_resume_master_kws", []);
+  const [isOptimized, setIsOptimized] = useSessionState("cp_resume_optimized", false);
+  const [resultsInsights, setResultsInsights] = useSessionState("cp_resume_insights", null);
+  const [librarySaved, setLibrarySaved] = useSessionState("cp_resume_lib_saved", false);
+  // manualReset: set true by New Analysis so auto-load doesn't re-populate the cleared workspace.
+  const [manualReset, setManualReset] = useSessionState("cp_resume_manual_reset", false);
+  // Transient UI state (fine to reset on navigation)
   const [aiForm, setAiForm] = useState({ employment: "", education: "", skills: "", certifications: "" });
   const [aiBuilding, setAiBuilding] = useState(false);
   const [aiError, setAiError] = useState("");
-  const [selectedKeywords, setSelectedKeywords] = useState([]);
   const [improving, setImproving] = useState(false);
   const [improveError, setImproveError] = useState("");
   const [improveStep, setImproveStep] = useState("");
-  const [improveSuccess, setImproveSuccess] = useState(false);
   const [animatedAts, setAnimatedAts] = useState(null);
   const [animatedBreakdown, setAnimatedBreakdown] = useState(null);
-  const [improveStats, setImproveStats] = useState(null);
   const [improvedBtnDone, setImprovedBtnDone] = useState(false);
-  const [masterMissingKws, setMasterMissingKws] = useState([]);
-  const [isOptimized, setIsOptimized] = useState(false);
-  const [resultsInsights, setResultsInsights] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsSectionExpanded, setInsightsSectionExpanded] = useState({});
+  const toggleInsightSection = (key) => setInsightsSectionExpanded(s => ({ ...s, [key]: !s[key] }));
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
+  const [librarySaveError, setLibrarySaveError] = useState("");
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const [editingResumeName, setEditingResumeName] = useState(null);
+  const [editorHighlight, setEditorHighlight] = useState(false);
+  // Tool 6: Score Benchmarking
+  const [benchmarkData, setBenchmarkData] = useSessionState("cp_resume_benchmark", null);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState("");
+  // Tool 7: Job Fit Analyzer
+  const [jobFitData, setJobFitData] = useSessionState("cp_resume_jobfit", null);
+  const [jobFitLoading, setJobFitLoading] = useState(false);
+  const [jobFitError, setJobFitError] = useState("");
+  // Tool 8: LinkedIn Optimizer
+  const [linkedinOptData, setLinkedinOptData] = useSessionState("cp_resume_linkedin_opt", null);
+  const [linkedinOptLoading, setLinkedinOptLoading] = useState(false);
+  const [linkedinOptError, setLinkedinOptError] = useState("");
+  const [linkedinProfile, setLinkedinProfile] = useSessionState("cp_resume_linkedin_profile", "");
+  // Tool 4: Cover Letter Multiple Versions
+  const [coverVersions, setCoverVersions] = useSessionState("cp_resume_cover_versions", null);
+  const [coverVersionsLoading, setCoverVersionsLoading] = useState(false);
+  const [coverVersionsError, setCoverVersionsError] = useState("");
+  const [activeCoverVersion, setActiveCoverVersion] = useSessionState("cp_resume_cover_active", "professional");
+  // Tool 3: Deep Insights
+  const [deepInsights, setDeepInsights] = useSessionState("cp_resume_deep_insights", null);
+  const [deepInsightsLoading, setDeepInsightsLoading] = useState(false);
+  const [deepInsightsError, setDeepInsightsError] = useState("");
+  // Active tool panel — all 7 toolkit tools open panels
+  const [activeToolPanel, setActiveToolPanel] = useState(null);
+  // Inline helper text shown inside the specific card that was clicked without required data
+  const [toolGuidanceMsg, setToolGuidanceMsg] = useState("");
+  const [toolGuidancePanelId, setToolGuidancePanelId] = useState("");
+  // Coming-soon card notice
+  const [comingSoonNotice, setComingSoonNotice] = useState("");
+  // Cover letter edit mode
+  const [editingCoverLetter, setEditingCoverLetter] = useState(false);
+  const [editedCoverText, setEditedCoverText] = useState("");
+  // AI Agent philosophy: transient action states
+  const [tailoredApplied, setTailoredApplied] = useState(false);
+  const [pendingAutoAnalyze, setPendingAutoAnalyze] = useState(false);
+  const [applyingAllFixes, setApplyingAllFixes] = useState(false);
+  const [insightsDone, setInsightsDone] = useState(false);
   const fileRef = useRef();
   const userContext = useUserContext({ profile, applications, savedJobs });
+
+  // Close the library Actions dropdown when clicking anywhere outside it.
+  useEffect(() => {
+    if (!openDropdownId) return;
+    const handler = () => setOpenDropdownId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [openDropdownId]);
+
+  // Auto-load the most recently saved resume when the workspace is empty.
+  // Guards: skip if user deliberately cleared (New Analysis), if workspace already has content,
+  // or if resumes are still loading.
+  useEffect(() => {
+    if (manualReset) return;
+    if (resumesLoading || resume.trim() || results || loadedResumeId) return;
+    if (!resumes || resumes.length === 0) return;
+    const r = resumes[0]; // sorted by last_analyzed_at desc
+    if (!r?.content) return;
+    setResume(r.content);
+    setLoadedResumeId(r.id);
+    setResumeSource("upload");
+    if (r.ats_score != null) {
+      setResults({
+        atsScore: r.ats_score,
+        potentialAtsScore: r.potential_ats_score || Math.min(r.ats_score + 20, 98),
+        scoreBreakdown: r.score_breakdown || null,
+        keywordsFound: r.keywords_found || [],
+        keywordsMissing: r.keywords_missing || [],
+        tailoredResume: r.content,
+        suggestions: r.suggestions || [],
+        coverLetter: "",
+        jobTitle: "",
+        company: "",
+      });
+      setMasterMissingKws(r.keywords_missing || []);
+      setTab("resume");
+    }
+  }, [resumes, resumesLoading, manualReset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tool 2: after AI Builder generates a resume, auto-trigger analysis if a job description is present.
+  // Runs after the resume state has been committed to React so analyze() reads the correct value.
+  useEffect(() => {
+    if (pendingAutoAnalyze && resume.trim() && jobDesc.trim()) {
+      setPendingAutoAnalyze(false);
+      analyze();
+    }
+  }, [resume, pendingAutoAnalyze]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tool 3: auto-run Deep Analysis when user opens the Insights tab (once per session until reset).
+  useEffect(() => {
+    if (tab === "insights" && results && !deepInsights && !deepInsightsLoading && resume.trim()) {
+      runDeepInsights();
+    }
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tool 4: auto-generate cover letter versions when user opens the Cover tab (once per session until reset).
+  // Also fires when coverVersionsLoading transitions to false so a finished background call
+  // that produced no versions (e.g. silent error) still gets a recovery attempt.
+  useEffect(() => {
+    if (tab === "cover" && results && !coverVersions && !coverVersionsLoading && resume.trim()) {
+      generateCoverVersions();
+    }
+  }, [tab, coverVersionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-run panels when they open for the first time
+  useEffect(() => {
+    if (activeToolPanel === "benchmark" && resume.trim() && !benchmarkData && !benchmarkLoading) {
+      runBenchmark();
+    }
+    if (activeToolPanel === "jobfit" && resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading) {
+      runJobFit();
+    }
+    if (activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinOptData && !linkedinOptLoading) {
+      runLinkedinOpt();
+    }
+    if (activeToolPanel === "cover" && resume.trim() && !coverVersions && !coverVersionsLoading) {
+      generateCoverVersions();
+    }
+  }, [activeToolPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear toolkit helper text once the user provides the required data
+  useEffect(() => { if (toolGuidanceMsg && resume.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [resume]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (toolGuidanceMsg && resume.trim() && jobDesc.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [jobDesc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -1877,28 +2301,37 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
 
   const resumeHealthFrom = (score) => {
     if (score == null) return null;
-    if (score >= 80) return 'Excellent';
-    if (score >= 60) return 'Good';
-    if (score >= 40) return 'Fair';
+    if (score >= 90) return 'Excellent';
+    if (score >= 80) return 'Very Good';
+    if (score >= 70) return 'Good';
+    if (score >= 60) return 'Needs Improvement';
     return 'Poor';
   };
 
-  const saveHistoryEntry = (parsed, analysisType = 'Initial Analysis', resumeStatus = 'Draft') => {
-    const resumeName = uploadedFile?.name || (loadedResumeId ? (resumes.find(r => r.id === loadedResumeId)?.name || 'Resume') : 'Resume');
+  const validCompany = (name) => {
+    if (!name) return null;
+    const lower = name.toLowerCase().trim();
+    return ['not specified', 'unknown', 'n/a', 'none', 'unspecified', 'not available', 'not stated', 'na'].includes(lower) ? null : name;
+  };
+
+  // explicitResumeId: pass the freshly-saved resumeId from handleSaveToLibrary because
+  // setLoadedResumeId(id) is async — the closure still sees the old null value.
+  const saveHistoryEntry = (parsed, analysisType = 'Initial Analysis', resumeStatus = 'Draft', explicitResumeId = null) => {
+    const effectiveResumeId = explicitResumeId ?? loadedResumeId;
+    const resumeName = uploadedFile?.name || (effectiveResumeId ? (resumes.find(r => r.id === effectiveResumeId)?.name || 'Resume') : 'Resume');
     const entry = {
       resumeName,
       atsScore: parsed.atsScore,
       potentialAtsScore: parsed.potentialAtsScore,
       jobTitle: parsed.jobTitle || '',
-      company: parsed.company || '',
+      company: validCompany(parsed.company) || '',
       analysisType,
       analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume',
       resumeStatus,
       resumeHealth: resumeHealthFrom(parsed.atsScore),
     };
     if (saveHistoryToDb && profile?.id) {
-      // Primary: Supabase. The hook also updates the localStorage cache on success.
-      saveHistoryToDb(entry, loadedResumeId || null).catch(e => {
+      saveHistoryToDb(entry, effectiveResumeId || null).catch(e => {
         // Supabase failed — write directly to localStorage cache so data is not lost.
         console.warn('[ResumeHistory] DB write failed, caching locally:', e.message);
         try {
@@ -1921,8 +2354,9 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
 
   const analyze = async () => {
     if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
+    setManualReset(false);
     setError(""); setLoading(true); setResults(null); setLoadStep(0);
-    const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 3)), 2000);
+    const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 4)), 1800);
     try {
       const ctx = userContext.getContextString({ identity: true });
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
@@ -1931,11 +2365,18 @@ RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000);
       const parsed = JSON.parse(raw);
       setResults(parsed); setTab("resume");
+      // Animate score bars from 0 to final (PBar has CSS transition: width 1s ease)
+      setAnimatedBreakdown({ keywordMatch: 0, formatting: 0, relevance: 0 });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setAnimatedBreakdown(parsed.scoreBreakdown);
+        setTimeout(() => setAnimatedBreakdown(null), 1100);
+      }));
       setMasterMissingKws(parsed.keywordsMissing || []);
       setIsOptimized(false);
-      setSelectedKeywords([]);
+      setSelectedKeywords(parsed.keywordsMissing || []); // AI pre-selects all missing keywords
+      setTailoredApplied(false);
       setResultsInsights(null);
-      saveHistoryEntry(parsed, 'Initial Analysis');
+      setLibrarySaved(false); setLibrarySaveError("");
       setInsightsLoading(true);
       const capturedResume = resume;
       const capturedJobDesc = jobDesc;
@@ -1945,19 +2386,9 @@ RESUME:${capturedResume}
 JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
         try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
       }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
-      if (loadedResumeId && saveAnalysis) {
-        saveAnalysis(loadedResumeId, parsed).catch(e => console.warn("[Resume] saveAnalysis failed:", e?.message));
-      } else if (saveAnalysis && saveResume && resume.trim() && profile?.id) {
-        const autoName = uploadedFile?.name || (parsed.jobTitle ? `Resume — ${parsed.jobTitle}` : t("resume.myResumeFallback"));
-        saveResume(autoName, resume, null).then(row => {
-          if (row?.id) { setLoadedResumeId(row.id); return saveAnalysis(row.id, parsed); }
-        }).catch(e => console.warn("[Resume] auto-save resume+analysis failed:", e?.message));
-      }
     } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
     finally { clearInterval(iv); setLoading(false); }
   };
-
-  const handleSave = () => { if (!results) return; onSave({ id: uid(), company: results.company || t("resume.companyFallback"), jobTitle: results.jobTitle || t("resume.roleFallback"), status: "Applied", atsScore: results.atsScore, date: new Date().toISOString().split("T")[0], resume: results.tailoredResume, coverLetter: results.coverLetter, resumeId: loadedResumeId }); setSaved(true); setTimeout(() => setSaved(false), 3000); };
 
   const handleSaveResume = async () => {
     if (!resume.trim()) return;
@@ -1978,6 +2409,37 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
       setResumeError(isSessionError ? e.message : t("resume.saveResumeFailed"));
     } finally {
       setSavingResume(false);
+    }
+  };
+
+  // Unified explicit save: saves resume to library, updates Resume Intelligence,
+  // and records the history entry — all in one action, triggered by the user.
+  const handleSaveToLibrary = async (forceNew = false) => {
+    if (!results || !resume.trim() || !profile?.id) return;
+    setSavingToLibrary(true); setLibrarySaveError("");
+    try {
+      let resumeId = loadedResumeId;
+      // When saving an improved (optimized) resume and there's already a loaded resume,
+      // always create a new library entry so the original is never silently overwritten.
+      const shouldSaveAsNew = isOptimized && loadedResumeId && saveResume;
+      if (!resumeId || forceNew || shouldSaveAsNew) {
+        const originalName = resumes.find(r => r.id === loadedResumeId)?.name || uploadedFile?.name;
+        const name = shouldSaveAsNew
+          ? `Optimized${results.jobTitle ? ` — ${results.jobTitle}` : ""}${originalName ? ` (${originalName.replace(/\.[^.]+$/, "")})` : ""}`
+          : uploadedFile?.name || (results.jobTitle ? `Resume — ${results.jobTitle}` : t("resume.myResumeFallback"));
+        const savedRow = await saveResume(name, resume, null);
+        if (savedRow?.id) { resumeId = savedRow.id; setLoadedResumeId(savedRow.id); }
+      }
+      if (resumeId && saveAnalysis) {
+        await saveAnalysis(resumeId, results, isOptimized ? resume : null);
+      }
+      saveHistoryEntry(results, isOptimized ? 'Resume Improvement' : 'Initial Analysis', isOptimized ? 'Optimized' : 'Draft', resumeId || null);
+      setLibrarySaved(true);
+    } catch (e) {
+      console.error("[SaveToLibrary]", e);
+      setLibrarySaveError("Save failed. Please try again.");
+    } finally {
+      setSavingToLibrary(false);
     }
   };
 
@@ -2016,6 +2478,9 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
 
       const generated = await askClaude(prompt, 3000);
       setResume(generated.trim());
+      if (jobDesc.trim()) {
+        setPendingAutoAnalyze(true);
+      }
     } catch (e) {
       console.error("[AIBuilder]", e);
       setAiError("Could not generate resume. Please check your connection and try again.");
@@ -2024,9 +2489,166 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
     }
   };
 
+  // ── Tool 6: Score Benchmarking ──────────────────────────────────────────────
+  const runBenchmark = async () => {
+    if (!resume.trim()) return;
+    setBenchmarkLoading(true); setBenchmarkError(""); setBenchmarkData(null);
+    try {
+      const ctx = userContext.getContextString({ identity: true, applications: true });
+      const currentScore = results?.atsScore ?? null;
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and recruitment analyst. Analyze this resume and return ONLY a JSON object with realistic market benchmark data, no markdown, no explanation:
+{"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"industryAverage":<realistic industry average 52-68>,"topCandidateAverage":<realistic top 25% average 80-92>,"percentile":<what percentile this resume is at 1-99>,"percentileLabel":"<e.g. Top 15%>","keywordCoverage":<0-100>,"formattingScore":<0-100>,"experienceScore":<0-100>,"skillsScore":<0-100>,"educationScore":<0-100>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent>","industryLabel":"<inferred industry>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000);
+      const parsed = JSON.parse(raw);
+      setBenchmarkData(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
+        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[Benchmark]", e); setBenchmarkError("Benchmarking failed. Please try again."); }
+    finally { setBenchmarkLoading(false); }
+  };
+
+  // ── Tool 7: Job Fit Analyzer ─────────────────────────────────────────────────
+  const runJobFit = async () => {
+    if (!resume.trim() || !jobDesc.trim()) return;
+    setJobFitLoading(true); setJobFitError(""); setJobFitData(null);
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert recruiter and career coach. Analyze how well this resume matches the job description. Return ONLY a JSON object, no markdown, no explanation:
+{"overallMatch":<0-100>,"matchLabel":"<Strong Match/Good Match/Moderate Match/Weak Match>","requiredSkillsMatch":[{"skill":"<skill>","found":<true or false>,"evidence":"<brief quote from resume or null>"}],"preferredSkillsMatch":[{"skill":"<skill>","found":<true or false>}],"missingSkills":["<skill>","<skill>","<skill>"],"keywordMatchScore":<0-100>,"experienceMatch":{"score":<0-100>,"status":"<Over-qualified/Well-matched/Under-qualified>","detail":"<one sentence>"},"educationMatch":{"score":<0-100>,"status":"<Exceeds/Meets/Below requirement>","detail":"<one sentence>"},"seniorityMatch":{"score":<0-100>,"status":"<Well-matched/Junior for role/Senior for role>","detail":"<one sentence>"},"applicationReadiness":"<Ready to Apply/Almost Ready/Needs Work>","topRecommendations":["<action 1>","<action 2>","<action 3>"],"coverLetterTip":"<one specific cover letter tip for this role>"}
+RESUME:${resume}
+JOB DESCRIPTION:${jobDesc}`, 2500);
+      const parsed = JSON.parse(raw);
+      setJobFitData(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[JobFit]", e); setJobFitError("Job fit analysis failed. Please try again."); }
+    finally { setJobFitLoading(false); }
+  };
+
+  // ── Tool 8: LinkedIn Optimizer ───────────────────────────────────────────────
+  const runLinkedinOpt = async () => {
+    if (!resume.trim()) return;
+    setLinkedinOptLoading(true); setLinkedinOptError(""); setLinkedinOptData(null);
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a LinkedIn profile expert and personal branding coach. ${linkedinProfile.trim() ? "Analyze and optimize this LinkedIn profile." : "Generate LinkedIn profile content from this resume."} Return ONLY a JSON object, no markdown, no explanation:
+{"headline":"<optimized LinkedIn headline max 120 chars>","aboutSection":"<optimized About section 200-250 words, first person, engaging, keyword-rich>","experienceOptimizations":[{"company":"<company name>","title":"<job title>","optimizedBullets":["<impactful bullet 1>","<impactful bullet 2>","<impactful bullet 3>"]}],"topSkillsToAdd":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>","<skill 6>","<skill 7>","<skill 8>"],"keywordsToFeature":["<keyword 1>","<keyword 2>","<keyword 3>","<keyword 4>","<keyword 5>","<keyword 6>"],"recruiterVisibilityTips":["<tip 1>","<tip 2>","<tip 3>"],"atsAlignmentScore":<0-100>,"profileCompleteness":<0-100>,"headlineScore":<0-100>}
+RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + linkedinProfile : ""}${jobDesc.trim() ? "\nTARGET JOB:\n" + jobDesc : ""}`, 3000);
+      const parsed = JSON.parse(raw);
+      setLinkedinOptData(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError("LinkedIn optimization failed. Please try again."); }
+    finally { setLinkedinOptLoading(false); }
+  };
+
+  // ── Tool 4: Cover Letter Multiple Versions ───────────────────────────────────
+  // resumeOverride: explicit text for background regeneration after resume edits.
+  // Background calls suppress UI errors so nothing appears on the Cover tab unexpectedly.
+  const generateCoverVersions = async (resumeOverride = null) => {
+    const resumeContent = resumeOverride ?? resume;
+    const isBackground = resumeOverride !== null;
+    if (!resumeContent.trim()) return;
+    setCoverVersionsLoading(true);
+    if (!isBackground) setCoverVersionsError("");
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a professional cover letter writer. Generate 4 distinct cover letter versions. Return ONLY a JSON object, no markdown, no explanation:
+{"professional":"<formal 3-paragraph professional cover letter>","friendly":"<warm conversational 3-paragraph cover letter, same substance different tone>","executive":"<confident executive-level cover letter emphasizing strategic leadership value>","ats":"<ATS-optimized cover letter that naturally incorporates all job keywords, structured for ATS parsing>"}
+RESUME:${resumeContent}
+JOB DESCRIPTION:${jobDesc || "General professional role"}
+BASE COVER LETTER:${results?.coverLetter || ""}`, 4000);
+      const parsed = JSON.parse(raw);
+      setCoverVersions(parsed);
+    } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError("Could not generate versions. Please try again."); }
+    finally { setCoverVersionsLoading(false); }
+  };
+
+  // ── Tool 3: Deep Resume Insights ─────────────────────────────────────────────
+  const runDeepInsights = async () => {
+    if (!resume.trim()) return;
+    setDeepInsightsLoading(true); setDeepInsightsError("");
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert resume quality analyst. Perform deep analysis of this resume. Return ONLY a JSON object, no markdown, no explanation:
+{"grammarScore":<0-100>,"readabilityScore":<0-100>,"formattingScore":<0-100>,"keywordDensity":<0-100>,"actionVerbScore":<0-100>,"overallQualityScore":<0-100>,"issues":[{"category":"<Grammar/Formatting/Readability/ATS/Action Verbs/Structure>","problem":"<specific problem found>","reason":"<why this hurts the resume>","fix":"<specific actionable fix>","severity":"<high/medium/low>"}],"weakBullets":[{"original":"<weak bullet from resume>","improved":"<stronger rewritten version>"}],"weakActionVerbs":[{"original":"<weak verb>","stronger":"<powerful action verb>"}],"missingSections":["<missing section name>"],"resumeLengthStatus":"<Optimal/Too Short/Too Long>","contactInfoStatus":"<Complete/Incomplete>","sectionOrderIssue":"<description or null>"}
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
+      const parsed = JSON.parse(raw);
+      setDeepInsights(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError("Deep analysis failed. Please try again."); }
+    finally { setDeepInsightsLoading(false); }
+  };
+
+  const applyWeakBulletFix = (original, improved) => {
+    setResume(prev => {
+      const idx = prev.indexOf(original);
+      if (idx === -1) return prev;
+      return prev.slice(0, idx) + improved + prev.slice(idx + original.length);
+    });
+    setDeepInsights(prev => prev ? { ...prev, weakBullets: prev.weakBullets?.filter(b => b.original !== original) } : prev);
+  };
+
+  const applyVerbFix = (original, stronger) => {
+    setResume(prev => prev.replace(new RegExp(`\\b${original}\\b`, 'gi'), stronger));
+    setDeepInsights(prev => prev ? { ...prev, weakActionVerbs: prev.weakActionVerbs?.filter(v => v.original !== original) } : prev);
+  };
+
+  const [applyingIssueFix, setApplyingIssueFix] = useState(null);
+  const applyIssueFix = async (issue) => {
+    setApplyingIssueFix(issue.problem);
+    try {
+      const fixed = await askClaude(`You are a professional resume editor. Apply exactly this fix to the resume: "${issue.fix}". Return ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${resume}`, 3000);
+      setResume(fixed.trim());
+      setDeepInsights(prev => prev ? { ...prev, issues: prev.issues?.filter(i => i.problem !== issue.problem) } : prev);
+    } catch (e) { console.error("[IssueFix]", e); }
+    finally { setApplyingIssueFix(null); }
+  };
+
+  const applyAllDeepFixes = async () => {
+    if (!deepInsights || applyingAllFixes) return;
+    setApplyingAllFixes(true);
+    try {
+      let current = resume;
+      // Apply all weak bullet fixes (string replacement, no AI needed)
+      if (deepInsights.weakBullets?.length) {
+        deepInsights.weakBullets.forEach(({ original, improved }) => {
+          const idx = current.indexOf(original);
+          if (idx !== -1) current = current.slice(0, idx) + improved + current.slice(idx + original.length);
+        });
+      }
+      // Apply all weak verb fixes (regex replacement, no AI needed)
+      if (deepInsights.weakActionVerbs?.length) {
+        deepInsights.weakActionVerbs.forEach(({ original, stronger }) => {
+          current = current.replace(new RegExp(`\\b${original}\\b`, 'gi'), stronger);
+        });
+      }
+      // Apply all issues in a single Claude call
+      if (deepInsights.issues?.length) {
+        const fixList = deepInsights.issues.map(i => `- ${i.fix}`).join('\n');
+        const fixed = await askClaude(`You are a professional resume editor. Apply ALL of the following improvements to the resume:\n${fixList}\n\nReturn ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${current}`, 3500);
+        current = fixed.trim();
+      }
+      setResume(current);
+      setDeepInsights(prev => prev ? { ...prev, weakBullets: [], weakActionVerbs: [], issues: [] } : prev);
+      // Background: refresh cover letters with the fully-fixed resume.
+      if (coverVersions) generateCoverVersions(current);
+    } catch (e) { console.error("[ApplyAllFixes]", e); }
+    finally { setApplyingAllFixes(false); }
+  };
+
   const handleImproveResume = async () => {
     if (!selectedKeywords.length) return;
-    setImproving(true); setImproveError(""); setImproveSuccess(false);
+    setImproving(true); setImproveError(""); setLibrarySaved(false); setLibrarySaveError("");
     const kwList = selectedKeywords.join(", ");
     const oldAts = results?.atsScore ?? null;
     const oldBreakdown = results?.scoreBreakdown ?? null;
@@ -2093,21 +2715,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             setTimeout(() => setAnimatedBreakdown(null), 2000);
           }
         }, 150);
-        if (loadedResumeId && saveAnalysis) {
-          saveAnalysis(loadedResumeId, finalParsed).catch(e => console.warn("[Resume] saveAnalysis failed:", e?.message));
-        } else if (saveAnalysis && saveResume && improvedText && profile?.id) {
-          const autoName = uploadedFile?.name || (finalParsed.jobTitle ? `Resume — ${finalParsed.jobTitle}` : t("resume.myResumeFallback"));
-          saveResume(autoName, improvedText, null).then(row => {
-            if (row?.id) { setLoadedResumeId(row.id); return saveAnalysis(row.id, finalParsed); }
-          }).catch(e => console.warn("[Resume] auto-save resume+analysis failed:", e?.message));
-        }
-        saveHistoryEntry(finalParsed, 'Resume Improvement', 'Optimized');
         setImproveStats({ oldAts, newAts: finalParsed.atsScore, addedCount });
         setImprovedBtnDone(true);
         setTimeout(() => setImprovedBtnDone(false), 3000);
-        setImproveSuccess(true);
-        setTimeout(() => { setImproveSuccess(false); setImproveStats(null); }, 8000);
       }
+      // Background: regenerate cover letters with the improved resume so all versions stay current.
+      // Clear deep insights so they auto-refresh with the new content on next Insights tab visit.
+      generateCoverVersions(improvedText);
+      if (deepInsights) setDeepInsights(null);
     } catch (e) {
       console.error("[ImproveResume]", e);
       setImproveError("Could not improve resume. Please check your connection and try again.");
@@ -2133,20 +2748,67 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     }
   };
 
+  const handleEditResume = (r) => {
+    setResume(r.content || "");
+    setLoadedResumeId(r.id);
+    setResumeSource("upload");
+    setLibrarySaved(true);
+    setLibrarySaveError("");
+    setIsOptimized(false);
+    setImproveStats(null);
+    setSelectedKeywords([]);
+    setResultsInsights(null);
+    setEditingResumeName(r.name);
+    if (r.ats_score != null) {
+      setResults({
+        atsScore: r.ats_score,
+        potentialAtsScore: r.potential_ats_score || Math.min(r.ats_score + 20, 98),
+        scoreBreakdown: r.score_breakdown || null,
+        keywordsFound: r.keywords_found || [],
+        keywordsMissing: r.keywords_missing || [],
+        tailoredResume: r.content || "",
+        suggestions: r.suggestions || [],
+        coverLetter: "",
+        jobTitle: "",
+        company: "",
+      });
+      setMasterMissingKws(r.keywords_missing || []);
+      setTab("resume");
+      setTimeout(() => {
+        const el = document.getElementById("resume-editor-preview");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setEditorHighlight(true);
+        setTimeout(() => setEditorHighlight(false), 1500);
+      }, 200);
+    } else {
+      setResults(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   const isFirstTime = resumes.length === 0 && !results;
 
-  const hubHealthColor = (s) => s == null ? C.textMuted : s >= 80 ? C.green : s >= 60 ? "#0891B2" : s >= 40 ? C.yellow : C.red;
-  const hubHealthLabel = (s) => s == null ? null : s >= 80 ? "Excellent" : s >= 60 ? "Good" : s >= 40 ? "Fair" : "Poor";
+  const hubHealthColor = (s) => s == null ? C.textMuted : s >= 80 ? C.green : s >= 70 ? C.yellow : s >= 60 ? C.orange : C.red;
+  const hubHealthLabel = (s) => s == null ? null : s >= 90 ? "Excellent" : s >= 80 ? "Very Good" : s >= 70 ? "Good" : s >= 60 ? "Needs Improvement" : "Poor";
 
   const newAnalysisReset = () => {
     setResults(null); setResume(""); setJobDesc(""); setLoadedResumeId(null);
-    setImproveSuccess(false); setSelectedKeywords([]); setMasterMissingKws([]);
+    setSelectedKeywords([]); setMasterMissingKws([]);
     setIsOptimized(false); setResultsInsights(null); setInsightsLoading(false);
+    setImproveStats(null); setInsightsSectionExpanded({}); setShowAllHistory(false);
+    setLibrarySaved(false); setLibrarySaveError("");
+    setEditingResumeName(null);
+    setBenchmarkData(null); setJobFitData(null); setLinkedinOptData(null);
+    setCoverVersions(null); setDeepInsights(null);
+    setLinkedinProfile(""); setActiveCoverVersion("professional");
+    setActiveToolPanel(null); setEditingCoverLetter(false); setEditedCoverText("");
+    setTailoredApplied(false); setPendingAutoAnalyze(false); setApplyingAllFixes(false); setInsightsDone(false);
+    setManualReset(true);
   };
 
   const workspaceInputsJSX = (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }} className="two-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
             <Card style={{ display: "flex", flexDirection: "column" }}>
               {/* Always-mounted hidden file input — triggered by the Upload Resume selector */}
               <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style={{ display: "none" }} onChange={handleFile} />
@@ -2213,6 +2875,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <Btn onClick={handleGenerateResume} loading={aiBuilding} disabled={!aiForm.employment.trim() || !aiForm.education.trim() || !aiForm.skills.trim()} style={{ width: "100%", padding: "11px", fontSize: 14 }}>
                     {aiBuilding ? "Generating your resume…" : "✨ Generate Resume with AI"}
                   </Btn>
+                  {jobDesc.trim() && !aiBuilding && (
+                    <div style={{ fontSize: 11, color: C.purple, fontWeight: 600, textAlign: "center" }}>⚡ Will auto-analyze against your job description</div>
+                  )}
                 </div>
               )}
 
@@ -2265,35 +2930,88 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       {!isFirstTime && (
         <div>
           {!results && (
-            <div style={{ marginBottom: 24 }}>
-              <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 8 }}>Resume Hub</h1>
-              <p style={{ fontSize: 15, color: C.textMuted }}>Your resume workspace, history, and AI tools — all in one place.</p>
+            <div style={{ marginBottom: 14 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: C.text, marginBottom: 4 }}>Resume Hub</h1>
+              <p style={{ fontSize: 14, color: C.textMuted }}>Your resume workspace, history, and AI tools — all in one place.</p>
             </div>
           )}
 
-          {/* SECTION 1 — Resume Library */}
-          {resumes.length > 0 && !results && (
-            <Card style={{ marginBottom: 24 }}>
-              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📁 Resume Library</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* SECTION 1 — Resume Library: always visible when resumes exist */}
+          {resumes.length > 0 && (
+            <Card style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>📁 Resume Library</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {resumes.slice(0, 6).map(r => {
                   const hl = hubHealthLabel(r.ats_score);
                   const hc = hubHealthColor(r.ats_score);
+                  const isLoaded = loadedResumeId === r.id;
+                  const isEditing = editingResumeName === r.name && isLoaded;
                   return (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: loadedResumeId === r.id ? C.purpleLight : C.bgSoft, border: `1.5px solid ${loadedResumeId === r.id ? C.purple : C.border}`, borderRadius: 10, cursor: "pointer", flexWrap: "wrap" }} onClick={() => { setResume(r.content || ""); setLoadedResumeId(r.id); setResumeSource("upload"); }}>
-                      <div style={{ flex: 1, minWidth: 120 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.name}</div>
-                        {r.version_label && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{r.version_label}</div>}
+                    <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: isLoaded ? C.purpleLight : C.bgSoft, border: `1.5px solid ${isLoaded ? C.purple : C.border}`, borderRadius: 10, cursor: "pointer" }} onClick={() => {
+                      setResume(r.content || "");
+                      setLoadedResumeId(r.id);
+                      setResumeSource("upload");
+                      setLibrarySaved(false);
+                      setLibrarySaveError("");
+                      setIsOptimized(false);
+                      setImproveStats(null);
+                      setSelectedKeywords([]);
+                      setResultsInsights(null);
+                      if (r.ats_score != null) {
+                        setResults({
+                          atsScore: r.ats_score,
+                          potentialAtsScore: r.potential_ats_score || Math.min(r.ats_score + 20, 98),
+                          scoreBreakdown: r.score_breakdown || null,
+                          keywordsFound: r.keywords_found || [],
+                          keywordsMissing: r.keywords_missing || [],
+                          tailoredResume: r.content || "",
+                          suggestions: r.suggestions || [],
+                          coverLetter: "",
+                          jobTitle: "",
+                          company: "",
+                        });
+                        setMasterMissingKws(r.keywords_missing || []);
+                        setTab("resume");
+                      } else {
+                        setResults(null);
+                      }
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                        </div>
+                        {/* Actions dropdown — stopPropagation prevents card click from firing */}
+                        <div style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdownId(v => v === r.id ? null : r.id); }}
+                            style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, color: C.textMid, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 7, cursor: "pointer", fontFamily: "inherit" }}
+                          >Actions ▾</button>
+                          {openDropdownId === r.id && (
+                            <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 300, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,0.13)", minWidth: 186, padding: "4px 0", animation: "summaryEntrance 0.12s ease-out" }}>
+                              {[
+                                { icon: "📄", label: "Download PDF",  action: () => downloadPDF(r.content, r.name.replace(/\.[^.]+$/, "")) },
+                                { icon: "📝", label: "Download DOCX", action: () => downloadDOCX(r.content, r.name.replace(/\.[^.]+$/, "")) },
+                                { icon: "✏️", label: "Edit Resume",   action: () => handleEditResume(r) },
+                                { icon: "🗑️", label: "Delete Resume", action: () => handleDeleteResume(r), danger: true },
+                              ].map(({ icon, label, action, danger }) => (
+                                <button key={label} onClick={() => { action(); setOpenDropdownId(null); }}
+                                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: danger ? C.red : C.text, textAlign: "left", fontFamily: "inherit" }}
+                                  onMouseEnter={e => e.currentTarget.style.background = danger ? `${C.red}0A` : C.bgSoft}
+                                  onMouseLeave={e => e.currentTarget.style.background = "none"}
+                                >
+                                  <span style={{ width: 18, textAlign: "center" }}>{icon}</span><span style={{ fontWeight: danger ? 600 : 400 }}>{label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        {r.ats_score != null && <span style={{ fontSize: 11, fontWeight: 700, color: hc, background: `${hc}20`, borderRadius: 6, padding: "3px 8px" }}>ATS {r.ats_score}%</span>}
-                        {hl && <span style={{ fontSize: 11, fontWeight: 600, color: hc, background: `${hc}15`, borderRadius: 6, padding: "3px 8px" }}>{hl}</span>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                        {r.ats_score != null && <span style={{ fontSize: 11, fontWeight: 700, color: hc, background: `${hc}20`, borderRadius: 6, padding: "2px 7px" }}>ATS {r.ats_score}%</span>}
+                        {hl && <span style={{ fontSize: 11, fontWeight: 600, color: hc, background: `${hc}15`, borderRadius: 6, padding: "2px 7px" }}>{hl}</span>}
                         {r.last_analyzed_at && <span style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.last_analyzed_at).toLocaleDateString()}</span>}
-                        {r.is_default && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>Default</span>}
-                      </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={e => { e.stopPropagation(); downloadResume?.(r).then(url => { if (url) { const a = document.createElement("a"); a.href = url; a.download = r.name; a.click(); } }); }}>⬇ Download</Btn>
-                        <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px", color: C.red }} onClick={e => { e.stopPropagation(); deleteResume?.(r); }}>🗑</Btn>
+                        {isLoaded && !isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 7px" }}>✓ Loaded</span>}
+                        {isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>✏️ Editing</span>}
                       </div>
                     </div>
                   );
@@ -2303,36 +3021,32 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           )}
 
           {/* SECTION 2 — Resume Workspace */}
-          {!results && !loading && workspaceInputsJSX}
-          {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
-          {results && !loading && (
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Current Analysis</div>
-                  {results.company && <div style={{ fontSize: 12, color: C.textMuted }}>{results.jobTitle} at {results.company}</div>}
-                </div>
-                <Btn variant="secondary" disabled={improving} onClick={newAnalysisReset} style={{ fontSize: 12 }}>{t("resume.newAnalysis")}</Btn>
-              </div>
-            </Card>
-          )}
-
+          <div id="resume-workspace">
+            {!results && !loading && workspaceInputsJSX}
+            {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
+          </div>
           {/* SECTION 3 — Resume Analysis */}
           {results && (
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("resume.analysisComplete")}</div>
-                  {results.company && <div style={{ fontSize: 14, color: C.textMuted }}>{t("resume.roleAtCompany").replace("{role}", results.jobTitle).replace("{company}", results.company)}</div>}
+            <div id="resume-analysis-section" style={{ marginBottom: 16 }}>
+              <Card style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{t("resume.analysisComplete")}</div>
+                    {results.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{results.jobTitle}{validCompany(results.company) ? ` at ${results.company}` : ""}</div>}
+                    {editingResumeName && <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 2 }}>✏️ Editing: {editingResumeName}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                    <Btn onClick={handleSaveToLibrary} disabled={improving || savingToLibrary || !profile?.id} loading={savingToLibrary} style={{ fontSize: 13 }}>
+                      {librarySaved ? "✓ Saved to Library" : isOptimized ? "💾 Save Optimized Resume" : "💾 Save to Resume Library"}
+                    </Btn>
+                    <Btn variant="secondary" disabled={improving} onClick={newAnalysisReset} style={{ fontSize: 12 }}>{t("resume.newAnalysis")}</Btn>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <Btn onClick={handleSave} disabled={improving}>{saved ? t("resume.savedToTrackerDone") : t("resume.saveToTracker")}</Btn>
-                </div>
-              </div>
+              </Card>
 
           {/* Improvement loading overlay */}
           {improving && (
-            <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 20, height: 20, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{improveStep || "Improving your resume…"}</div>
@@ -2341,33 +3055,78 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             </div>
           )}
 
-          {/* Success banner */}
-          {improveSuccess && !improving && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+          {/* Improvement Summary — persistent until New Analysis is clicked */}
+          {isOptimized && improveStats && !improving && (() => {
+            const delta = improveStats.newAts - improveStats.oldAts;
+            const health = resumeHealthFrom(improveStats.newAts);
+            const healthColor = hubHealthColor(improveStats.newAts);
+            const remaining = resultsInsights?.highPriorityImprovements?.length ?? results.suggestions?.length ?? 0;
+            return (
+              <div style={{ background: `linear-gradient(135deg, ${C.greenLight}, #fff)`, border: `1.5px solid ${C.green}35`, borderRadius: 14, padding: "14px 16px", marginBottom: 14, animation: "summaryEntrance 0.4s ease-out" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <span style={{ fontSize: 18 }}>✅</span>
+                  <div>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{delta >= 0 ? `+${delta}` : delta} ATS Points</span>
+                    <span style={{ fontSize: 12, color: C.textMid, marginLeft: 8 }}>Resume optimized successfully</span>
+                  </div>
+                </div>
+                <div className="improve-summary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                  {[
+                    { label: "ATS Score", value: `${improveStats.oldAts} → ${improveStats.newAts}`, sub: `${delta >= 0 ? "+" : ""}${delta} pts`, subColor: delta >= 0 ? C.green : C.red },
+                    { label: "Keywords Added", value: improveStats.addedCount, sub: "incorporated", subColor: C.purple },
+                    { label: "Remaining Improvements", value: remaining, sub: remaining === 1 ? "opportunity" : "opportunities", subColor: remaining > 0 ? C.yellow : C.green },
+                    { label: "Resume Health", value: health || "—", sub: `${improveStats.newAts}% ATS`, subColor: healthColor },
+                  ].map(({ label, value, sub, subColor }) => (
+                    <div key={label} style={{ background: "#fff", borderRadius: 10, padding: "12px 8px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: C.text, lineHeight: 1.15, marginBottom: 2 }}>{value}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: subColor, marginBottom: 3 }}>{sub}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.3 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {insightsDone && !librarySaved && (
+            <div style={{ background: C.greenLight, border: `1.5px solid ${C.green}35`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, animation: "summaryEntrance 0.3s ease-out" }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>✅</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Resume successfully improved</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 20px", fontSize: 11, color: C.textMid, marginTop: 4 }}>
-                  {improveStats?.oldAts != null && <span>ATS score {improveStats.oldAts < improveStats.newAts ? "increased" : "updated"} from <strong>{improveStats.oldAts}</strong> → <strong>{improveStats.newAts}</strong></span>}
-                  {improveStats?.addedCount > 0 && <span><strong>{improveStats.addedCount}</strong> keyword{improveStats.addedCount > 1 ? "s" : ""} added successfully</span>}
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>All selected AI improvements have been applied.</div>
+                <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>Your optimized resume is ready to save. Click <strong>Save Optimized Resume</strong> above to preserve this version.</div>
               </div>
             </div>
           )}
-
-          {loadedResumeId && !improveSuccess && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 8, padding: "8px 14px", marginBottom: 16, fontSize: 12, color: C.green }}>
-              <span style={{ fontWeight: 700 }}>✓ Analysis saved to Resume Intelligence Dashboard</span>
-              <span style={{ color: C.textMuted, fontWeight: 400 }}>— visible on your Dashboard now</span>
+          {librarySaved && isOptimized && (
+            <div style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, borderRadius: 10, padding: "10px 18px", marginBottom: 16, textAlign: "center", boxShadow: `0 4px 16px ${C.purple}40`, animation: "summaryEntrance 0.3s ease-out" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Optimized Resume Saved Successfully!</div>
+              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Your optimized resume has been saved to your Resume Library. Click &ldquo;New Analysis&rdquo; to optimize another resume or tailor your resume for a different job.</div>
+            </div>
+          )}
+          {librarySaved && !isOptimized && (
+            <div style={{ background: C.greenLight, border: `1.5px solid ${C.green}35`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, animation: "summaryEntrance 0.3s ease-out" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>✅</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Saved to Resume Library.</span>
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>Resume Library, Resume Intelligence, and Analysis History updated.</div>
+            </div>
+          )}
+          {librarySaveError && (
+            <div style={{ background: `${C.red}10`, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: C.red }}>
+              {librarySaveError}
             </div>
           )}
 
           {/* ATS Score Section */}
-          <Card style={{ marginBottom: 20, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
+          <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
               <div style={{ textAlign: "center" }}>
                 <ScoreRing score={animatedAts ?? results.atsScore} size={90} />
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
+                {!improveStats && analysisHistory?.length >= 2 && analysisHistory[1]?.atsScore != null && (
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>prev. {analysisHistory[1].atsScore}%</div>
+                )}
               </div>
               <div style={{ fontSize: 28, color: C.textMuted }}>→</div>
               <div style={{ textAlign: "center" }}>
@@ -2389,7 +3148,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           </Card>
 
           {/* Keywords */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }} className="two-col">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }} className="two-col">
             <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
               <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsFound")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsFound?.map(k => <Badge key={k} color={C.green}>{k}</Badge>)}</div>
@@ -2398,7 +3157,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               {isOptimized ? (
                 <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
                   <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 10 }}>🎉 Resume Successfully Optimized</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
                     <div style={{ color: C.green }}>✅ ATS score updated</div>
                     <div style={{ color: C.green }}>✅ Resume tailored for this job</div>
                     <div style={{ color: C.green }}>✅ Missing keywords successfully added</div>
@@ -2410,14 +3169,18 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <>
                   <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
                     <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("resume.keywordsMissing")}</div>
-                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 10, lineHeight: 1.5 }}>📝 Note: Only select the keywords that match your real skills and career experience. CareerPersona AI will use your selected keywords to naturally improve your resume.</div>
+                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 8, lineHeight: 1.5 }}>⚡ AI pre-selected all {results.keywordsMissing?.length} missing keywords. Deselect any that don't apply to your real experience.</div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                      <button onClick={() => setSelectedKeywords(results.keywordsMissing || [])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.purple}`, background: C.purpleLight, color: C.purple, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Select All</button>
+                      <button onClick={() => setSelectedKeywords([])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#fff", color: C.textMuted, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>Deselect All</button>
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {results.keywordsMissing?.map(k => {
                         const sel = selectedKeywords.includes(k);
                         return (
                           <div key={k} onClick={() => setSelectedKeywords(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", userSelect: "none", background: sel ? C.purpleLight : "#fff", color: sel ? C.purple : C.red, border: `1.5px solid ${sel ? C.purple : C.red}40`, transition: "all 0.15s", touchAction: "manipulation" }}>
-                            {sel && <span style={{ fontSize: 10 }}>✓</span>}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", userSelect: "none", background: sel ? C.purple : "#fff", color: sel ? "#fff" : C.red, border: `1.5px solid ${sel ? C.purple : C.red}50`, boxShadow: sel ? `0 0 0 2px ${C.purple}25` : "none", transition: "all 0.15s", touchAction: "manipulation" }}>
+                            {sel && <span style={{ fontSize: 10, fontWeight: 800 }}>✓</span>}
                             {k}
                           </div>
                         );
@@ -2428,7 +3191,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {improveError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{improveError}</div>}
                       <Btn onClick={handleImproveResume} loading={improving} disabled={!selectedKeywords.length || improving || improvedBtnDone} style={{ width: "100%", ...(improvedBtnDone ? { background: C.green } : {}) }}>
-                        {improving ? "Improving your resume…" : improvedBtnDone ? "✅ Resume Improved" : selectedKeywords.length ? `✨ Improve My Resume (${selectedKeywords.length} keyword${selectedKeywords.length > 1 ? "s" : ""} selected)` : "✨ Improve My Resume"}
+                        {improving ? "Improving your resume…" : improvedBtnDone ? "✅ Resume Improved" : selectedKeywords.length ? `⚡ Improve My Resume (${selectedKeywords.length} keyword${selectedKeywords.length > 1 ? "s" : ""} selected)` : "⚡ Improve My Resume"}
                       </Btn>
                       {!selectedKeywords.length && <div style={{ fontSize: 11, color: C.textMuted }}>Select missing keywords above to enable</div>}
                     </div>
@@ -2438,20 +3201,31 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             </div>
           </div>
 
+          {isOptimized && improveStats && !improving && (
+            <div style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, borderRadius: 10, padding: "10px 18px", marginBottom: 16, textAlign: "center", boxShadow: `0 4px 16px ${C.purple}40`, animation: "summaryEntrance 0.3s ease-out" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Resume Optimization Complete!</div>
+              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Click the &ldquo;Insights&rdquo; tab below to review additional AI recommendations before saving your optimized resume.</div>
+            </div>
+          )}
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 16 }}>
             {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")],["insights", "Insights"]].map(([id, lbl]) => (
-              <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.text : C.textMuted, fontSize: 13, fontWeight: 600, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
+              <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.purple : C.textMuted, fontSize: 13, fontWeight: tab === id ? 700 : 500, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
 
           {tab === "resume" && (
             <div>
-              <ContentDisplay content={results.tailoredResume} />
-              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <Btn variant="secondary" onClick={() => downloadPDF(results.tailoredResume, "tailored-resume")}>{t("resume.downloadPdf")}</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(results.tailoredResume, "tailored-resume")}>{t("resume.downloadDocx")}</Btn>
-                <CopyBtn text={results.tailoredResume} label={t("resume.copyResume")} variant="secondary" />
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+                {isOptimized ? "Your Optimized Resume" : "Optimized Resume Preview"}
+              </div>
+              <div id="resume-editor-preview" className={editorHighlight ? "editor-highlight-active" : ""}>
+                <ContentDisplay content={isOptimized ? resume : results.tailoredResume} />
+              </div>
+              <div className="resume-action-bar" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
+                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center" }}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center" }}>{t("resume.downloadDocx")}</Btn>
+                <CopyBtn text={isOptimized ? resume : results.tailoredResume} label={t("resume.copyResume")} variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 13 }} />
               </div>
             </div>
           )}
@@ -2465,22 +3239,73 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               ))}
             </div>
           )}
-          {tab === "cover" && (
+          {tab === "cover" && (() => {
+            const currentCoverText = editingCoverLetter ? editedCoverText : (coverVersions?.[activeCoverVersion] || results.coverLetter);
+            return (
             <div>
-              <ContentDisplay content={results.coverLetter} />
-              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <Btn variant="secondary" onClick={() => downloadPDF(results.coverLetter, "cover-letter")}>{t("resume.downloadPdf")}</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(results.coverLetter, "cover-letter")}>{t("resume.downloadDocx")}</Btn>
-                <CopyBtn text={results.coverLetter} label={t("resume.copyCoverLetter")} variant="secondary" />
+              {/* Version selector + controls */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                {[["professional","Professional","★"],["friendly","Friendly",null],["executive","Executive",null],["ats","ATS Optimized",null]].map(([v, lbl, badge]) => (
+                  <button key={v} onClick={() => { setActiveCoverVersion(v); setEditingCoverLetter(false); setEditedCoverText(""); }}
+                    disabled={!coverVersions}
+                    style={{ padding: "5px 12px", borderRadius: 8, border: `1.5px solid ${activeCoverVersion === v && coverVersions ? C.purple : C.border}`, background: activeCoverVersion === v && coverVersions ? C.purpleLight : "#fff", color: activeCoverVersion === v && coverVersions ? C.purple : C.textMuted, fontSize: 11, fontWeight: activeCoverVersion === v ? 700 : 500, cursor: coverVersions ? "pointer" : "default", fontFamily: "inherit", opacity: coverVersions ? 1 : 0.5, display: "flex", alignItems: "center", gap: 4 }}>
+                    {lbl}{badge && <span style={{ fontSize: 9, fontWeight: 800, color: C.yellow }}>★</span>}
+                  </button>
+                ))}
+                {coverVersions && (
+                  <Btn onClick={generateCoverVersions} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginLeft: "auto" }}>
+                    ↻ Regenerate All
+                  </Btn>
+                )}
+              </div>
+              {coverVersionsError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12, marginBottom: 10 }}>{coverVersionsError}</div>}
+              {coverVersionsLoading && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.bgSoft, borderRadius: 10, marginBottom: 10 }}>
+                  <div style={{ width: 16, height: 16, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: C.textMid }}>⚡ AI is generating all 4 cover letter versions — Professional (recommended), Friendly, Executive, ATS Optimized…</span>
+                </div>
+              )}
+              {coverVersions && !editingCoverLetter && (
+                <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>✓ 4 versions ready — select a style above</div>
+              )}
+              {/* Edit mode: textarea; display mode: ContentDisplay */}
+              {editingCoverLetter ? (
+                <textarea value={editedCoverText} onChange={e => setEditedCoverText(e.target.value)}
+                  style={{ width: "100%", minHeight: 280, background: "#fff", border: `1.5px solid ${C.purple}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+              ) : (
+                <ContentDisplay content={currentCoverText} />
+              )}
+              {/* Action bar */}
+              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                {editingCoverLetter ? (
+                  <>
+                    <Btn variant="primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => {
+                      if (coverVersions) {
+                        setCoverVersions(prev => ({ ...prev, [activeCoverVersion]: editedCoverText }));
+                      }
+                      setEditingCoverLetter(false);
+                    }}>✓ Done Editing</Btn>
+                    <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(false); setEditedCoverText(""); }}>Cancel</Btn>
+                  </>
+                ) : (
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>✏️ Edit</Btn>
+                )}
+                <Btn variant="secondary" onClick={() => downloadPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadDocx")}</Btn>
+                <CopyBtn text={currentCoverText} label={t("resume.copyCoverLetter")} variant="secondary" />
               </div>
             </div>
-          )}
+            );
+          })()}
           {tab === "insights" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {insightsLoading && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                   <div style={{ width: 18, height: 18, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                  <span style={{ fontSize: 13, color: C.textMid }}>Generating resume insights…</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating your personalized insights…</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>CareerPersona AI is reviewing your resume against this role's requirements</div>
+                  </div>
                 </div>
               )}
               {isOptimized && !insightsLoading && (
@@ -2489,165 +3314,819 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6 }}>These insights are based on the original analysis. Run <strong>New Analysis</strong> after updating your resume or selecting another job to generate new insights.</div>
                 </div>
               )}
-              {resultsInsights && (
-                <>
-                  <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 10 }}>💪 Resume Strengths</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {resultsInsights.strengths?.map((s, i) => (
-                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                          <span style={{ color: C.green, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>✓</span>
-                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{s}</span>
+              {resultsInsights && (() => {
+                const strengths = resultsInsights.strengths || [];
+                const improvements = resultsInsights.highPriorityImprovements || resultsInsights.weaknesses || [];
+                const missingSkills = resultsInsights.missingSkills || [];
+                const tailoring = resultsInsights.tailoringOpportunities || [];
+                const PRIORITY_TIERS = [
+                  { label: "Critical", color: C.red, bg: C.redLight },
+                  { label: "Important", color: C.yellow, bg: C.yellowLight },
+                  { label: "Additional", color: C.blue, bg: C.blueLight },
+                ];
+                const ShowMoreBtn = ({ sectionKey, items, color, initialShow = 2 }) => {
+                  if (items.length <= initialShow) return null;
+                  const expanded = insightsSectionExpanded[sectionKey];
+                  return (
+                    <button onClick={() => toggleInsightSection(sectionKey)} style={{ marginTop: 10, background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color, padding: 0, textAlign: "left" }}>
+                      {expanded ? "Show less ↑" : `Show ${items.length - initialShow} more ↓`}
+                    </button>
+                  );
+                };
+                return (
+                  <>
+                    {/* Strengths */}
+                    <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 10 }}>💪 Resume Strengths</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(insightsSectionExpanded.strengths ? strengths : strengths.slice(0, 2)).map((s, i) => (
+                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                            <span style={{ color: C.green, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>✓</span>
+                            <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{s}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <ShowMoreBtn sectionKey="strengths" items={strengths} color={C.green} />
+                    </div>
+
+                    {/* Growth Opportunities — categorized by priority tier */}
+                    {improvements.length > 0 && (
+                      <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}30`, borderRadius: 12, padding: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.yellow, marginBottom: 4 }}>💡 Growth Opportunities</div>
+                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Addressing these areas can meaningfully boost your ATS score and recruiter interest:</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {(insightsSectionExpanded.improvements ? improvements : improvements.slice(0, 2)).map((w, i) => {
+                            const tier = PRIORITY_TIERS[Math.min(i, 2)];
+                            return (
+                              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: tier.bg, border: `1px solid ${tier.color}25`, borderRadius: 10, padding: "10px 12px" }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: tier.color, background: `${tier.color}20`, borderRadius: 6, padding: "2px 8px", flexShrink: 0, whiteSpace: "nowrap", marginTop: 1 }}>{tier.label}</span>
+                                <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{w}</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 10 }}>⚠️ Highest Priority Improvements</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {(resultsInsights.highPriorityImprovements || resultsInsights.weaknesses)?.map((w, i) => (
-                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                          <span style={{ color: C.red, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>{i + 1}.</span>
-                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{w}</span>
+                        <ShowMoreBtn sectionKey="improvements" items={improvements} color={C.yellow} />
+                      </div>
+                    )}
+
+                    {/* Skills to Develop */}
+                    {missingSkills.length > 0 && (
+                      <div style={{ background: "#FFF7ED", border: "1px solid #EA580C25", borderRadius: 12, padding: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#EA580C", marginBottom: 4 }}>🎯 Skills to Develop</div>
+                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Adding these capabilities could further strengthen your candidacy for this role:</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {(insightsSectionExpanded.skills ? missingSkills : missingSkills.slice(0, 6)).map((s, i) => (
+                            <span key={i} style={{ background: "#fff", border: "1.5px solid #EA580C40", borderRadius: 20, padding: "5px 13px", fontSize: 12, fontWeight: 600, color: "#EA580C", lineHeight: 1.4 }}>{s}</span>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ background: "#FFF7ED", border: "1px solid #EA580C25", borderRadius: 12, padding: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#EA580C", marginBottom: 6 }}>🎯 Missing Skills for This Role</div>
-                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 10 }}>Broader skills and qualifications this role requires that your resume doesn't yet demonstrate:</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {resultsInsights.missingSkills?.map((s, i) => (
-                        <span key={i} style={{ background: "#fff", border: "1.5px solid #EA580C40", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600, color: "#EA580C" }}>{s}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 10 }}>✨ Tailoring Opportunities</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {resultsInsights.tailoringOpportunities?.map((o, i) => (
-                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                          <span style={{ color: C.purple, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>{i + 1}.</span>
-                          <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{o}</span>
+                        <ShowMoreBtn sectionKey="skills" items={missingSkills} color="#EA580C" initialShow={6} />
+                      </div>
+                    )}
+
+                    {/* Tailoring Opportunities */}
+                    {tailoring.length > 0 && (
+                      <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 10 }}>✨ Tailoring Opportunities</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {(insightsSectionExpanded.tailoring ? tailoring : tailoring.slice(0, 2)).map((o, i) => (
+                            <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                              <span style={{ color: C.purple, flexShrink: 0, fontWeight: 700, marginTop: 2 }}>{i + 1}.</span>
+                              <span style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>{o}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
+                        <ShowMoreBtn sectionKey="tailoring" items={tailoring} color={C.purple} />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               {!resultsInsights && !insightsLoading && (
                 <div style={{ padding: 24, background: C.bgSoft, borderRadius: 12, fontSize: 13, color: C.textMuted, textAlign: "center" }}>
                   Insights will appear here after your analysis completes.
                 </div>
               )}
+
+              {/* Deep Insights — grammar, readability, action verbs, formatting */}
+              <div style={{ borderTop: `1.5px solid ${C.border}`, paddingTop: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>🔬 Deep Resume Analysis</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {deepInsights && (deepInsights.issues?.length > 0 || deepInsights.weakBullets?.length > 0 || deepInsights.weakActionVerbs?.length > 0) && (
+                      <Btn onClick={applyAllDeepFixes} loading={applyingAllFixes} style={{ fontSize: 11, padding: "5px 12px" }}>
+                        ⚡ Apply All Fixes
+                      </Btn>
+                    )}
+                    <Btn onClick={runDeepInsights} loading={deepInsightsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>
+                      {deepInsights ? "↻ Re-analyze" : "Run Deep Analysis"}
+                    </Btn>
+                  </div>
+                </div>
+                {deepInsightsError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12, marginBottom: 10 }}>{deepInsightsError}</div>}
+                {deepInsightsLoading && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.bgSoft, borderRadius: 10 }}>
+                    <div style={{ width: 16, height: 16, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: C.textMid }}>Analyzing grammar, readability, action verbs, and formatting…</span>
+                  </div>
+                )}
+                {deepInsights && (() => {
+                  const scores = [
+                    { label: "Grammar", val: deepInsights.grammarScore, color: hubHealthColor(deepInsights.grammarScore) },
+                    { label: "Readability", val: deepInsights.readabilityScore, color: hubHealthColor(deepInsights.readabilityScore) },
+                    { label: "Formatting", val: deepInsights.formattingScore, color: hubHealthColor(deepInsights.formattingScore) },
+                    { label: "Keywords", val: deepInsights.keywordDensity, color: hubHealthColor(deepInsights.keywordDensity) },
+                    { label: "Action Verbs", val: deepInsights.actionVerbScore, color: hubHealthColor(deepInsights.actionVerbScore) },
+                  ];
+                  const severityColor = { high: C.red, medium: C.yellow, low: C.blue };
+                  const severityBg = { high: C.redLight, medium: C.yellowLight, low: C.blueLight };
+                  return (
+                    <>
+                      {/* Score bars */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 16 }}>
+                        {scores.map(({ label, val, color }) => (
+                          <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                            <div style={{ fontSize: 16, fontWeight: 800, color }}>{val ?? "—"}</div>
+                            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 2 }}>{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Meta info */}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                        {deepInsights.resumeLengthStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>📏 Length: {deepInsights.resumeLengthStatus}</span>}
+                        {deepInsights.contactInfoStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>📋 Contact: {deepInsights.contactInfoStatus}</span>}
+                        {deepInsights.missingSections?.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.orange, background: C.orangeLight, border: `1px solid ${C.orange}30`, borderRadius: 20, padding: "3px 10px" }}>⚠️ Missing: {deepInsights.missingSections.join(", ")}</span>}
+                      </div>
+                      {/* Issues */}
+                      {deepInsights.issues?.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>Issues Found</div>
+                          {deepInsights.issues.map((issue, i) => {
+                            const isApplying = applyingIssueFix === issue.problem;
+                            return (
+                              <div key={i} style={{ background: severityBg[issue.severity] || C.bgSoft, border: `1px solid ${(severityColor[issue.severity] || C.blue)}25`, borderRadius: 10, padding: "10px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: severityColor[issue.severity] || C.blue, background: `${(severityColor[issue.severity] || C.blue)}20`, borderRadius: 4, padding: "2px 7px", textTransform: "uppercase" }}>{issue.severity}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{issue.category}</span>
+                                  <Btn onClick={() => applyIssueFix(issue)} loading={isApplying} variant="secondary" style={{ fontSize: 10, padding: "3px 8px", marginLeft: "auto" }} disabled={!!applyingIssueFix}>
+                                    {isApplying ? "Fixing…" : "⚡ AI Fix"}
+                                  </Btn>
+                                </div>
+                                <div style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>{issue.problem}</div>
+                                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>Why it matters: {issue.reason}</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: C.green }}>✓ Fix: {issue.fix}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Weak bullets */}
+                      {deepInsights.weakBullets?.length > 0 && (
+                        <div style={{ marginBottom: 14 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>💪 Stronger Bullet Points</div>
+                          {deepInsights.weakBullets.map((b, i) => (
+                            <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 6 }}>
+                              <div style={{ fontSize: 11, color: C.red, marginBottom: 4, lineHeight: 1.5 }}>Before: {b.original}</div>
+                              <div style={{ fontSize: 11, color: C.green, fontWeight: 600, lineHeight: 1.5, marginBottom: 6 }}>After: {b.improved}</div>
+                              <Btn onClick={() => applyWeakBulletFix(b.original, b.improved)} variant="secondary" style={{ fontSize: 10, padding: "3px 8px" }}>⚡ Apply Fix</Btn>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Weak action verbs */}
+                      {deepInsights.weakActionVerbs?.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>⚡ Stronger Action Verbs</div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {deepInsights.weakActionVerbs.map((v, i) => (
+                              <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ color: C.red, textDecoration: "line-through" }}>{v.original}</span>
+                                <span style={{ color: C.textMuted }}>→</span>
+                                <span style={{ color: C.green, fontWeight: 700 }}>{v.stronger}</span>
+                                <button onClick={() => applyVerbFix(v.original, v.stronger)} style={{ marginLeft: 4, background: C.green, border: "none", borderRadius: 4, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+                {deepInsights && !applyingAllFixes && !insightsDone && (
+                  <div style={{ textAlign: "center", paddingTop: 16, borderTop: `1px solid ${C.border}`, marginTop: 10 }}>
+                    <Btn onClick={() => {
+                      setInsightsDone(true);
+                      document.getElementById("resume-analysis-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }} style={{ padding: "9px 22px" }}>✅ Done Applying</Btn>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>Scroll up to save your optimized resume.</div>
+                  </div>
+                )}
+                {!deepInsights && !deepInsightsLoading && (
+                  <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: "12px 0" }}>
+                    {results ? "Analyzing your resume…" : "Grammar, readability, action verbs, bullet quality, missing sections, and more."}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* SECTION 4 — Analysis History */}
-      {analysisHistory?.length > 0 && (
-        <Card style={{ marginBottom: 24 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📊 Analysis History</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {analysisHistory.slice(0, 15).map((entry, i) => (
-              <div key={entry.id || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: C.bgSoft, borderRadius: 10, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 120 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{entry.resumeName || "Resume"}</div>
-                  {(entry.jobTitle || entry.company) && <div style={{ fontSize: 11, color: C.textMuted }}>{[entry.jobTitle, entry.company].filter(Boolean).join(" · ")}</div>}
+      {/* SECTIONS 4 + 5 — History & Analytics: side-by-side on desktop, stacked on mobile */}
+      {!isFirstTime && (
+        <div className="history-analytics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
+
+          {/* Left column: Analysis History */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {analysisHistory?.length === 0 && (
+              <Card style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
+                  <span style={{ fontSize: 20 }}>📊</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>No analysis history yet</div>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>Save a resume to start tracking progress.</div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  {entry.atsScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(entry.atsScore), background: `${hubHealthColor(entry.atsScore)}20`, borderRadius: 6, padding: "2px 8px" }}>ATS {entry.atsScore}%</span>}
-                  {entry.resumeHealth && <span style={{ fontSize: 11, fontWeight: 600, color: hubHealthColor(entry.atsScore), background: `${hubHealthColor(entry.atsScore)}15`, borderRadius: 6, padding: "2px 8px" }}>{entry.resumeHealth}</span>}
-                  <span style={{ fontSize: 10, color: C.textMuted, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px" }}>{entry.analysisType}</span>
-                  {entry.resumeStatus === "Optimized" && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 8px" }}>✅ Optimized</span>}
+              </Card>
+            )}
+            {analysisHistory?.length > 0 && (
+              <Card style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>📊 Analysis History</div>
+                  {analysisHistory.length > 3 && (
+                    <button onClick={() => setShowAllHistory(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: C.purple, padding: 0 }}>
+                      {showAllHistory ? "Show Less ↑" : `View All ${analysisHistory.length} ↓`}
+                    </button>
+                  )}
                 </div>
-                <div style={{ fontSize: 11, color: C.textMuted }}>{entry.date ? new Date(entry.date).toLocaleDateString() : ""}</div>
-              </div>
-            ))}
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {(showAllHistory ? analysisHistory.slice(0, 15) : analysisHistory.slice(0, 3)).map((entry, i, arr) => {
+                    const nextEntry = analysisHistory[i + 1];
+                    const delta = (entry.atsScore != null && nextEntry?.atsScore != null) ? entry.atsScore - nextEntry.atsScore : null;
+                    const hc = hubHealthColor(entry.atsScore);
+                    const isOptimizedEntry = entry.resumeStatus === "Optimized";
+                    const isLast = i === arr.length - 1;
+                    return (
+                      <div key={entry.id || i} style={{ display: "flex", gap: 0, alignItems: "stretch" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 24, flexShrink: 0 }}>
+                          <div style={{ width: 9, height: 9, borderRadius: "50%", background: hc, marginTop: 10, flexShrink: 0 }} />
+                          {!isLast && <div style={{ flex: 1, width: 2, background: `${hc}25`, marginTop: 2 }} />}
+                        </div>
+                        <div style={{ flex: 1, padding: "6px 6px 6px 5px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.resumeName || "Resume"}</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                                {entry.atsScore != null && <span style={{ fontSize: 11, fontWeight: 800, color: hc }}>ATS {entry.atsScore}%</span>}
+                                {delta !== null && <span style={{ fontSize: 10, fontWeight: 700, color: delta > 0 ? C.green : delta < 0 ? C.red : C.textMuted }}>({delta > 0 ? `+${delta}` : delta})</span>}
+                                {isOptimizedEntry
+                                  ? <span style={{ fontSize: 9, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 4, padding: "1px 4px" }}>✅ Optimized</span>
+                                  : <span style={{ fontSize: 9, color: C.textMuted, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 4px" }}>Original</span>
+                                }
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div style={{ fontSize: 9, color: C.textMuted }}>{entry.date ? new Date(entry.date).toLocaleDateString() : ""}</div>
+                              <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1 }}>{entry.analysisType}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
           </div>
-        </Card>
+
+          {/* Right column: Performance Analytics */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {analysisHistory?.length > 0 && (() => {
+              const total = analysisHistory.length;
+              const improved = analysisHistory.filter(h => h.analysisType === "Resume Improvement").length;
+              const scores = analysisHistory.map(h => h.atsScore).filter(s => s != null);
+              const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+              const latest = scores[0] ?? null;
+              const oldest = scores[scores.length - 1] ?? null;
+              const trend = latest != null && oldest != null ? latest - oldest : null;
+              const healthCounts = { Excellent: 0, "Very Good": 0, Good: 0, "Needs Improvement": 0, Poor: 0 };
+              analysisHistory.forEach(h => { if (h.resumeHealth && healthCounts[h.resumeHealth] != null) healthCounts[h.resumeHealth]++; });
+              const trendScores = scores.slice(0, 5).reverse();
+              return (
+                <Card style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 8 }}>📈 Performance Analytics</div>
+                  {/* 4 stat squares in one horizontal row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
+                    {[
+                      { label: "Saves", value: total, color: C.purple },
+                      { label: "Improved", value: improved, color: C.green },
+                      { label: "Avg ATS", value: avgScore != null ? `${avgScore}%` : "—", color: C.yellow },
+                      { label: "Trend", value: trend != null ? `${trend > 0 ? "+" : ""}${trend}%` : "—", color: trend != null && trend > 0 ? C.green : trend != null && trend < 0 ? C.red : C.textMuted },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: C.bgSoft, borderRadius: 6, padding: "5px 2px", textAlign: "center", border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+                        <div style={{ fontSize: 8, color: C.textMuted, lineHeight: 1.2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {trendScores.length > 1 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>ATS Trend (last {trendScores.length})</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {trendScores.map((s, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <div style={{ fontSize: 9, color: C.textMuted, width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                            <PBar val={s} color={hubHealthColor(s)} />
+                            <div style={{ fontSize: 9, fontWeight: 700, color: hubHealthColor(s), width: 26, flexShrink: 0 }}>{s}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Object.values(healthCounts).some(v => v > 0) && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>Health Distribution</div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {Object.entries(healthCounts).filter(([, v]) => v > 0).map(([k, v]) => {
+                          const hc = hubHealthColor(k === "Excellent" ? 95 : k === "Very Good" ? 85 : k === "Good" ? 75 : k === "Needs Improvement" ? 65 : 30);
+                          return (
+                            <div key={k} style={{ background: C.bgSoft, borderRadius: 6, padding: "3px 7px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: hc }}>{v}</div>
+                              <div style={{ fontSize: 9, color: hc }}>{k}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
+          </div>
+
+        </div>
       )}
 
-      {/* SECTION 5 — Performance Analytics */}
-      {analysisHistory?.length > 0 && (() => {
-        const total = analysisHistory.length;
-        const improved = analysisHistory.filter(h => h.analysisType === "Resume Improvement").length;
-        const scores = analysisHistory.map(h => h.atsScore).filter(s => s != null);
-        const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-        const latest = scores[0] ?? null;
-        const oldest = scores[scores.length - 1] ?? null;
-        const trend = latest != null && oldest != null ? latest - oldest : null;
-        const healthCounts = { Excellent: 0, Good: 0, Fair: 0, Poor: 0 };
-        analysisHistory.forEach(h => { if (h.resumeHealth && healthCounts[h.resumeHealth] != null) healthCounts[h.resumeHealth]++; });
-        return (
-          <Card style={{ marginBottom: 24 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>📈 Performance Analytics</div>
-            <div className="hub-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-              {[
-                { label: "Total Analyses", value: total, color: C.purple },
-                { label: "Improvements", value: improved, color: C.green },
-                { label: "Avg ATS Score", value: avgScore != null ? `${avgScore}%` : "—", color: C.yellow },
-                { label: "Score Trend", value: trend != null ? `${trend > 0 ? "+" : ""}${trend}%` : "—", color: trend != null && trend > 0 ? C.green : trend != null && trend < 0 ? C.red : C.textMuted },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{ background: C.bgSoft, borderRadius: 12, padding: "16px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{label}</div>
+      {/* SECTION 6 — AI Toolkit */}
+      <Card style={{ marginBottom: activeToolPanel ? 0 : 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>🤖 AI Resume Toolkit</div>
+        <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+          {[
+            { icon: "📄", title: "Cover Letter Writer", desc: "4 AI cover letter styles — edit & export",
+              active: true, panelId: "cover",
+              action: () => {
+                if (!resume.trim()) { setToolGuidancePanelId("cover"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "cover" ? null : "cover"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+              },
+              getStatus: () => coverVersions ? { text: "4 versions ready", color: C.green } : resume.trim() ? { text: "Ready to generate", color: C.purple } : { text: "Add a resume first", color: C.textMuted } },
+            { icon: "📊", title: "Score Benchmarking", desc: "Compare ATS score against industry average",
+              active: true, panelId: "benchmark",
+              action: () => {
+                if (!resume.trim()) { setToolGuidancePanelId("benchmark"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "benchmark" ? null : "benchmark"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+              },
+              getStatus: () => benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: "Ready to benchmark", color: C.textMuted } : { text: "Add a resume first", color: C.textMuted } },
+            { icon: "🔍", title: "Job Fit Analyzer", desc: "Skill-by-skill match for any job description",
+              active: true, panelId: "jobfit",
+              action: () => {
+                if (!resume.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                if (!jobDesc.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg("Add a job description to analyze your fit for this role."); return; }
+                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "jobfit" ? null : "jobfit"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+              },
+              getStatus: () => jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: "Ready to analyze", color: C.textMuted } : { text: "Add resume + job desc", color: C.textMuted } },
+            { icon: "📝", title: "LinkedIn Optimizer", desc: "Headline, About section, experience bullets",
+              active: true, panelId: "linkedin-opt",
+              action: () => {
+                if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+              },
+              getStatus: () => linkedinOptData ? { text: `Optimized · ${linkedinOptData.headlineScore ?? "—"}% headline`, color: C.green } : resume.trim() ? { text: "Ready to optimize", color: C.textMuted } : { text: "Add a resume first", color: C.textMuted } },
+            { icon: "🎤", title: "AI Voice Resume Writer", desc: "Speak naturally — AI writes your ATS-optimized resume",
+              active: false, panelId: null,
+              comingSoon: "AI Voice Resume Writer is coming soon. This feature will be available in a future update." },
+          ].map(({ icon, title, desc, active, panelId, action, getStatus, comingSoon }) => {
+            const status = getStatus ? getStatus() : null;
+            const isHighlighted = panelId ? activeToolPanel === panelId : false;
+            return (
+              <div key={title} className={active ? "toolkit-active" : ""} onClick={() => {
+                if (comingSoon) { setComingSoonNotice(comingSoon); setTimeout(() => setComingSoonNotice(""), 4000); return; }
+                if (!active) return;
+                if (action) action();
+              }} style={{ background: isHighlighted ? `${C.purple}12` : active ? C.bgSoft : `${C.bgSoft}80`, border: `1.5px solid ${isHighlighted ? C.purple + "50" : C.border}`, borderRadius: 10, padding: "12px 12px", opacity: active ? 1 : 0.6, cursor: (active || comingSoon) ? "pointer" : "default", transition: "border-color 0.15s, box-shadow 0.15s" }}>
+                <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: active ? C.text : C.textMuted }}>{title}</div>
+                  {active && <span style={{ fontSize: 11, color: C.purple, fontWeight: 700 }}>→</span>}
                 </div>
-              ))}
+                <div style={{ fontSize: 11, color: "#475569", fontWeight: 400, lineHeight: 1.4, marginBottom: status ? 6 : 0 }}>{desc}</div>
+                {status && <div style={{ fontSize: 10, fontWeight: 600, color: status.color, marginTop: 4 }}>{status.text}</div>}
+                {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 6 }}>Coming Soon</div>}
+                {toolGuidancePanelId === panelId && toolGuidanceMsg && (
+                  <div style={{ fontSize: 10, color: "#334155", fontWeight: 500, marginTop: 5, lineHeight: 1.35 }}>{toolGuidanceMsg}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {comingSoonNotice && (
+          <div style={{ marginTop: 10, background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px", fontSize: 13, color: C.purple }}>
+            {comingSoonNotice}
+          </div>
+        )}
+      </Card>
+
+      {/* Toolkit panels */}
+      <div id="resume-toolkit-panels" style={{ marginTop: activeToolPanel ? 12 : 0 }}>
+
+        {/* Cover Letter Writer — 4-style hub */}
+        {activeToolPanel === "cover" && (
+          <Card style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📄 Cover Letter Writer</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {coverVersions && <Btn onClick={generateCoverVersions} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
+                <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
+              </div>
             </div>
-            {scores.length > 1 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>ATS Score Trend (last {Math.min(scores.length, 10)} analyses)</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {scores.slice(0, 10).reverse().map((s, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ fontSize: 11, color: C.textMuted, width: 24, textAlign: "right" }}>{i + 1}</div>
-                      <PBar val={s} />
-                      <div style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(s), width: 36 }}>{s}%</div>
-                    </div>
-                  ))}
+            {coverVersionsLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12, marginBottom: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating 4 cover letter styles…</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Professional, Friendly, Executive, and ATS-Optimized versions</div>
                 </div>
               </div>
             )}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.textMid, marginBottom: 10 }}>Resume Health Distribution</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {Object.entries(healthCounts).filter(([, v]) => v > 0).map(([k, v]) => (
-                  <div key={k} style={{ background: C.bgSoft, borderRadius: 10, padding: "8px 14px", textAlign: "center" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: hubHealthColor(k === "Excellent" ? 85 : k === "Good" ? 65 : k === "Fair" ? 45 : 20) }}>{v}</div>
-                    <div style={{ fontSize: 10, color: C.textMuted }}>{k}</div>
-                  </div>
-                ))}
+            {coverVersions && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[
+                  { key: "professional", label: "Professional", icon: "💼", star: true },
+                  { key: "friendly", label: "Friendly & Warm", icon: "😊", star: false },
+                  { key: "executive", label: "Executive", icon: "👔", star: false },
+                  { key: "ats", label: "ATS Optimized", icon: "🤖", star: false },
+                ].map(({ key, label, icon, star }) => {
+                  const text = coverVersions[key] || "";
+                  const preview = text.split("\n").filter(l => l.trim()).slice(0, 3).join(" ").slice(0, 120);
+                  return (
+                    <div key={key} style={{ background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 14 }}>{icon}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{label}</span>
+                        {star && <span style={{ fontSize: 10, color: C.purple, fontWeight: 700 }}>★ Most popular</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 8, minHeight: 40 }}>{preview}…</div>
+                      <CopyBtn text={text} label="Copy" style={{ fontSize: 10, padding: "3px 10px" }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Tool 5: Score Benchmarking */}
+        {activeToolPanel === "benchmark" && (
+          <Card style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📊 Score Benchmarking</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Refresh</Btn>}
+                <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
+            {resume.trim() && !benchmarkData && !benchmarkLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div style={{ fontSize: 13, color: C.textMuted }}>Preparing benchmark analysis…</div>
+              </div>
+            )}
+            {benchmarkError &&<div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{benchmarkError}</div>}
+            {benchmarkLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Analyzing against market benchmarks…</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Comparing keyword coverage, formatting, experience, and skills against your industry</div>
+                </div>
+              </div>
+            )}
+            {benchmarkData && (() => {
+              const { atsScore, industryAverage, topCandidateAverage, percentile, percentileLabel, keywordCoverage, formattingScore, experienceScore, skillsScore, educationScore, overallRanking, industryLabel, recommendations } = benchmarkData;
+              const rankColor = overallRanking === "Excellent" ? C.green : overallRanking === "Strong" ? C.green : overallRanking === "Above Average" ? C.yellow : overallRanking === "Average" ? C.orange : C.red;
+              return (
+                <>
+                  {/* Vs market comparison */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                    {[
+                      { label: "Your Score", val: `${atsScore ?? "—"}`, color: hubHealthColor(atsScore), sub: "ATS score" },
+                      { label: "Industry Avg", val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || "Your industry" },
+                      { label: "Top 25%", val: `${topCandidateAverage ?? "—"}`, color: C.purple, sub: "Target benchmark" },
+                    ].map(({ label, val, color, sub }) => (
+                      <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>{val}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginTop: 4 }}>{label}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Percentile + ranking */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+                    <div style={{ flex: 1, background: C.purpleLight, border: `1.5px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: C.purple }}>{percentileLabel || `Top ${100 - (percentile || 50)}%`}</div>
+                      <div style={{ fontSize: 11, color: C.purple, marginTop: 2 }}>Candidate Percentile</div>
+                    </div>
+                    <div style={{ flex: 1, background: `${rankColor}12`, border: `1.5px solid ${rankColor}30`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: rankColor }}>{overallRanking}</div>
+                      <div style={{ fontSize: 11, color: rankColor, marginTop: 2 }}>Overall Ranking</div>
+                    </div>
+                  </div>
+                  {/* Category scores */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Category Breakdown</div>
+                    {[
+                      { label: "Keyword Coverage", val: keywordCoverage },
+                      { label: "Formatting", val: formattingScore },
+                      { label: "Experience", val: experienceScore },
+                      { label: "Skills", val: skillsScore },
+                      { label: "Education", val: educationScore },
+                    ].map(({ label, val }) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: C.textMid, width: 130, flexShrink: 0 }}>{label}</div>
+                        <PBar val={val} color={hubHealthColor(val)} />
+                        <div style={{ fontSize: 12, fontWeight: 700, color: hubHealthColor(val), width: 32, flexShrink: 0 }}>{val}%</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Recommendations */}
+                  {recommendations?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recommendations to Improve Your Ranking</div>
+                      {recommendations.map((r, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.bgSoft, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
+                          <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+                          <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </Card>
-        );
-      })()}
+        )}
 
-      {/* SECTION 6 — AI Toolkit */}
-      <Card>
-        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 16 }}>🤖 AI Resume Toolkit</div>
-        <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          {[
-            { icon: "🎯", title: "Resume Tailor", desc: "Match your resume to any job with AI", active: true },
-            { icon: "✨", title: "AI Resume Builder", desc: "Generate a professional resume from scratch", active: true },
-            { icon: "💡", title: "Resume Insights", desc: "Strengths, gaps, and tailoring opportunities", active: true },
-            { icon: "📄", title: "Cover Letter Writer", desc: "AI-crafted cover letters for every role", active: true },
-            { icon: "🔧", title: "Resume Improver", desc: "One-click keyword and structure optimization", active: true },
-            { icon: "📊", title: "Score Benchmarking", desc: "Compare against industry standards", active: false },
-            { icon: "🔍", title: "Job Fit Analyzer", desc: "Deep role compatibility analysis", active: false },
-            { icon: "📝", title: "LinkedIn Optimizer", desc: "Sync your resume with your LinkedIn profile", active: false },
-          ].map(({ icon, title, desc, active }) => (
-            <div key={title} style={{ background: active ? C.bgSoft : `${C.bgSoft}80`, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "16px 14px", opacity: active ? 1 : 0.55 }}>
-              <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: active ? C.text : C.textMuted, marginBottom: 4 }}>{title}</div>
-              <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>{desc}</div>
-              {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 8 }}>Coming Soon</div>}
+        {/* Tool 7: Job Fit Analyzer */}
+        {activeToolPanel === "jobfit" && (
+          <Card style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>🔍 Job Fit Analyzer</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Re-analyze</Btn>}
+                <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
+              </div>
             </div>
-          ))}
-        </div>
-      </Card>
+            {resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div style={{ fontSize: 13, color: C.textMuted }}>Analyzing job fit…</div>
+              </div>
+            )}
+            {jobFitError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{jobFitError}</div>}
+            {jobFitLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Calculating job fit…</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Matching skills, experience, keywords, education, and seniority</div>
+                </div>
+              </div>
+            )}
+            {jobFitData && (() => {
+              const { overallMatch, matchLabel, requiredSkillsMatch, preferredSkillsMatch, missingSkills, keywordMatchScore, experienceMatch, educationMatch, seniorityMatch, applicationReadiness, topRecommendations, coverLetterTip } = jobFitData;
+              const matchColor = overallMatch >= 80 ? C.green : overallMatch >= 65 ? C.yellow : overallMatch >= 50 ? C.orange : C.red;
+              const readinessColor = applicationReadiness === "Ready to Apply" ? C.green : applicationReadiness === "Almost Ready" ? C.yellow : C.orange;
+              return (
+                <>
+                  {/* Overall match */}
+                  <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "stretch" }}>
+                    <div style={{ flex: 1, background: `${matchColor}12`, border: `2px solid ${matchColor}40`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 36, fontWeight: 900, color: matchColor, lineHeight: 1 }}>{overallMatch}%</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: matchColor, marginTop: 4 }}>{matchLabel}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Overall Job Fit</div>
+                    </div>
+                    <div style={{ flex: 1, background: `${readinessColor}12`, border: `1.5px solid ${readinessColor}30`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: readinessColor, lineHeight: 1.2 }}>{applicationReadiness}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>Application Readiness</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                        <div style={{ fontSize: 10, color: C.textMuted, width: 60, flexShrink: 0 }}>Keywords</div>
+                        <PBar val={keywordMatchScore} color={hubHealthColor(keywordMatchScore)} />
+                        <div style={{ fontSize: 10, fontWeight: 700, color: hubHealthColor(keywordMatchScore), width: 28, flexShrink: 0 }}>{keywordMatchScore}%</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Skills match */}
+                  {requiredSkillsMatch?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Required Skills</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {requiredSkillsMatch.map((s, i) => (
+                          <div key={i} style={{ background: s.found ? C.greenLight : C.redLight, border: `1px solid ${s.found ? C.green : C.red}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: s.found ? C.green : C.red }}>
+                            {s.found ? "✓" : "✗"} {s.skill}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {preferredSkillsMatch?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Preferred Skills</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {preferredSkillsMatch.map((s, i) => (
+                          <div key={i} style={{ background: s.found ? C.greenLight : C.bgSoft, border: `1px solid ${s.found ? C.green : C.border}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, color: s.found ? C.green : C.textMuted }}>
+                            {s.found ? "✓" : "○"} {s.skill}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {missingSkills?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 8 }}>Missing Skills</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {missingSkills.map((s, i) => (
+                          <span key={i} style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: C.red }}>✗ {s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Quick Wins */}
+                  {missingSkills?.length > 0 && (
+                    <div style={{ background: C.purpleLight, border: `1.5px solid ${C.purple}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 6 }}>⚡ Quick Wins</div>
+                      <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+                        Adding <strong>{missingSkills.slice(0, 2).join(" and ")}</strong> to your resume could significantly improve your match score. {missingSkills.length > 2 ? `${missingSkills.length - 2} more gap${missingSkills.length - 2 !== 1 ? "s" : ""} identified above.` : "These skills are explicitly listed in the job description."}
+                      </div>
+                    </div>
+                  )}
+                  {/* Dimension breakdown */}
+                  {[experienceMatch, educationMatch, seniorityMatch].filter(Boolean).map((dim, i) => (
+                    <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{["Experience", "Education", "Seniority"][i]} Match</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(dim.score) }}>{dim.score}%</span>
+                        <span style={{ fontSize: 10, color: C.textMuted }}>{dim.status}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{dim.detail}</div>
+                    </div>
+                  ))}
+                  {/* Recommendations */}
+                  {topRecommendations?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recommendations to Improve Fit</div>
+                      {topRecommendations.map((r, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.bgSoft, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
+                          <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+                          <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {coverLetterTip && (
+                    <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px", fontSize: 12, color: C.purple }}>
+                      <span style={{ fontWeight: 700 }}>💌 Cover Letter Tip: </span>{coverLetterTip}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </Card>
+        )}
+
+        {/* Tool 8: LinkedIn Optimizer */}
+        {activeToolPanel === "linkedin-opt" && (
+          <Card style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📝 LinkedIn Optimizer</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
+                <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
+              </div>
+            </div>
+            {resume.trim() && !linkedinOptData && !linkedinOptLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div style={{ fontSize: 13, color: C.textMuted }}>Generating LinkedIn optimizations…</div>
+              </div>
+            )}
+            {linkedinOptError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{linkedinOptError}</div>}
+            {linkedinOptLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
+                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating LinkedIn optimizations…</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Crafting headline, About section, experience bullets, and recruiter visibility tips</div>
+                </div>
+              </div>
+            )}
+            {linkedinOptData && (() => {
+              const { headline, aboutSection, experienceOptimizations, topSkillsToAdd, keywordsToFeature, recruiterVisibilityTips, atsAlignmentScore, profileCompleteness, headlineScore } = linkedinOptData;
+              return (
+                <>
+                  {/* Score strip */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+                    {[
+                      { label: "ATS Alignment", val: atsAlignmentScore, color: hubHealthColor(atsAlignmentScore) },
+                      { label: "Profile Complete", val: profileCompleteness, color: hubHealthColor(profileCompleteness) },
+                      { label: "Headline Score", val: headlineScore, color: hubHealthColor(headlineScore) },
+                    ].map(({ label, val, color }) => (
+                      <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color }}>{val ?? "—"}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Headline */}
+                  {headline && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Optimized Headline</div>
+                      <div style={{ background: C.purpleLight, border: `1.5px solid ${C.purple}25`, borderRadius: 9, padding: "10px 14px", fontSize: 13, fontWeight: 600, color: C.purple }}>
+                        {headline}
+                      </div>
+                      <CopyBtn text={headline} label="Copy Headline" variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
+                    </div>
+                  )}
+                  {/* About section */}
+                  {aboutSection && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Optimized About Section</div>
+                      <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 13, color: C.text, lineHeight: 1.7, whiteSpace: "pre-line" }}>
+                        {aboutSection}
+                      </div>
+                      <CopyBtn text={aboutSection} label="Copy About Section" variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
+                    </div>
+                  )}
+                  {/* Skills to add */}
+                  {topSkillsToAdd?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Skills to Add to Your Profile</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {topSkillsToAdd.map((s, i) => (
+                          <span key={i} style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 600, color: C.purple }}>+ {s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Keywords to feature */}
+                  {keywordsToFeature?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Keywords to Feature</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {keywordsToFeature.map((k, i) => (
+                          <span key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, color: C.textMid }}>🔑 {k}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Experience optimizations */}
+                  {experienceOptimizations?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Experience Bullet Improvements</div>
+                      {experienceOptimizations.map((exp, i) => (
+                        <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{exp.title} @ {exp.company}</div>
+                          {exp.optimizedBullets?.map((b, j) => (
+                            <div key={j} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingLeft: 12 }}>• {b}</div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Recruiter visibility tips */}
+                  {recruiterVisibilityTips?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recruiter Visibility Tips</div>
+                      {recruiterVisibilityTips.map((tip, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.purpleLight, border: `1px solid ${C.purple}15`, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
+                          <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>💡</span>
+                          <span style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{tip}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            {/* Refine with LinkedIn profile text — shown after results */}
+            {linkedinOptData && (
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>Refine with your LinkedIn profile text:</div>
+                <textarea value={linkedinProfile} onChange={e => setLinkedinProfile(e.target.value)} placeholder={"Paste your current About section and experience descriptions for more targeted suggestions."} style={{ width: "100%", minHeight: 70, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 12, lineHeight: 1.6, padding: "8px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
+                <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 12 }}>↻ Regenerate With Profile</Btn>
+              </div>
+            )}
+          </Card>
+        )}
+
+      </div>
 
         </div>
       )}
@@ -4976,7 +6455,7 @@ export default function App() {
     await logout();
     setProfile(null);
     // Session state — scoped to current tab, always cleared on logout
-    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
     // User-specific localStorage — cleared so a subsequent login (same or different account)
     // starts from Supabase, not from the previous user's stale cached data
     ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch {} });
@@ -5080,9 +6559,17 @@ export default function App() {
         @media (max-width: 400px) {
   .resume-source-selector { flex-direction: column !important; }
 }
+@keyframes summaryEntrance { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.toolkit-active:hover { box-shadow: 0 4px 16px rgba(107,33,232,0.12) !important; border-color: rgba(107,33,232,0.35) !important; }
+.resume-lib-item { display: block; }
+.editor-highlight-active > div { box-shadow: 0 0 0 3px rgba(107,33,232,0.3), 0 0 16px rgba(107,33,232,0.12) !important; border-color: #6B21E8 !important; transition: box-shadow 0.3s, border-color 0.3s; }
+@media (max-width: 600px) {
+  .improve-summary-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
 @media (max-width: 900px) {
   .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .hub-toolkit-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .history-analytics-grid { grid-template-columns: 1fr !important; }
 }
 @media (max-width: 700px) {
   .two-col, .three-col { grid-template-columns: 1fr !important; }
