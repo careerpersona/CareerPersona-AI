@@ -364,11 +364,293 @@ function _devExtractResume(prompt) {
   return null;
 }
 
-// Single download trigger used by all download functions.
-// Appends anchor to DOM (required by some Safari versions), uses a fixed-position
-// element rather than display:none (iOS Safari ignores download on hidden anchors),
-// and waits 5 s before revoking the object URL so iOS has time to initiate the download.
-function triggerDownload(blob, filename) {
+// ─── Resume Document Engine ───────────────────────────────────────────────────
+// One shared parser drives PDF, DOCX, Print, Preview, and Copy so every output
+// is always consistent with what the user sees in the Resume Preview.
+
+const RESUME_SECTION_NAMES = new Set([
+  'SUMMARY','PROFESSIONAL SUMMARY','CAREER SUMMARY','EXECUTIVE SUMMARY','OBJECTIVE',
+  'CAREER OBJECTIVE','PROFESSIONAL OBJECTIVE','PROFILE','ABOUT','OVERVIEW','HIGHLIGHTS',
+  'EXPERIENCE','WORK EXPERIENCE','PROFESSIONAL EXPERIENCE','EMPLOYMENT','EMPLOYMENT HISTORY',
+  'WORK HISTORY','CAREER HISTORY','RELEVANT EXPERIENCE',
+  'EDUCATION','ACADEMIC BACKGROUND','EDUCATIONAL BACKGROUND','ACADEMIC HISTORY',
+  'SKILLS','TECHNICAL SKILLS','CORE COMPETENCIES','COMPETENCIES','KEY SKILLS','EXPERTISE',
+  'CORE SKILLS','PROFESSIONAL SKILLS','TECHNOLOGIES','TECHNICAL EXPERTISE',
+  'CERTIFICATIONS','CERTIFICATION','LICENSES','LICENSE','CREDENTIALS',
+  'PROFESSIONAL CERTIFICATIONS','PROFESSIONAL DEVELOPMENT','TRAINING',
+  'PROJECTS','KEY PROJECTS','PORTFOLIO','SELECTED PROJECTS','NOTABLE PROJECTS',
+  'TECHNICAL PROJECTS','PERSONAL PROJECTS','OPEN SOURCE','OPEN SOURCE CONTRIBUTIONS',
+  'ACHIEVEMENTS','ACCOMPLISHMENTS','AWARDS','HONORS','RECOGNITIONS','HONORS AND AWARDS',
+  'PUBLICATIONS','RESEARCH','PAPERS','PRESENTATIONS','SPEAKING ENGAGEMENTS',
+  'VOLUNTEER','VOLUNTEERING','VOLUNTEER EXPERIENCE','COMMUNITY SERVICE','CIVIC ACTIVITIES',
+  'LANGUAGES','INTERESTS','HOBBIES','PERSONAL INTERESTS','ACTIVITIES','EXTRACURRICULAR',
+  'ADDITIONAL','ADDITIONAL INFORMATION','OTHER','LEADERSHIP','LEADERSHIP EXPERIENCE',
+  'PROFESSIONAL MEMBERSHIPS','MEMBERSHIPS','AFFILIATIONS','PROFESSIONAL AFFILIATIONS',
+  'REFERENCES','PROFESSIONAL REFERENCES','CONFERENCES','PATENTS','CONSULTING',
+  'FREELANCE','CONTRACT WORK','INDEPENDENT PROJECTS','MILITARY','MILITARY SERVICE',
+  'MILITARY EXPERIENCE','INTERNSHIPS','INTERNSHIP EXPERIENCE','VOLUNTEER WORK',
+]);
+
+function parseResumeDoc(rawText) {
+  const result = { name: '', headerLines: [], sections: [] };
+  if (!rawText) return result;
+
+  // Flat-text normalization: if text has very few newlines (old PDF extraction produced
+  // one long space-joined string per page), insert \n before every known section name
+  // that is preceded by a lowercase character. This fixes existing stored Supabase data
+  // without requiring re-upload.
+  let text = rawText;
+  const newlineCount = (text.match(/\n/g) || []).length;
+  if (newlineCount < 3 && text.length > 80) {
+    const names = Array.from(RESUME_SECTION_NAMES).sort((a, b) => b.length - a.length);
+    for (const name of names) {
+      const re = new RegExp('([a-z0-9.,;!?]) +(' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?= )', 'g');
+      text = text.replace(re, '$1\n$2\n');
+    }
+  }
+
+  const isSec  = (t) => RESUME_SECTION_NAMES.has(t.trim().toUpperCase());
+  const isBullet = (t) => /^[•\-\*▪▸◦]\s/.test(t);
+  const lines = text.split('\n');
+  let i = 0;
+
+  while (i < lines.length && !lines[i].trim()) i++;
+  if (i < lines.length) { result.name = lines[i].trim(); i++; }
+
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { i++; continue; }
+    if (isSec(t)) break;
+    const isContactLine = /[@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
+    result.headerLines.push({ text: t, type: isContactLine ? 'contact' : 'title' });
+    i++;
+  }
+
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { i++; continue; }
+    if (!isSec(t)) { i++; continue; }
+
+    const section = { title: t.trim().toUpperCase(), items: [] };
+    i++;
+    let afterGap = true;
+
+    while (i < lines.length) {
+      const l = lines[i].trim();
+      if (isSec(l)) break;
+      if (!l) {
+        if (section.items.length) section.items.push({ type: 'gap' });
+        afterGap = true;
+        i++;
+        continue;
+      }
+      if (isBullet(l)) {
+        section.items.push({ type: 'bullet', text: l.replace(/^[•\-\*▪▸◦]\s*/, '').trim() });
+        afterGap = false;
+      } else {
+        section.items.push({ type: afterGap ? 'roleHeader' : 'text', text: l });
+        afterGap = false;
+      }
+      i++;
+    }
+    while (section.items.length && section.items[section.items.length - 1].type === 'gap') {
+      section.items.pop();
+    }
+    result.sections.push(section);
+  }
+
+  return result;
+}
+
+// Extracts a year-range date from the end of a role header line for right-aligned rendering.
+// Matches: "(2020–Present)", "Jan 2020 – Present", "2018–2020", "(Mar 2019 – Dec 2021)"
+function extractRoleDate(text) {
+  const m = text.match(/\s*[\(\[]?\s*(?:[A-Za-z]{3,9}\.?\s*)?\d{4}\s*[-–—]+\s*(?:Present|Current|(?:[A-Za-z]{3,9}\.?\s*)?\d{4})\s*[\)\]]?\s*$/i);
+  if (!m) return { left: text, date: null };
+  const date = m[0].trim().replace(/^[\(\[]+|[\)\]]+$/g, '').trim();
+  const left = text.slice(0, text.length - m[0].length).replace(/[\s,|–—-]+$/, '').trim();
+  return { left, date };
+}
+
+// Resume Engine theme — single source of truth for all five outputs (Preview, PDF, DOCX,
+// Print, Copy). Future theme engine replaces these values; the engine/renderer stay identical.
+const RE = {
+  accent:    '#6B21E8', // matches C.purple — section headers, company names, school names, bullet dots
+  accentBg:  '#F3EEFF', // matches C.purpleLight — section header background, name card background
+  name:      '#000000',
+  role:      '#000000', // job title / degree
+  body:      '#111111',
+  date:      '#4B5563',
+  separator: '#DDD6FE', // dashed line between entries within a section
+};
+
+// Splits "Job Title — Company Name" or "Job Title at Company" into { role, company }.
+// The left side of extractRoleDate output is passed here. Falls back gracefully if no
+// recognizable separator is found.
+function splitRoleAndCompany(text) {
+  const seps = [' — ', ' – ', ' - ', ' | '];
+  for (const sep of seps) {
+    const idx = text.indexOf(sep);
+    if (idx > 3) {
+      return { role: text.slice(0, idx).trim(), company: text.slice(idx + sep.length).trim() };
+    }
+  }
+  // " at " — only split when what follows starts with an uppercase letter (a proper noun/company)
+  const atIdx = text.indexOf(' at ');
+  if (atIdx > 3) {
+    const after = text.slice(atIdx + 4).trim();
+    if (after.length > 0 && after[0] === after[0].toUpperCase() && /[A-Z]/.test(after[0])) {
+      return { role: text.slice(0, atIdx).trim(), company: after };
+    }
+  }
+  return { role: text, company: null };
+}
+
+function resumeDocToHTML(parsed, forCopy = false) {
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  if (forCopy) {
+    const lines = [];
+    if (parsed.name) { lines.push(parsed.name, ''); }
+    parsed.headerLines.forEach(h => lines.push(h.text));
+    if (parsed.headerLines.length) lines.push('');
+    parsed.sections.forEach(sec => {
+      lines.push(sec.title);
+      lines.push('─'.repeat(40));
+      sec.items.forEach(item => {
+        if (item.type === 'gap')    { lines.push(''); return; }
+        if (item.type === 'bullet') { lines.push(`  • ${item.text}`); return; }
+        if (item.type === 'roleHeader') {
+          const { left, date } = extractRoleDate(item.text);
+          const { role, company } = splitRoleAndCompany(left);
+          lines.push(date ? `${role}  |  ${date}` : role);
+          if (company) lines.push(company);
+          return;
+        }
+        lines.push(item.text);
+      });
+      lines.push('');
+    });
+    return lines.join('\n').trim();
+  }
+
+  // HTML output used by Print window — mirrors Preview visual design exactly
+  let html = '';
+  if (parsed.name || parsed.headerLines.length) {
+    html += '<div class="rhdr">';
+    if (parsed.name) html += `<div class="rn">${esc(parsed.name)}</div>`;
+    parsed.headerLines.forEach(h => {
+      if (h.type === 'contact') {
+        const parts = h.text.split(/\s*[|·•]\s*/).filter(Boolean);
+        if (parts.length > 1) {
+          html += `<div class="rh">${parts.map((p, i) => i === 0 ? esc(p.trim()) : `<span class="rhsep">|</span>${esc(p.trim())}`).join('')}</div>`;
+        } else {
+          html += `<div class="rh">${esc(h.text)}</div>`;
+        }
+      } else {
+        html += `<div class="rhtitle">${esc(h.text)}</div>`;
+      }
+    });
+    html += '</div>';
+  }
+  parsed.sections.forEach(sec => {
+    html += `<section><div class="rshdr"><span class="rslabel">${esc(sec.title)}</span></div>`;
+    sec.items.forEach(item => {
+      if (item.type === 'gap')    { html += '<div class="rg"></div>'; return; }
+      if (item.type === 'bullet') { html += `<div class="rb"><span class="rdot">•</span><span>${esc(item.text)}</span></div>`; return; }
+      if (item.type === 'roleHeader') {
+        const { left, date } = extractRoleDate(item.text);
+        const { role, company } = splitRoleAndCompany(left);
+        html += `<div class="rr"><span class="rtitle">${esc(role)}</span>${date ? `<span class="rd8">${esc(date)}</span>` : ''}</div>`;
+        if (company) html += `<div class="rco">${esc(company)}</div>`;
+        return;
+      }
+      html += `<div class="rx">${esc(item.text)}</div>`;
+    });
+    html += '</section>';
+  });
+  return html;
+}
+
+const RESUME_PRINT_CSS = `
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Calibri,'Helvetica Neue',Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;line-height:1.45}
+.pg{padding:15mm 22mm;max-width:216mm;margin:0 auto}
+.rhdr{background:#F3EEFF;border-radius:8pt;padding:14pt 18pt;text-align:center;margin-bottom:14pt}
+.rn{font-size:20pt;font-weight:800;color:#000;margin-bottom:4pt;letter-spacing:-.02em}
+.rhtitle{font-size:11pt;font-weight:600;color:#111;line-height:1.5;margin-bottom:2pt}
+.rh{font-size:9.5pt;color:#444;line-height:1.5}
+.rhsep{color:#6B21E8;margin:0 4pt}
+section{margin-bottom:0}
+.rslabel{display:inline-block;background:#F3EEFF;border-radius:5pt;padding:3pt 10pt;font-size:8.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#6B21E8}
+.rshdr{margin-top:12pt;margin-bottom:6pt}
+.rr{display:flex;justify-content:space-between;align-items:baseline;margin-top:5pt;margin-bottom:1pt}
+.rtitle{font-size:10.5pt;font-weight:700;color:#000}
+.rd8{font-size:9.5pt;color:#4B5563;white-space:nowrap;padding-left:8pt}
+.rco{font-size:10pt;color:#6B21E8;font-style:italic;margin-bottom:3pt}
+.rx{font-size:10pt;color:#111;margin-bottom:1.5pt;line-height:1.45}
+.rb{font-size:10pt;color:#111;display:flex;gap:5pt;margin-bottom:2pt;padding-left:2pt;line-height:1.45}
+.rdot{flex-shrink:0;color:#6B21E8;margin-top:.05em;font-size:11pt}
+.rg{height:0;border-top:.75pt dashed #DDD6FE;margin:6pt 0}
+@page{size:Letter;margin:0}
+@media print{.pg{padding:15mm 22mm}a{text-decoration:none;color:inherit}}
+`;
+
+const COVER_PRINT_CSS = `
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11pt;color:#1a1a1a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pg{padding:25mm 28mm;max-width:210mm;margin:0 auto}
+p{margin-bottom:10mm;line-height:1.75;color:#222}
+@page{size:A4;margin:0}
+`;
+
+function printDocument(content, type) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  if (type === 'resume') {
+    const parsed = parseResumeDoc(content);
+    const body = resumeDocToHTML(parsed);
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Resume</title><style>${RESUME_PRINT_CSS}</style></head><body><div class="pg">${body}</div><script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script></body></html>`);
+  } else {
+    const esc = (s) => String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const paras = (content||'').split(/\n{2,}/).map(p=>p.trim().replace(/\n/g,' ')).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cover Letter</title><style>${COVER_PRINT_CSS}</style></head><body><div class="pg">${paras}</div><script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script></body></html>`);
+  }
+  win.document.close();
+}
+
+// Unified download trigger. Desktop/Android: anchor + download attr. iOS: Web Share API
+// (gives native Share Sheet → Save to Files / AirDrop), falling back to Quick Look viewer.
+// iOS Safari blocks programmatic blob URL clicks initiated from async contexts (gesture
+// activation expires after ~1 s — before the dynamic import resolves on a cold load).
+async function triggerDownload(blob, filename) {
+  const isApple = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+
+  if (isApple) {
+    if (typeof navigator.share === 'function') {
+      const ext = filename.split('.').pop().toLowerCase();
+      const mimeMap = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', txt: 'text/plain' };
+      const type = mimeMap[ext] || blob.type || 'application/octet-stream';
+      const file = new File([blob], filename, { type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: filename }); return; }
+        catch (e) { if (e.name === 'AbortError') return; }
+      }
+    }
+    // Fallback: anchor without download attr → iOS opens Quick Look viewer.
+    // The user can tap the share icon inside Quick Look to Save to Files.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 30000);
+    return;
+  }
+
+  // Desktop / Android: standard anchor + download attribute
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -381,160 +663,272 @@ function triggerDownload(blob, filename) {
 
 async function downloadPDF(content, filename) {
   const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 18;
+  const parsed = parseResumeDoc(content);
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  const mL = 22; const mR = 22; const mT = 16; const mB = 16;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const maxWidth = pageW - margin * 2;
-  let y = margin;
+  const cW = pageW - mL - mR;
+  let y = mT;
 
-  const checkPage = (needed) => { if (y + needed > pageH - margin) { doc.addPage(); y = margin; } };
-  const isHeading = (t) => t === t.toUpperCase() && t.length >= 3 && t.length <= 40 && !/[.@\d]/.test(t);
-  const isBullet  = (t) => /^[•\-\*]\s/.test(t);
-  const isContact = (t) => /[|@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
+  const chk = (n) => { if (y + n > pageH - mB) { doc.addPage(); y = mT; } };
+  // Theme colors matching RE constant
+  const ACCENT = [107, 33, 232];    // #6B21E8
+  const ACCENT_BG = [243, 238, 255]; // #F3EEFF
+  const BLACK  = [0, 0, 0];
+  const BODY   = [34, 34, 34];
+  const DATE   = [85, 85, 85];
+  const SEP    = [213, 204, 232];  // #d5cce8
 
-  let firstNonBlank = true;
-  for (const rawLine of (content || '').split('\n')) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) { y += 2.8; continue; }
-
-    if (firstNonBlank) {
-      firstNonBlank = false;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20, 20, 20);
-      checkPage(9);
-      doc.text(trimmed, pageW / 2, y, { align: 'center' });
-      y += 9;
-      continue;
+  // ── Name card: rounded rectangle with light purple background
+  if (parsed.name || parsed.headerLines.length) {
+    const cardPad = 5; const cardLineH = 6; const cardNameH = 8.5;
+    const headerLines = parsed.headerLines;
+    const cardH = cardPad * 2 + (parsed.name ? cardNameH : 0) + headerLines.length * cardLineH;
+    doc.setFillColor(...ACCENT_BG);
+    doc.roundedRect(mL, y, cW, cardH, 3, 3, 'F');
+    y += cardPad;
+    if (parsed.name) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...BLACK);
+      const nameLines = doc.splitTextToSize(parsed.name, cW - 8);
+      for (const l of nameLines) { doc.text(l, pageW / 2, y, { align: 'center' }); y += cardNameH; }
     }
-
-    if (isContact(trimmed)) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
-      for (const l of doc.splitTextToSize(trimmed, maxWidth)) {
-        checkPage(5.2); doc.text(l, pageW / 2, y, { align: 'center' }); y += 5.2;
-      }
-      continue;
-    }
-
-    if (isHeading(trimmed)) {
-      // Check for pre-gap (3mm) + heading text (9mm) together so we never orphan the gap
-      checkPage(3 + 9); y += 3;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(30, 30, 30);
-      doc.text(trimmed, margin, y); y += 2;
-      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.25);
-      doc.line(margin, y, pageW - margin, y); y += 4.5;
-      continue;
-    }
-
-    if (isBullet(trimmed)) {
-      const bulletText = trimmed.replace(/^[•\-\*]\s*/, '');
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(50, 50, 50);
-      const wrapped = doc.splitTextToSize(bulletText, maxWidth - 7);
-      // Only pre-check for one line: the bullet character and first text line share the same y,
-      // so ensuring room for one line keeps them together. Remaining lines use per-line checking,
-      // preventing the bulk pre-check from wasting blank space at the bottom of pages.
-      checkPage(5.5);
-      doc.text('•', margin + 1.5, y);
-      for (const l of wrapped) { checkPage(5.5); doc.text(l, margin + 5, y); y += 5.5; }
-      continue;
-    }
-
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(50, 50, 50);
-    for (const l of doc.splitTextToSize(trimmed, maxWidth)) {
-      checkPage(5.8); doc.text(l, margin, y); y += 5.8;
-    }
+    headerLines.forEach(h => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(51, 51, 51);
+      for (const l of doc.splitTextToSize(h.text, cW - 8)) { doc.text(l, pageW / 2, y, { align: 'center' }); y += cardLineH; }
+    });
+    y += cardPad + 4;
   }
 
-  triggerDownload(doc.output('blob'), filename + '.pdf');
+  // ── Sections
+  parsed.sections.forEach((sec, si) => {
+    if (si > 0) y += 2;
+    chk(12);
+
+    // Section header: rounded rect + purple uppercase text
+    const shH = 7;
+    doc.setFillColor(...ACCENT_BG);
+    doc.roundedRect(mL, y - 5, cW, shH, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ACCENT);
+    doc.text(sec.title, mL + 4, y);
+    y += shH - 2;
+
+    sec.items.forEach(item => {
+      if (item.type === 'gap') {
+        // Dashed separator between entries
+        try { doc.setLineDash([1.5, 1.5], 0); } catch (_) {}
+        doc.setDrawColor(...SEP); doc.setLineWidth(0.2);
+        doc.line(mL, y + 1, pageW - mR, y + 1);
+        try { doc.setLineDash([], 0); } catch (_) {}
+        y += 5;
+        return;
+      }
+
+      if (item.type === 'roleHeader') {
+        const { left, date } = extractRoleDate(item.text);
+        const { role, company } = splitRoleAndCompany(left);
+        chk(6);
+        // Row 1: Job Title (black bold) + Date (gray, right-aligned)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...BLACK);
+        if (date) {
+          const dateW = doc.getStringUnitWidth(date) * 9.5 / doc.internal.scaleFactor;
+          const roleW = cW - dateW - 4;
+          const roleWrapped = doc.splitTextToSize(role, roleW);
+          roleWrapped.forEach((l, i) => { chk(5.5); doc.text(l, mL, y); if (i < roleWrapped.length - 1) y += 5.5; });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...DATE);
+          doc.text(date, pageW - mR, y, { align: 'right' });
+          y += 5.5;
+        } else {
+          for (const l of doc.splitTextToSize(role, cW)) { chk(5.5); doc.text(l, mL, y); y += 5.5; }
+        }
+        // Row 2: Company name (italic, accent color)
+        if (company) {
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+          for (const l of doc.splitTextToSize(company, cW)) { chk(5); doc.text(l, mL, y); y += 5; }
+          y += 0.5;
+        }
+        return;
+      }
+
+      if (item.type === 'bullet') {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+        const indent = 4; const hang = 8;
+        const wrapped = doc.splitTextToSize(item.text, cW - hang);
+        chk(5.3);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...ACCENT);
+        doc.text('•', mL + indent, y - 0.3);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+        wrapped.forEach((l, i) => { chk(5.3); doc.text(l, mL + hang, y); if (i < wrapped.length - 1) y += 5.3; });
+        y += 5.3;
+        return;
+      }
+
+      // Plain body text
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+      for (const l of doc.splitTextToSize(item.text, cW)) { chk(5.3); doc.text(l, mL, y); y += 5.3; }
+    });
+  });
+
+  await triggerDownload(doc.output('blob'), filename + '.pdf');
 }
 
 async function downloadDOCX(content, filename) {
-  const { Document, Paragraph, TextRun, Packer, AlignmentType } = await import('docx');
-
-  const isHeading = (t) => t === t.toUpperCase() && t.length >= 3 && t.length <= 40 && !/[.@\d]/.test(t);
-  const isBullet  = (t) => /^[•\-\*]\s/.test(t);
-  const isContact = (t) => /[|@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
-
+  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, LeaderType, ShadingType } = await import('docx');
+  const parsed = parseResumeDoc(content);
   const paragraphs = [];
-  let firstNonBlank = true;
 
-  for (const rawLine of (content || '').split('\n')) {
-    const trimmed = rawLine.trim();
+  // US Letter 1-inch margins; content width = 6.5in = 9360 twips
+  const marginTwips = 1260; // ~0.875in for slightly wider content area
+  const contentW = 9720;
+  const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
+  const CAL = 'Calibri';
+  const ACCENT = '6B21E8';
+  const ACCENT_BG = 'F3EEFF';
 
-    if (!trimmed) {
-      paragraphs.push(new Paragraph({ children: [new TextRun({ text: '', font: 'Calibri', size: 20 })], spacing: { after: 60 } }));
-      continue;
-    }
-
-    if (firstNonBlank) {
-      firstNonBlank = false;
+  // ── Name card: shaded block with name + contact lines
+  if (parsed.name || parsed.headerLines.length) {
+    if (parsed.name) {
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: trimmed, bold: true, size: 30, font: 'Calibri', color: '111111' })],
-        spacing: { after: 80 },
+        children: [new TextRun({ text: parsed.name, bold: true, size: 36, font: CAL, color: '000000' })],
+        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+        ...sp(120, 40),
       }));
-      continue;
     }
-
-    if (isContact(trimmed)) {
+    parsed.headerLines.forEach((h, i) => {
+      const isLast = i === parsed.headerLines.length - 1;
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: trimmed, size: 18, font: 'Calibri', color: '555555' })],
-        spacing: { after: 40 },
+        children: [new TextRun({ text: h.text, size: 20, font: CAL, color: '333333' })],
+        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+        ...sp(0, isLast ? 160 : 20),
       }));
-      continue;
-    }
-
-    if (isHeading(trimmed)) {
+    });
+    if (!parsed.headerLines.length && parsed.name) {
       paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: trimmed, bold: true, size: 22, font: 'Calibri', color: '111111' })],
-        spacing: { before: 220, after: 80 },
-        border: { bottom: { color: 'CCCCCC', space: 1, style: 'single', size: 6 } },
+        children: [new TextRun({ text: '', size: 4 })],
+        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+        ...sp(0, 160),
       }));
-      continue;
     }
-
-    if (isBullet(trimmed)) {
-      paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: `• ${trimmed.replace(/^[•\-\*]\s*/, '')}`, size: 20, font: 'Calibri', color: '333333' })],
-        indent: { left: 360 },
-        spacing: { after: 40 },
-      }));
-      continue;
-    }
-
-    paragraphs.push(new Paragraph({
-      children: [new TextRun({ text: trimmed, size: 20, font: 'Calibri', color: '333333' })],
-      spacing: { after: 40 },
-    }));
   }
 
-  const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
+  // ── Sections
+  parsed.sections.forEach(sec => {
+    // Section header: shaded paragraph with purple uppercase text
+    paragraphs.push(new Paragraph({
+      children: [new TextRun({ text: sec.title, bold: true, size: 18, font: CAL, color: ACCENT, allCaps: true })],
+      shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+      ...sp(200, 60),
+    }));
+
+    sec.items.forEach(item => {
+      if (item.type === 'gap') {
+        // Thin separator between entries using a bottom border
+        paragraphs.push(new Paragraph({
+          children: [new TextRun({ text: '', size: 8 })],
+          border: { bottom: { color: 'D5CCE8', space: 1, style: BorderStyle.DASHED, size: 2 } },
+          ...sp(0, 60),
+        }));
+        return;
+      }
+
+      if (item.type === 'roleHeader') {
+        const { left, date } = extractRoleDate(item.text);
+        const { role, company } = splitRoleAndCompany(left);
+        // Row 1: Job title (bold black) + date (gray, right tab)
+        if (date) {
+          paragraphs.push(new Paragraph({
+            tabStops: [{ type: TabStopType.RIGHT, position: contentW, leader: LeaderType.NONE }],
+            children: [
+              new TextRun({ text: role, bold: true, size: 21, font: CAL, color: '000000' }),
+              new TextRun({ text: '\t' + date, size: 19, font: CAL, color: '555555' }),
+            ],
+            ...sp(80, 20),
+          }));
+        } else {
+          paragraphs.push(new Paragraph({
+            children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: '000000' })],
+            ...sp(80, 20),
+          }));
+        }
+        // Row 2: Company name (italic, accent color)
+        if (company) {
+          paragraphs.push(new Paragraph({
+            children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
+            ...sp(0, 40),
+          }));
+        }
+        return;
+      }
+
+      if (item.type === 'bullet') {
+        paragraphs.push(new Paragraph({
+          children: [new TextRun({ text: item.text, size: 20, font: CAL, color: '222222' })],
+          bullet: { level: 0 },
+          ...sp(0, 30),
+        }));
+        return;
+      }
+
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: item.text, size: 20, font: CAL, color: '222222' })],
+        ...sp(0, 30),
+      }));
+    });
+  });
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: { margin: { top: marginTwips, bottom: marginTwips, left: marginTwips, right: marginTwips } },
+      },
+      children: paragraphs,
+    }],
+  });
   const blob = await Packer.toBlob(doc);
-  triggerDownload(blob, filename + '.docx');
+  await triggerDownload(blob, filename + '.docx');
 }
 
-// Cover letter PDF: simple prose layout — no heading/name/contact detection.
+// Cover letter exports — prose layout with paragraph awareness
 async function downloadCoverLetterPDF(text, filename) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 25;
+  const margin = 28;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const maxWidth = pageW - margin * 2;
-  let y = margin + 5;
-  const lineH = 6.5;
-  const checkPage = (needed) => { if (y + needed > pageH - margin) { doc.addPage(); y = margin + 5; } };
-  for (const rawLine of (text || '').split('\n')) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) { y += lineH * 0.6; continue; }
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.setTextColor(40, 40, 40);
-    const wrapped = doc.splitTextToSize(trimmed, maxWidth);
-    checkPage(lineH * wrapped.length);
+  const maxW  = pageW - margin * 2;
+  let y = margin;
+  const lineH = 6.8;
+  const chk = (n) => { if (y + n > pageH - margin) { doc.addPage(); y = margin; } };
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(34, 34, 34);
+
+  const paras = (text || '').split(/\n{2,}/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
+  paras.forEach((para, i) => {
+    const wrapped = doc.splitTextToSize(para, maxW);
+    chk(lineH * wrapped.length);
     for (const l of wrapped) { doc.text(l, margin, y); y += lineH; }
-  }
-  triggerDownload(doc.output('blob'), filename + '.pdf');
+    if (i < paras.length - 1) y += lineH * 0.7;
+  });
+
+  await triggerDownload(doc.output('blob'), filename + '.pdf');
+}
+
+async function downloadCoverLetterDOCX(text, filename) {
+  const { Document, Paragraph, TextRun, Packer } = await import('docx');
+  const paras = (text || '').split(/\n{2,}/).map(p => p.replace(/\n/g, ' ').trim()).filter(Boolean);
+  const children = paras.map(p => new Paragraph({
+    children: [new TextRun({ text: p, size: 22, font: 'Calibri', color: '222222' })],
+    spacing: { after: 200, line: 360 },
+  }));
+  const doc = new Document({
+    sections: [{
+      properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
+      children,
+    }],
+  });
+  const blob = await Packer.toBlob(doc);
+  await triggerDownload(blob, filename + '.docx');
 }
 
 function Logo({ size = 36, onClick, className }) {
@@ -806,7 +1200,7 @@ function copyToClipboard(text) {
 }
 
 function downloadTextFile(text, filename) {
-  triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), filename);
+  void triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), filename);
 }
 
 function CopyBtn({ text, label = "Copy", variant = "ghost", style: outerStyle }) {
@@ -825,6 +1219,105 @@ function ContentDisplay({ content }) {
       {content}
     </div>
   );
+}
+
+// Structured resume preview — same parsed data that drives PDF/DOCX/Print exports.
+// Matches the visual design reference: name card, rounded section headers, company in accent color.
+function ResumeDoc({ content, profile }) {
+  const [parsed, setParsed] = useState(() => parseResumeDoc(content));
+  useEffect(() => { setParsed(parseResumeDoc(content)); }, [content]);
+
+  // Build contact line from profile fields when the resume header doesn't already have them
+  const profileContacts = [];
+  if (profile) {
+    if (profile.phone)         profileContacts.push(profile.phone);
+    if (profile.email_address) profileContacts.push(profile.email_address);
+    if (profile.location)      profileContacts.push(profile.location);
+    if (profile.linkedin)      profileContacts.push(profile.linkedin);
+    if (profile.portfolio)     profileContacts.push(profile.portfolio);
+  }
+
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: "24px 30px", maxHeight: 600, overflowY: "auto", fontFamily: "Calibri, 'Helvetica Neue', Arial, sans-serif", fontSize: 13.5, lineHeight: 1.5, color: "#111" }}>
+      {/* Name card */}
+      {(parsed.name || parsed.headerLines.length > 0 || profileContacts.length > 0) && (
+        <div style={{ background: RE.accentBg, borderRadius: 10, padding: "18px 22px", textAlign: "center", marginBottom: 18 }}>
+          {parsed.name && (
+            <div style={{ fontSize: 26, fontWeight: 800, color: RE.name, marginBottom: 5, letterSpacing: "-0.02em" }}>{parsed.name}</div>
+          )}
+          {parsed.headerLines.map((h, i) => {
+            if (h.type === 'title') {
+              return <div key={i} style={{ fontSize: 13.5, fontWeight: 600, color: "#111", lineHeight: 1.5, marginBottom: 2 }}>{h.text}</div>;
+            }
+            // contact line — split on | · • separators for visual spacing
+            const parts = h.text.split(/\s*[|·•]\s*/).filter(Boolean);
+            return (
+              <div key={i} style={{ fontSize: 12, color: "#444", lineHeight: 1.6 }}>
+                {parts.map((p, pi) => (
+                  <span key={pi}>{pi > 0 && <span style={{ color: RE.accent, margin: "0 4px" }}>|</span>}{p.trim()}</span>
+                ))}
+              </div>
+            );
+          })}
+          {/* Profile contact info (when available and resume header doesn't have it) */}
+          {profileContacts.length > 0 && !parsed.headerLines.some(h => h.type === 'contact') && (
+            <div style={{ fontSize: 12, color: "#444", lineHeight: 1.6, marginTop: 2 }}>
+              {profileContacts.map((c, ci) => (
+                <span key={ci}>{ci > 0 && <span style={{ color: RE.accent, margin: "0 4px" }}>|</span>}{c}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Sections */}
+      {parsed.sections.map((sec, si) => (
+        <div key={si} style={{ marginBottom: 4 }}>
+          {/* Section header: inline-block pill — bg wraps text only, rest of page stays white */}
+          <div style={{ marginBottom: 8, marginTop: si > 0 ? 16 : 0 }}>
+            <span style={{ display: "inline-block", background: RE.accentBg, borderRadius: 5, padding: "3px 11px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: RE.accent }}>{sec.title}</span>
+          </div>
+          {sec.items.map((item, ii) => {
+            if (item.type === "gap") {
+              return <div key={ii} style={{ height: 0, borderTop: `1px dashed ${RE.separator}`, margin: "7px 0" }} />;
+            }
+            if (item.type === "roleHeader") {
+              const { left, date } = extractRoleDate(item.text);
+              const { role, company } = splitRoleAndCompany(left);
+              return (
+                <div key={ii} style={{ marginBottom: 3, marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontWeight: 700, fontSize: 13.5, color: RE.role }}>{role}</span>
+                    {date && <span style={{ fontSize: 11.5, color: RE.date, whiteSpace: "nowrap", paddingLeft: 10 }}>{date}</span>}
+                  </div>
+                  {company && (
+                    <div style={{ fontSize: 12.5, color: RE.accent, fontStyle: "italic", marginTop: 2 }}>{company}</div>
+                  )}
+                </div>
+              );
+            }
+            if (item.type === "bullet") return (
+              <div key={ii} style={{ display: "flex", gap: 6, fontSize: 12.5, color: RE.body, marginBottom: 2.5, paddingLeft: 4 }}>
+                <span style={{ flexShrink: 0, color: RE.accent, fontSize: 15, lineHeight: "1.3" }}>•</span>
+                <span>{item.text}</span>
+              </div>
+            );
+            return <div key={ii} style={{ fontSize: 12.5, color: RE.body, marginBottom: 2 }}>{item.text}</div>;
+          })}
+        </div>
+      ))}
+      {!parsed.name && parsed.sections.length === 0 && (
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: C.text }}>{content}</div>
+      )}
+    </div>
+  );
+}
+
+// Clipboard copy that preserves paragraph structure for Word/Gmail/Docs.
+// Uses copyToClipboard (has execCommand fallback) instead of navigator.clipboard directly.
+function copyResumeToClipboard(content) {
+  const parsed = parseResumeDoc(content);
+  const text = resumeDocToHTML(parsed, true);
+  return copyToClipboard(text);
 }
 
 // ─── RESET PASSWORD PAGE ───────────────────────────────────
@@ -2153,6 +2646,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [editingResumeName, setEditingResumeName] = useState(null);
   const [editorHighlight, setEditorHighlight] = useState(false);
+  const [editingPreview, setEditingPreview] = useState(false);
   // Tool 6: Score Benchmarking
   const [benchmarkData, setBenchmarkData] = useSessionState("cp_resume_benchmark", null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
@@ -2333,7 +2827,26 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
         for (let i = 1; i <= pdf.numPages; i++) {
           const pageObj = await pdf.getPage(i);
           const content = await pageObj.getTextContent();
-          text += content.items.map(it => it.str).join(" ") + "\n";
+          // Group items by Y-coordinate to reconstruct visual lines.
+          // join(" ") would collapse all lines into one giant paragraph.
+          const pageLines = [];
+          let curLine = '';
+          let curY = null;
+          for (const item of content.items) {
+            if (!item.str) continue;
+            const y = item.transform[5]; // baseline Y in PDF coords
+            if (curY === null || Math.abs(y - curY) <= 4) {
+              // Same line (4pt tolerance handles mixed font sizes)
+              curLine += (curLine && !curLine.endsWith(' ') && !item.str.startsWith(' ') ? ' ' : '') + item.str;
+              curY = y;
+            } else {
+              if (curLine.trim()) pageLines.push(curLine.trim());
+              curLine = item.str;
+              curY = y;
+            }
+          }
+          if (curLine.trim()) pageLines.push(curLine.trim());
+          text += pageLines.join('\n') + '\n';
         }
         if (text.trim()) {
           setResume(text.trim());
@@ -3281,12 +3794,28 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 {isOptimized ? "Your Optimized Resume" : "Optimized Resume Preview"}
               </div>
               <div id="resume-editor-preview" className={editorHighlight ? "editor-highlight-active" : ""}>
-                <ContentDisplay content={isOptimized ? resume : results.tailoredResume} />
+                {editingPreview ? (
+                  <textarea
+                    autoFocus
+                    value={isOptimized ? resume : results.tailoredResume}
+                    onChange={e => {
+                      if (isOptimized) setResume(e.target.value);
+                      else setResults(prev => ({ ...prev, tailoredResume: e.target.value }));
+                    }}
+                    style={{ width: "100%", minHeight: 480, background: "#fff", border: `1.5px solid ${C.purple}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.8, padding: "16px", resize: "vertical", outline: "none", fontFamily: "'Courier New', Courier, monospace", boxSizing: "border-box" }}
+                  />
+                ) : (
+                  <ResumeDoc content={isOptimized ? resume : results.tailoredResume} profile={profile} />
+                )}
               </div>
-              <div className="resume-action-bar" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
-                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center" }}>{t("resume.downloadPdf")}</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center" }}>{t("resume.downloadDocx")}</Btn>
-                <CopyBtn text={isOptimized ? resume : results.tailoredResume} label={t("resume.copyResume")} variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 13 }} />
+              {/* Action bar — inline grid so mobile override does not collapse to 1 column */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
+                <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ width: "100%", justifyContent: "center", touchAction: "manipulation", minHeight: 40, fontSize: 12, padding: "8px 6px", color: editingPreview ? C.purple : undefined, background: editingPreview ? C.purpleLight : undefined, border: editingPreview ? `1px solid ${C.purple}` : undefined }}>
+                  {editingPreview ? "👁 Preview" : "✏️ Edit"}
+                </Btn>
+                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 6px" }}>📄 PDF</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 6px" }}>📝 DOCX</Btn>
+                <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} label="📋 Copy" variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 6px" }} />
               </div>
             </div>
           )}
@@ -3314,7 +3843,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   </button>
                 ))}
                 {coverVersions && (
-                  <Btn onClick={generateCoverVersions} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginLeft: "auto" }}>
+                  <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginLeft: "auto" }}>
                     ↻ Regenerate All
                   </Btn>
                 )}
@@ -3351,8 +3880,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 ) : (
                   <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>✏️ Edit</Btn>
                 )}
-                <Btn variant="secondary" onClick={() => downloadPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadPdf")}</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadDocx")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadDocx")}</Btn>
+                <Btn variant="secondary" onClick={() => printDocument(currentCoverText, "cover")}>🖨 Print</Btn>
                 <CopyBtn text={currentCoverText} label={t("resume.copyCoverLetter")} variant="secondary" />
               </div>
             </div>
@@ -3804,7 +4334,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📄 Cover Letter Writer</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {coverVersions && <Btn onClick={generateCoverVersions} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
+                {coverVersions && <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
