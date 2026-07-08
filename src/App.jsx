@@ -364,6 +364,21 @@ function _devExtractResume(prompt) {
   return null;
 }
 
+// Single download trigger used by all download functions.
+// Appends anchor to DOM (required by some Safari versions), uses a fixed-position
+// element rather than display:none (iOS Safari ignores download on hidden anchors),
+// and waits 5 s before revoking the object URL so iOS has time to initiate the download.
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+}
+
 async function downloadPDF(content, filename) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -401,9 +416,10 @@ async function downloadPDF(content, filename) {
     }
 
     if (isHeading(trimmed)) {
-      y += 3;
+      // Check for pre-gap (3mm) + heading text (9mm) together so we never orphan the gap
+      checkPage(3 + 9); y += 3;
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(30, 30, 30);
-      checkPage(9); doc.text(trimmed, margin, y); y += 2;
+      doc.text(trimmed, margin, y); y += 2;
       doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.25);
       doc.line(margin, y, pageW - margin, y); y += 4.5;
       continue;
@@ -413,7 +429,10 @@ async function downloadPDF(content, filename) {
       const bulletText = trimmed.replace(/^[•\-\*]\s*/, '');
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(50, 50, 50);
       const wrapped = doc.splitTextToSize(bulletText, maxWidth - 7);
-      checkPage(5.5 * wrapped.length);
+      // Only pre-check for one line: the bullet character and first text line share the same y,
+      // so ensuring room for one line keeps them together. Remaining lines use per-line checking,
+      // preventing the bulk pre-check from wasting blank space at the bottom of pages.
+      checkPage(5.5);
       doc.text('•', margin + 1.5, y);
       for (const l of wrapped) { checkPage(5.5); doc.text(l, margin + 5, y); y += 5.5; }
       continue;
@@ -425,7 +444,7 @@ async function downloadPDF(content, filename) {
     }
   }
 
-  doc.save(filename + '.pdf');
+  triggerDownload(doc.output('blob'), filename + '.pdf');
 }
 
 async function downloadDOCX(content, filename) {
@@ -491,10 +510,31 @@ async function downloadDOCX(content, filename) {
 
   const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
   const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename + '.docx'; a.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(blob, filename + '.docx');
+}
+
+// Cover letter PDF: simple prose layout — no heading/name/contact detection.
+async function downloadCoverLetterPDF(text, filename) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 25;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxWidth = pageW - margin * 2;
+  let y = margin + 5;
+  const lineH = 6.5;
+  const checkPage = (needed) => { if (y + needed > pageH - margin) { doc.addPage(); y = margin + 5; } };
+  for (const rawLine of (text || '').split('\n')) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) { y += lineH * 0.6; continue; }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    const wrapped = doc.splitTextToSize(trimmed, maxWidth);
+    checkPage(lineH * wrapped.length);
+    for (const l of wrapped) { doc.text(l, margin, y); y += lineH; }
+  }
+  triggerDownload(doc.output('blob'), filename + '.pdf');
 }
 
 function Logo({ size = 36, onClick, className }) {
@@ -747,9 +787,36 @@ function Spinner({ steps = [], currentStep = 0 }) {
   );
 }
 
+function copyToClipboard(text) {
+  // Modern clipboard API (requires HTTPS / secure context)
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  // Fallback for HTTP / iOS Safari / older Android
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand("copy") ? resolve() : reject(); } catch (e) { reject(e); }
+    document.body.removeChild(ta);
+  });
+}
+
+function downloadTextFile(text, filename) {
+  triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), filename);
+}
+
 function CopyBtn({ text, label = "Copy", variant = "ghost", style: outerStyle }) {
   const [c, setC] = useState(false);
-  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 2000); }}>{c ? "✓ Copied!" : label}</Btn>;
+  const handleCopy = () => {
+    copyToClipboard(text)
+      .then(() => { setC(true); setTimeout(() => setC(false), 2000); })
+      .catch(() => { setC(true); setTimeout(() => setC(false), 2000); }); // still show feedback even if API errors
+  };
+  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={handleCopy}>{c ? "✓ Copied!" : label}</Btn>;
 }
 
 function ContentDisplay({ content }) {
@@ -2947,36 +3014,30 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   const isLoaded = loadedResumeId === r.id;
                   const isEditing = editingResumeName === r.name && isLoaded;
                   return (
-                    <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: isLoaded ? C.purpleLight : C.bgSoft, border: `1.5px solid ${isLoaded ? C.purple : C.border}`, borderRadius: 10, cursor: "pointer" }} onClick={() => {
-                      setResume(r.content || "");
-                      setLoadedResumeId(r.id);
-                      setResumeSource("upload");
-                      setLibrarySaved(false);
-                      setLibrarySaveError("");
-                      setIsOptimized(false);
-                      setImproveStats(null);
-                      setSelectedKeywords([]);
-                      setResultsInsights(null);
-                      if (r.ats_score != null) {
-                        setResults({
-                          atsScore: r.ats_score,
-                          potentialAtsScore: r.potential_ats_score || Math.min(r.ats_score + 20, 98),
-                          scoreBreakdown: r.score_breakdown || null,
-                          keywordsFound: r.keywords_found || [],
-                          keywordsMissing: r.keywords_missing || [],
-                          tailoredResume: r.content || "",
-                          suggestions: r.suggestions || [],
-                          coverLetter: "",
-                          jobTitle: "",
-                          company: "",
-                        });
-                        setMasterMissingKws(r.keywords_missing || []);
-                        setTab("resume");
-                      } else {
-                        setResults(null);
-                      }
-                    }}>
+                    <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: C.bgSoft, border: `1.5px solid ${C.border}`, borderLeft: isLoaded ? `3px solid ${C.purple}` : `3px solid transparent`, borderRadius: 10, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {/* Circular selection toggle */}
+                        <button
+                          onClick={() => {
+                            if (isLoaded) {
+                              setResume(""); setLoadedResumeId(null); setResults(null);
+                              setResumeSource("upload"); setLibrarySaved(false); setLibrarySaveError("");
+                              setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
+                            } else {
+                              setResume(r.content || ""); setLoadedResumeId(r.id);
+                              setResumeSource("upload"); setLibrarySaved(false); setLibrarySaveError("");
+                              setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
+                              if (r.ats_score != null) {
+                                setResults({ atsScore: r.ats_score, potentialAtsScore: r.potential_ats_score || Math.min(r.ats_score + 20, 98), scoreBreakdown: r.score_breakdown || null, keywordsFound: r.keywords_found || [], keywordsMissing: r.keywords_missing || [], tailoredResume: r.content || "", suggestions: r.suggestions || [], coverLetter: "", jobTitle: "", company: "" });
+                                setMasterMissingKws(r.keywords_missing || []); setTab("resume");
+                              } else { setResults(null); }
+                            }
+                          }}
+                          style={{ width: 22, height: 22, minWidth: 22, borderRadius: "50%", border: `2px solid ${isLoaded ? C.green : C.border}`, padding: 0, cursor: "pointer", flexShrink: 0, background: isLoaded ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", fontFamily: "inherit", WebkitTapHighlightColor: "transparent", transition: "background 0.15s, border-color 0.15s" }}
+                          aria-label={isLoaded ? "Deselect resume" : "Select resume"}
+                        >
+                          {isLoaded && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>✓</span>}
+                        </button>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
                         </div>
@@ -3774,7 +3835,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         {star && <span style={{ fontSize: 10, color: C.purple, fontWeight: 700 }}>★ Most popular</span>}
                       </div>
                       <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 8, minHeight: 40 }}>{preview}…</div>
-                      <CopyBtn text={text} label="Copy" style={{ fontSize: 10, padding: "3px 10px" }} />
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <CopyBtn text={text} label="Copy" style={{ fontSize: 10, padding: "3px 10px" }} />
+                        <Btn onClick={() => downloadCoverLetterPDF(text, `${label} Cover Letter`)} variant="secondary" style={{ fontSize: 10, padding: "3px 10px" }}>⬇ Download</Btn>
+                      </div>
                     </div>
                   );
                 })}
@@ -6561,7 +6625,8 @@ export default function App() {
 }
 @keyframes summaryEntrance { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .toolkit-active:hover { box-shadow: 0 4px 16px rgba(107,33,232,0.12) !important; border-color: rgba(107,33,232,0.35) !important; }
-.resume-lib-item { display: block; }
+.resume-lib-item { display: block; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: border-color 0.15s; }
+@media (hover: hover) { .resume-lib-item:hover { background: ${C.purpleLight} !important; border-color: ${C.purple}40 !important; } }
 .editor-highlight-active > div { box-shadow: 0 0 0 3px rgba(107,33,232,0.3), 0 0 16px rgba(107,33,232,0.12) !important; border-color: #6B21E8 !important; transition: box-shadow 0.3s, border-color 0.3s; }
 @media (max-width: 600px) {
   .improve-summary-grid { grid-template-columns: repeat(2, 1fr) !important; }
