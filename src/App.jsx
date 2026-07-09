@@ -1575,7 +1575,7 @@ async function buildPlanPayload(ctx) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId }) {
   const { t } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -1619,6 +1619,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
   const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
   const planAppliedForRef = useRef(undefined);
+  const prevActiveResumeIdRef = useRef(undefined);
 
   // ── Load the most recent action plan once the Supabase fetch resolves ──
   useEffect(() => {
@@ -1765,6 +1766,21 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   };
 
   useEffect(() => { if (!chatScrollEnabledRef.current || chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // Re-generate briefing and plan when the user switches to a different resume in the Library
+  useEffect(() => {
+    if (prevActiveResumeIdRef.current === undefined) { prevActiveResumeIdRef.current = activeResumeId; return; }
+    if (!activeResumeId || activeResumeId === prevActiveResumeIdRef.current) return;
+    prevActiveResumeIdRef.current = activeResumeId;
+    try { sessionStorage.removeItem("cp_briefing_dash"); } catch {}
+    try { sessionStorage.removeItem("cp_plan_dash"); } catch {}
+    setBriefing(null);
+    setDailyPlan(null);
+    briefingAppliedForRef.current = undefined;
+    planAppliedForRef.current = undefined;
+    generateBriefing();
+    generatePlan();
+  }, [activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const briefingReady = briefing && !Array.isArray(briefing) && briefing.v === 2;
   const planReady = dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories);
@@ -2599,7 +2615,7 @@ Location: Remote-first`;
 
 const RESUME_STEPS = ["Reading your resume…", "Extracting skills & keywords…", "Calculating ATS score…", "Generating AI analysis…", "Building recommendations…"];
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb, onResumeLoad }) {
   const { t } = useI18n();
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
@@ -3020,7 +3036,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
     }
   };
 
-  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); };
+  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); onResumeLoad?.(r.id); };
 
   const handleGenerateResume = async () => {
     if (!profile?.id) return;
@@ -7019,6 +7035,7 @@ export default function App() {
   // Data lifted to App level so UserContext can aggregate them as the single
   // source of truth. Page-level hook instances keep their full mutation APIs.
   const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel } = useResumes(profile?.id);
+  const [activeResumeId, setActiveResumeId] = useState(null);
   const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
 
   // Confirmed Tracker delete — awaits Supabase before updating local state.
@@ -7209,10 +7226,10 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
