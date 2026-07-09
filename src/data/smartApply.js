@@ -10,7 +10,9 @@ const _activeGenerations = new Set();
 
 export function useSmartApplyQueue(userId) {
   const [queue, setQueue] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // Start loading=true when userId is already available so consumers never see
+  // a false "empty" state before the first Supabase fetch completes.
+  const [loading, setLoading] = useState(() => !!userId);
 
   const refresh = useCallback(async () => {
     if (!userId) { setQueue([]); return; }

@@ -1575,7 +1575,7 @@ async function buildPlanPayload(ctx) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId }) {
   const { t } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -1917,7 +1917,12 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         <Card style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>AI Smart Apply Center</div>
           <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>Find matching jobs and analyze description fit. Your application preparation pipeline.</div>
-          {saQueue.length === 0 ? (
+          {smartApplyQueueLoading && saQueue.length === 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", marginBottom: 12 }}>
+              <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+              <div style={{ fontSize: 13, color: C.textMuted }}>Loading your Smart Apply queue…</div>
+            </div>
+          ) : saQueue.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>No jobs in your Smart Apply queue yet. Find matching jobs to analyze and add to your pipeline.</div>
           ) : (
             <div>
@@ -6564,7 +6569,7 @@ function SmartApplyQueueCard({ item, onApply, onSkip, onRetry, applying, retryin
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId }) {
   const { t } = useI18n();
   const remove = id => { setSavedJobs(p => p.filter(j => j.job_id !== id)); purgeQueueByJobId?.(id); };
   const addTracker = async (job) => {
@@ -6667,10 +6672,16 @@ Company: ${item.company}`, 8000);
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("savedJobs.heading")}</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("savedJobs.subtitleCount").replace("{n}", savedJobs.length)}</p>
 
-      {visibleQueue.length > 0 && (
+      {(visibleQueue.length > 0 || queueLoading) && (
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("savedJobs.smartApplyQueue")}</div>
           {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 12 }}>{queueError}</div>}
+          {queueLoading && visibleQueue.length === 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
+              <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+              <div style={{ fontSize: 13, color: C.textMuted }}>Loading your Smart Apply queue…</div>
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
               <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onSkip={handleSkip} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} />
@@ -7062,7 +7073,7 @@ export default function App() {
     });
     console.log(`[Tracker] State updated — id=${app.id} saved`);
   };
-  const { queue: smartApplyQueue, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, skip: rootSkip, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
+  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, skip: rootSkip, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
   // Lifted to App root so Dashboard always sees current values without remounting.
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
   const { session: rootInterviewSession } = useInterviewSession(profile?.id);
@@ -7226,12 +7237,12 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
