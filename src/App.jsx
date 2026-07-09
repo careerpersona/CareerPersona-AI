@@ -3809,12 +3809,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 )}
               </div>
               <div className="cp-action-bar">
-                <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ width: "100%", justifyContent: "center", touchAction: "manipulation", fontSize: 12, padding: "6px 14px", color: editingPreview ? C.purple : undefined, background: editingPreview ? C.purpleLight : undefined, border: editingPreview ? `1px solid ${C.purple}` : undefined }}>
-                  {editingPreview ? "👁 Preview" : "✏️ Edit"}
-                </Btn>
-                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }}>📄 Download PDF</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }}>📝 Download DOCX</Btn>
-                <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} label="📋 Copy" variant="secondary" style={{ width: "100%", justifyContent: "center" }} />
+                {editingPreview ? (
+                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation", color: C.purple, background: C.purpleLight, border: `1px solid ${C.purple}` }}>👁 Preview</Btn>
+                ) : (
+                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation" }}>✏️ Edit</Btn>
+                )}
+                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>📄 Download PDF</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>📝 Download DOCX</Btn>
+                <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} label="📋 Copy" variant="secondary" />
               </div>
             </div>
           )}
@@ -3864,19 +3866,19 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               ) : (
                 <ContentDisplay content={currentCoverText} />
               )}
-              {/* Action bar — identical layout to Resume action bar */}
+              {/* Action bar — identical to Resume action bar */}
               <div className="cp-action-bar">
                 {editingCoverLetter ? (
-                  <Btn variant="primary" style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }} onClick={() => {
+                  <Btn variant="primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => {
                     if (coverVersions) setCoverVersions(prev => ({ ...prev, [activeCoverVersion]: editedCoverText }));
                     setEditingCoverLetter(false);
                   }}>✓ Done</Btn>
                 ) : (
-                  <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>✏️ Edit</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>✏️ Edit</Btn>
                 )}
-                <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📄 Download PDF</Btn>
-                <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📝 Download DOCX</Btn>
-                <CopyBtn text={currentCoverText} label="📋 Copy" variant="secondary" style={{ width: "100%", justifyContent: "center" }} />
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📄 Download PDF</Btn>
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📝 Download DOCX</Btn>
+                <CopyBtn text={currentCoverText} label="📋 Copy" variant="secondary" />
               </div>
             </div>
             );
@@ -7159,9 +7161,8 @@ export default function App() {
   .hub-toolkit-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .history-analytics-grid { grid-template-columns: 1fr !important; }
 }
-.cp-action-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+.cp-action-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: center; }
 @media (max-width: 700px) {
-  .cp-action-bar { grid-template-columns: repeat(2, 1fr); }
   .two-col, .three-col { grid-template-columns: 1fr !important; }
   .resume-action-bar { grid-template-columns: 1fr !important; max-width: 100% !important; }
   .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
