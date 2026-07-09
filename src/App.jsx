@@ -7163,6 +7163,7 @@ export default function App() {
 }
 .cp-action-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: center; }
 @media (max-width: 700px) {
+  .cp-action-bar { display: grid; grid-template-columns: repeat(2, 1fr); }
   .two-col, .three-col { grid-template-columns: 1fr !important; }
   .resume-action-bar { grid-template-columns: 1fr !important; max-width: 100% !important; }
   .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
