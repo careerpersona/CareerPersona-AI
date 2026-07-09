@@ -2761,9 +2761,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     if (activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinOptData && !linkedinOptLoading) {
       runLinkedinOpt();
     }
-    if (activeToolPanel === "cover" && resume.trim() && !coverVersions && !coverVersionsLoading) {
-      generateCoverVersions();
-    }
   }, [activeToolPanel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear toolkit helper text once the user provides the required data
@@ -4255,15 +4252,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       {/* SECTION 6 — AI Toolkit */}
       <Card style={{ marginBottom: activeToolPanel ? 0 : 12 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>🤖 AI Resume Toolkit</div>
-        <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+        <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           {[
-            { icon: "📄", title: "Cover Letter Writer", desc: "4 AI cover letter styles — edit & export",
-              active: true, panelId: "cover",
-              action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("cover"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
-                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "cover" ? null : "cover"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-              },
-              getStatus: () => coverVersions ? { text: "4 versions ready", color: C.green } : resume.trim() ? { text: "Ready to generate", color: C.purple } : { text: "Add a resume first", color: C.textMuted } },
             { icon: "📊", title: "Score Benchmarking", desc: "Compare ATS score against industry average",
               active: true, panelId: "benchmark",
               action: () => {
@@ -4323,56 +4313,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       {/* Toolkit panels */}
       <div id="resume-toolkit-panels" style={{ marginTop: activeToolPanel ? 12 : 0 }}>
 
-        {/* Cover Letter Writer — 4-style hub */}
-        {activeToolPanel === "cover" && (
-          <Card style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📄 Cover Letter Writer</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {coverVersions && <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
-                <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
-              </div>
-            </div>
-            {coverVersionsLoading && (
-              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12, marginBottom: 12 }}>
-                <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating 4 cover letter styles…</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Professional, Friendly, Executive, and ATS-Optimized versions</div>
-                </div>
-              </div>
-            )}
-            {coverVersions && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {[
-                  { key: "professional", label: "Professional", icon: "💼", star: true },
-                  { key: "friendly", label: "Friendly & Warm", icon: "😊", star: false },
-                  { key: "executive", label: "Executive", icon: "👔", star: false },
-                  { key: "ats", label: "ATS Optimized", icon: "🤖", star: false },
-                ].map(({ key, label, icon, star }) => {
-                  const text = coverVersions[key] || "";
-                  const preview = text.split("\n").filter(l => l.trim()).slice(0, 3).join(" ").slice(0, 120);
-                  return (
-                    <div key={key} style={{ background: C.bgSoft, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                        <span style={{ fontSize: 14 }}>{icon}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{label}</span>
-                        {star && <span style={{ fontSize: 10, color: C.purple, fontWeight: 700 }}>★ Most popular</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 8, minHeight: 40 }}>{preview}…</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <CopyBtn text={text} label="Copy" style={{ fontSize: 10, padding: "3px 10px" }} />
-                        <Btn onClick={() => downloadCoverLetterPDF(text, `${label} Cover Letter`)} variant="secondary" style={{ fontSize: 10, padding: "3px 10px" }}>⬇ Download</Btn>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Tool 5: Score Benchmarking */}
+        {/* Tool: Score Benchmarking */}
         {activeToolPanel === "benchmark" && (
           <Card style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
