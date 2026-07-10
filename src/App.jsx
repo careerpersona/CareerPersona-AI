@@ -1920,7 +1920,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           {smartApplyQueueLoading && saQueue.length === 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", marginBottom: 12 }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-              <div style={{ fontSize: 13, color: C.textMuted }}>Loading your Smart Apply queue…</div>
+              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>Loading your Smart Apply queue…</div>
             </div>
           ) : saQueue.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>No jobs in your Smart Apply queue yet. Find matching jobs to analyze and add to your pipeline.</div>
@@ -6679,7 +6679,7 @@ Company: ${item.company}`, 8000);
           {queueLoading && visibleQueue.length === 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-              <div style={{ fontSize: 13, color: C.textMuted }}>Loading your Smart Apply queue…</div>
+              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>Loading your Smart Apply queue…</div>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
