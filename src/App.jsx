@@ -475,13 +475,13 @@ function extractRoleDate(text) {
 // Resume Engine theme — single source of truth for all five outputs (Preview, PDF, DOCX,
 // Print, Copy). Future theme engine replaces these values; the engine/renderer stay identical.
 const RE = {
-  accent:    '#6B21E8', // matches C.purple — section headers, company names, school names, bullet dots
-  accentBg:  '#F3EEFF', // matches C.purpleLight — section header background, name card background
-  name:      '#000000',
-  role:      '#000000', // job title / degree
-  body:      '#111111',
+  accent:    '#6B21E8',
+  accentBg:  '#F3EEFF',
+  name:      '#6B21E8',
+  role:      '#2d2d2d',
+  body:      '#374151',
   date:      '#4B5563',
-  separator: '#DDD6FE', // dashed line between entries within a section
+  separator: '#DDD6FE',
 };
 
 // Splits "Job Title — Company Name" or "Job Title at Company" into { role, company }.
@@ -665,57 +665,94 @@ async function downloadPDF(content, filename) {
   const { jsPDF } = await import('jspdf');
   const parsed = parseResumeDoc(content);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
-  const mL = 22; const mR = 22; const mT = 16; const mB = 16;
+  // Layout constants — single source of truth for all alignment
+  const mL = 18; const mR = 18; const mT = 14; const mB = 14;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const cW = pageW - mL - mR;
-  let y = mT;
+  const BULLET_INDENT = 4; const BULLET_HANG = 9; // consistent bullet grid
+  const ROLE_LINE_H = 5.5; const BODY_LINE_H = 5.3;
+  let y = 0;
 
   const chk = (n) => { if (y + n > pageH - mB) { doc.addPage(); y = mT; } };
-  // Theme colors matching RE constant
-  const ACCENT = [107, 33, 232];    // #6B21E8
-  const ACCENT_BG = [243, 238, 255]; // #F3EEFF
-  const BLACK  = [0, 0, 0];
-  const BODY   = [34, 34, 34];
-  const DATE   = [85, 85, 85];
-  const SEP    = [213, 204, 232];  // #d5cce8
 
-  // ── Name card: rounded rectangle with light purple background
-  if (parsed.name || parsed.headerLines.length) {
-    const cardPad = 5; const cardLineH = 6; const cardNameH = 8.5;
-    const headerLines = parsed.headerLines;
-    const cardH = cardPad * 2 + (parsed.name ? cardNameH : 0) + headerLines.length * cardLineH;
+  const ACCENT    = [107, 33, 232];    // #6B21E8
+  const ACCENT_BG = [243, 238, 255];   // #F3EEFF
+  const DARK_GRAY = [45, 45, 45];      // #2d2d2d — job titles / degree
+  const BODY      = [55, 65, 81];      // #374151 — body text
+  const DATE_CLR  = [75, 85, 99];      // #4B5563 — dates
+  const SEP       = [221, 214, 254];   // #DDD6FE — separator
+
+  // ── Header: full-width purple background strip
+  if (parsed.name || parsed.headerLines.length > 0) {
+    const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
+    const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
+    const contactItems = [];
+    contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
+
+    // Pre-calculate header height before drawing rect (draw rect first, then text over it)
+    let headerH = 13; // space from page top to name baseline
+    if (parsed.name) headerH += 8;
+    headerH += titleLines.length * 5.5;
+    if (contactItems.length > 0) headerH += 8; // 1.5 gap + 6.5 for contact row
+    headerH += 5; // bottom padding
+
     doc.setFillColor(...ACCENT_BG);
-    doc.roundedRect(mL, y, cW, cardH, 3, 3, 'F');
-    y += cardPad;
+    doc.rect(0, 0, pageW, headerH, 'F');
+
+    let hy = 13; // text baseline cursor within header
     if (parsed.name) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...BLACK);
-      const nameLines = doc.splitTextToSize(parsed.name, cW - 8);
-      for (const l of nameLines) { doc.text(l, pageW / 2, y, { align: 'center' }); y += cardNameH; }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...ACCENT);
+      doc.text(parsed.name.toUpperCase(), pageW / 2, hy, { align: 'center' });
+      hy += 8;
     }
-    headerLines.forEach(h => {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(51, 51, 51);
-      for (const l of doc.splitTextToSize(h.text, cW - 8)) { doc.text(l, pageW / 2, y, { align: 'center' }); y += cardLineH; }
+    titleLines.forEach(h => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+      doc.text(h.text, pageW / 2, hy, { align: 'center' });
+      hy += 5.5;
     });
-    y += cardPad + 4;
+    if (contactItems.length > 0) {
+      hy += 1.5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...BODY);
+      const sf = doc.internal.scaleFactor;
+      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8.5 / sf);
+      const itemGap = 7;
+      const totalW = itemWidths.reduce((a, b) => a + b, 0) + itemGap * Math.max(0, contactItems.length - 1);
+      let cx = (pageW - totalW) / 2;
+      contactItems.forEach((c, i) => {
+        const w = itemWidths[i];
+        doc.text(c, cx, hy);
+        doc.setDrawColor(...ACCENT); doc.setLineWidth(0.35);
+        doc.line(cx, hy + 0.9, cx + w, hy + 0.9);
+        cx += w + itemGap;
+      });
+    }
+
+    y = headerH + 5; // gap below header before first section
+  } else {
+    y = mT;
   }
 
   // ── Sections
   parsed.sections.forEach((sec, si) => {
-    if (si > 0) y += 2;
-    chk(12);
+    if (si > 0) y += 3;
+    chk(10);
 
-    // Section header: rounded rect + purple uppercase text
-    const shH = 7;
+    // Section bar: full-width strip — consistent height across all sections
+    const barH = 6.5;
+    const barY = y - 4.5;
     doc.setFillColor(...ACCENT_BG);
-    doc.roundedRect(mL, y - 5, cW, shH, 2, 2, 'F');
+    doc.rect(0, barY, pageW, barH, 'F');
+    // Small filled square as icon (consistent at mL)
+    doc.setFillColor(...ACCENT);
+    doc.rect(mL, y - 2.8, 2, 2, 'F');
+    // Section title — baseline aligned with icon center, consistent left edge
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ACCENT);
-    doc.text(sec.title, mL + 4, y);
-    y += shH - 2;
+    doc.text(sec.title.toUpperCase(), mL + 5, y);
+    y += barH - 3;
 
     sec.items.forEach(item => {
       if (item.type === 'gap') {
-        // Dashed separator between entries
         try { doc.setLineDash([1.5, 1.5], 0); } catch (_) {}
         doc.setDrawColor(...SEP); doc.setLineWidth(0.2);
         doc.line(mL, y + 1, pageW - mR, y + 1);
@@ -728,20 +765,19 @@ async function downloadPDF(content, filename) {
         const { left, date } = extractRoleDate(item.text);
         const { role, company } = splitRoleAndCompany(left);
         chk(6);
-        // Row 1: Job Title (black bold) + Date (gray, right-aligned)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...BLACK);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
         if (date) {
-          const dateW = doc.getStringUnitWidth(date) * 9.5 / doc.internal.scaleFactor;
+          const sf = doc.internal.scaleFactor;
+          const dateW = doc.getStringUnitWidth(date) * 9.5 / sf;
           const roleW = cW - dateW - 4;
           const roleWrapped = doc.splitTextToSize(role, roleW);
-          roleWrapped.forEach((l, i) => { chk(5.5); doc.text(l, mL, y); if (i < roleWrapped.length - 1) y += 5.5; });
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...DATE);
-          doc.text(date, pageW - mR, y, { align: 'right' });
-          y += 5.5;
+          roleWrapped.forEach((l, i) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (i < roleWrapped.length - 1) y += ROLE_LINE_H; });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...DATE_CLR);
+          doc.text(date, pageW - mR, y, { align: 'right' }); // all dates right-aligned at same edge
+          y += ROLE_LINE_H;
         } else {
-          for (const l of doc.splitTextToSize(role, cW)) { chk(5.5); doc.text(l, mL, y); y += 5.5; }
+          for (const l of doc.splitTextToSize(role, cW)) { chk(ROLE_LINE_H); doc.text(l, mL, y); y += ROLE_LINE_H; }
         }
-        // Row 2: Company name (italic, accent color)
         if (company) {
           doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
           for (const l of doc.splitTextToSize(company, cW)) { chk(5); doc.text(l, mL, y); y += 5; }
@@ -752,20 +788,18 @@ async function downloadPDF(content, filename) {
 
       if (item.type === 'bullet') {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-        const indent = 4; const hang = 8;
-        const wrapped = doc.splitTextToSize(item.text, cW - hang);
-        chk(5.3);
+        const wrapped = doc.splitTextToSize(item.text, cW - BULLET_HANG);
+        chk(BODY_LINE_H);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...ACCENT);
-        doc.text('•', mL + indent, y - 0.3);
+        doc.text('•', mL + BULLET_INDENT, y - 0.3); // bullet at consistent indent
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-        wrapped.forEach((l, i) => { chk(5.3); doc.text(l, mL + hang, y); if (i < wrapped.length - 1) y += 5.3; });
-        y += 5.3;
+        wrapped.forEach((l, i) => { chk(BODY_LINE_H); doc.text(l, mL + BULLET_HANG, y); if (i < wrapped.length - 1) y += BODY_LINE_H; });
+        y += BODY_LINE_H;
         return;
       }
 
-      // Plain body text
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-      for (const l of doc.splitTextToSize(item.text, cW)) { chk(5.3); doc.text(l, mL, y); y += 5.3; }
+      for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
     });
   });
 
@@ -773,38 +807,60 @@ async function downloadPDF(content, filename) {
 }
 
 async function downloadDOCX(content, filename) {
-  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, LeaderType, ShadingType } = await import('docx');
+  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, ShadingType } = await import('docx');
   const parsed = parseResumeDoc(content);
   const paragraphs = [];
 
-  // US Letter 1-inch margins; content width = 6.5in = 9360 twips
-  const marginTwips = 1260; // ~0.875in for slightly wider content area
-  const contentW = 9720;
-  const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
+  // Layout constants — single source of truth for all alignment
+  const marginTwips = 1134; // ~0.79in margins, wider content area
+  const contentW = 10206;   // twips: 8.5in - 2*0.79in ≈ 6.92in
   const CAL = 'Calibri';
-  const ACCENT = '6B21E8';
+  const ACCENT    = '6B21E8';
   const ACCENT_BG = 'F3EEFF';
+  const DARK_GRAY = '2d2d2d';
+  const BODY_CLR  = '374151';
+  const DATE_CLR  = '4B5563';
 
-  // ── Name card: shaded block with name + contact lines
-  if (parsed.name || parsed.headerLines.length) {
+  const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
+
+  // ── Header: name + title + contact with individual underlines
+  if (parsed.name || parsed.headerLines.length > 0) {
+    const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
+    const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
+    const contactItems = [];
+    contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
+
     if (parsed.name) {
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: parsed.name, bold: true, size: 36, font: CAL, color: '000000' })],
+        children: [new TextRun({ text: parsed.name.toUpperCase(), bold: true, size: 34, font: CAL, color: ACCENT })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
         ...sp(120, 40),
       }));
     }
-    parsed.headerLines.forEach((h, i) => {
-      const isLast = i === parsed.headerLines.length - 1;
+    titleLines.forEach(h => {
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: h.text, size: 20, font: CAL, color: '333333' })],
+        children: [new TextRun({ text: h.text, size: 20, font: CAL, color: BODY_CLR })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        ...sp(0, isLast ? 160 : 20),
+        ...sp(0, 20),
       }));
     });
-    if (!parsed.headerLines.length && parsed.name) {
+    if (contactItems.length > 0) {
+      // Each contact item gets its own underline — spacing runs separate them
+      const contactRuns = [];
+      contactItems.forEach((c, i) => {
+        if (i > 0) contactRuns.push(new TextRun({ text: '   ', size: 18, font: CAL }));
+        contactRuns.push(new TextRun({ text: c, size: 18, font: CAL, color: BODY_CLR, underline: { type: 'single', color: ACCENT } }));
+      });
+      paragraphs.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: contactRuns,
+        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+        ...sp(0, 160),
+      }));
+    } else {
+      // Close out header shading even with no contact row
       paragraphs.push(new Paragraph({
         children: [new TextRun({ text: '', size: 4 })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
@@ -815,19 +871,21 @@ async function downloadDOCX(content, filename) {
 
   // ── Sections
   parsed.sections.forEach(sec => {
-    // Section header: shaded paragraph with purple uppercase text
+    // Section bar: shaded with ▪ icon + bold uppercase title — consistent height via spacing
     paragraphs.push(new Paragraph({
-      children: [new TextRun({ text: sec.title, bold: true, size: 18, font: CAL, color: ACCENT, allCaps: true })],
+      children: [
+        new TextRun({ text: '▪ ', bold: true, size: 20, font: CAL, color: ACCENT }),
+        new TextRun({ text: sec.title, bold: true, size: 18, font: CAL, color: ACCENT, allCaps: true }),
+      ],
       shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
       ...sp(200, 60),
     }));
 
     sec.items.forEach(item => {
       if (item.type === 'gap') {
-        // Thin separator between entries using a bottom border
         paragraphs.push(new Paragraph({
           children: [new TextRun({ text: '', size: 8 })],
-          border: { bottom: { color: 'D5CCE8', space: 1, style: BorderStyle.DASHED, size: 2 } },
+          border: { bottom: { color: 'DDD6FE', space: 1, style: BorderStyle.DASHED, size: 2 } },
           ...sp(0, 60),
         }));
         return;
@@ -836,23 +894,22 @@ async function downloadDOCX(content, filename) {
       if (item.type === 'roleHeader') {
         const { left, date } = extractRoleDate(item.text);
         const { role, company } = splitRoleAndCompany(left);
-        // Row 1: Job title (bold black) + date (gray, right tab)
+        // Job title (dark gray bold) + date right-aligned via tab stop
         if (date) {
           paragraphs.push(new Paragraph({
-            tabStops: [{ type: TabStopType.RIGHT, position: contentW, leader: LeaderType.NONE }],
+            tabStops: [{ type: TabStopType.RIGHT, position: contentW }],
             children: [
-              new TextRun({ text: role, bold: true, size: 21, font: CAL, color: '000000' }),
-              new TextRun({ text: '\t' + date, size: 19, font: CAL, color: '555555' }),
+              new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY }),
+              new TextRun({ text: '\t' + date, size: 19, font: CAL, color: DATE_CLR }),
             ],
             ...sp(80, 20),
           }));
         } else {
           paragraphs.push(new Paragraph({
-            children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: '000000' })],
+            children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY })],
             ...sp(80, 20),
           }));
         }
-        // Row 2: Company name (italic, accent color)
         if (company) {
           paragraphs.push(new Paragraph({
             children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
@@ -863,8 +920,9 @@ async function downloadDOCX(content, filename) {
       }
 
       if (item.type === 'bullet') {
+        // Native DOCX bullets — consistent indentation via bullet level
         paragraphs.push(new Paragraph({
-          children: [new TextRun({ text: item.text, size: 20, font: CAL, color: '222222' })],
+          children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
           bullet: { level: 0 },
           ...sp(0, 30),
         }));
@@ -872,7 +930,7 @@ async function downloadDOCX(content, filename) {
       }
 
       paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: item.text, size: 20, font: CAL, color: '222222' })],
+        children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
         ...sp(0, 30),
       }));
     });
@@ -1227,7 +1285,7 @@ function ResumeDoc({ content, profile }) {
   const [parsed, setParsed] = useState(() => parseResumeDoc(content));
   useEffect(() => { setParsed(parseResumeDoc(content)); }, [content]);
 
-  // Build contact line from profile fields when the resume header doesn't already have them
+  // Build contact items — prefer parsed resume header lines, fall back to profile fields
   const profileContacts = [];
   if (profile) {
     if (profile.phone)         profileContacts.push(profile.phone);
@@ -1236,77 +1294,94 @@ function ResumeDoc({ content, profile }) {
     if (profile.linkedin)      profileContacts.push(profile.linkedin);
     if (profile.portfolio)     profileContacts.push(profile.portfolio);
   }
+  const titleLines = parsed.headerLines.filter(h => h.type === 'title');
+  const contactHeaderLines = parsed.headerLines.filter(h => h.type === 'contact');
+  const contactItems = [];
+  if (contactHeaderLines.length > 0) {
+    contactHeaderLines.forEach(h => {
+      h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); });
+    });
+  } else {
+    profileContacts.forEach(c => { if (c) contactItems.push(c); });
+  }
+  const hasHeader = parsed.name || titleLines.length > 0 || contactItems.length > 0;
+
+  // Layout grid constant — all body content uses this horizontal padding
+  const PAD = "0 24px";
 
   return (
-    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: "24px 30px", maxHeight: 600, overflowY: "auto", fontFamily: "Calibri, 'Helvetica Neue', Arial, sans-serif", fontSize: 13.5, lineHeight: 1.5, color: "#111" }}>
-      {/* Name card */}
-      {(parsed.name || parsed.headerLines.length > 0 || profileContacts.length > 0) && (
-        <div style={{ background: RE.accentBg, borderRadius: 10, padding: "18px 22px", textAlign: "center", marginBottom: 18 }}>
+    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 600, overflowY: "auto", fontFamily: "Calibri, 'Helvetica Neue', Arial, sans-serif", fontSize: 13.5, lineHeight: 1.5, color: "#111" }}>
+      {/* Header: full-width purple strip — no outer padding so it reaches both edges */}
+      {hasHeader && (
+        <div style={{ background: RE.accentBg, padding: "14px 24px 12px", textAlign: "center" }}>
           {parsed.name && (
-            <div style={{ fontSize: 26, fontWeight: 800, color: RE.name, marginBottom: 5, letterSpacing: "-0.02em" }}>{parsed.name}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: RE.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+              {parsed.name}
+            </div>
           )}
-          {parsed.headerLines.map((h, i) => {
-            if (h.type === 'title') {
-              return <div key={i} style={{ fontSize: 13.5, fontWeight: 600, color: "#111", lineHeight: 1.5, marginBottom: 2 }}>{h.text}</div>;
-            }
-            // contact line — split on | · • separators for visual spacing
-            const parts = h.text.split(/\s*[|·•]\s*/).filter(Boolean);
-            return (
-              <div key={i} style={{ fontSize: 12, color: "#444", lineHeight: 1.6 }}>
-                {parts.map((p, pi) => (
-                  <span key={pi}>{pi > 0 && <span style={{ color: RE.accent, margin: "0 4px" }}>|</span>}{p.trim()}</span>
-                ))}
-              </div>
-            );
-          })}
-          {/* Profile contact info (when available and resume header doesn't have it) */}
-          {profileContacts.length > 0 && !parsed.headerLines.some(h => h.type === 'contact') && (
-            <div style={{ fontSize: 12, color: "#444", lineHeight: 1.6, marginTop: 2 }}>
-              {profileContacts.map((c, ci) => (
-                <span key={ci}>{ci > 0 && <span style={{ color: RE.accent, margin: "0 4px" }}>|</span>}{c}</span>
+          {titleLines.map((h, i) => (
+            <div key={i} style={{ fontSize: 12.5, fontWeight: 600, color: "#374151", marginBottom: 2 }}>{h.text}</div>
+          ))}
+          {/* Contact row: each item gets its own purple underline, evenly spaced */}
+          {contactItems.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "5px 18px", marginTop: 7 }}>
+              {contactItems.map((c, i) => (
+                <span key={i} style={{ fontSize: 10.5, color: "#374151", borderBottom: `1.5px solid ${RE.accent}`, paddingBottom: 1 }}>{c}</span>
               ))}
             </div>
           )}
         </div>
       )}
-      {/* Sections */}
-      {parsed.sections.map((sec, si) => (
-        <div key={si} style={{ marginBottom: 4 }}>
-          {/* Section header: inline-block pill — bg wraps text only, rest of page stays white */}
-          <div style={{ marginBottom: 8, marginTop: si > 0 ? 16 : 0 }}>
-            <span style={{ display: "inline-block", background: RE.accentBg, borderRadius: 5, padding: "3px 11px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: RE.accent }}>{sec.title}</span>
-          </div>
-          {sec.items.map((item, ii) => {
-            if (item.type === "gap") {
-              return <div key={ii} style={{ height: 0, borderTop: `1px dashed ${RE.separator}`, margin: "7px 0" }} />;
-            }
-            if (item.type === "roleHeader") {
-              const { left, date } = extractRoleDate(item.text);
-              const { role, company } = splitRoleAndCompany(left);
-              return (
-                <div key={ii} style={{ marginBottom: 3, marginTop: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <span style={{ fontWeight: 700, fontSize: 13.5, color: RE.role }}>{role}</span>
-                    {date && <span style={{ fontSize: 11.5, color: RE.date, whiteSpace: "nowrap", paddingLeft: 10 }}>{date}</span>}
-                  </div>
-                  {company && (
-                    <div style={{ fontSize: 12.5, color: RE.accent, fontStyle: "italic", marginTop: 2 }}>{company}</div>
-                  )}
-                </div>
-              );
-            }
-            if (item.type === "bullet") return (
-              <div key={ii} style={{ display: "flex", gap: 6, fontSize: 12.5, color: RE.body, marginBottom: 2.5, paddingLeft: 4 }}>
-                <span style={{ flexShrink: 0, color: RE.accent, fontSize: 15, lineHeight: "1.3" }}>•</span>
-                <span>{item.text}</span>
+      {/* Sections: section bars span full width; items use PAD for consistent margin */}
+      {parsed.sections.length > 0 && (
+        <div style={{ paddingBottom: 16 }}>
+          {parsed.sections.map((sec, si) => (
+            <div key={si}>
+              {/* Gap between sections (not before first) */}
+              {si > 0 && <div style={{ height: 10 }} />}
+              {/* Section bar: full-width, identical height and padding for every section */}
+              <div style={{ background: RE.accentBg, padding: "4px 24px", display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ color: RE.accent, fontWeight: 900, fontSize: 13, lineHeight: 1, userSelect: "none", flexShrink: 0 }}>▪</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: RE.accent }}>{sec.title}</span>
               </div>
-            );
-            return <div key={ii} style={{ fontSize: 12.5, color: RE.body, marginBottom: 2 }}>{item.text}</div>;
-          })}
+              {/* Items: consistent left/right padding matching header */}
+              <div style={{ padding: "6px 24px 0" }}>
+                {sec.items.map((item, ii) => {
+                  if (item.type === "gap") return (
+                    <div key={ii} style={{ height: 0, borderTop: `1px dashed ${RE.separator}`, margin: "7px 0" }} />
+                  );
+                  if (item.type === "roleHeader") {
+                    const { left, date } = extractRoleDate(item.text);
+                    const { role, company } = splitRoleAndCompany(left);
+                    return (
+                      <div key={ii} style={{ marginBottom: 3, marginTop: 5 }}>
+                        {/* Role + date on one baseline — date always right-aligned */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                          <span style={{ fontWeight: 700, fontSize: 13.5, color: "#2d2d2d" }}>{role}</span>
+                          {date && <span style={{ fontSize: 11.5, color: RE.date, whiteSpace: "nowrap", paddingLeft: 12 }}>{date}</span>}
+                        </div>
+                        {company && (
+                          <div style={{ fontSize: 12.5, color: RE.accent, fontStyle: "italic", marginTop: 1 }}>{company}</div>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (item.type === "bullet") return (
+                    /* Bullet: dot at fixed indent, text hanging — identical throughout */
+                    <div key={ii} style={{ display: "flex", gap: 7, fontSize: 12.5, color: "#374151", marginBottom: 2.5, paddingLeft: 4 }}>
+                      <span style={{ flexShrink: 0, color: RE.accent, fontSize: 15, lineHeight: "1.3" }}>•</span>
+                      <span style={{ minWidth: 0 }}>{item.text}</span>
+                    </div>
+                  );
+                  return <div key={ii} style={{ fontSize: 12.5, color: "#374151", marginBottom: 2 }}>{item.text}</div>;
+                })}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       {!parsed.name && parsed.sections.length === 0 && (
-        <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: C.text }}>{content}</div>
+        <div style={{ padding: "14px 24px", whiteSpace: "pre-wrap", fontSize: 13, color: C.text }}>{content}</div>
       )}
     </div>
   );
