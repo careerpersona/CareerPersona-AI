@@ -1972,7 +1972,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 }}>
                 {topOpportunities.map((j, i) => (
                   <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }}>{j.title || j.jobTitle} — {j.company}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8, minWidth: 0 }}>{j.title || j.jobTitle} — {j.company}</span>
                     {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: j.matchScore >= 80 ? C.green : j.matchScore >= 60 ? C.yellow : C.red, flexShrink: 0 }}>{j.matchScore}%</span>}
                   </div>
                 ))}
@@ -7131,6 +7131,7 @@ export default function App() {
   .history-analytics-grid { grid-template-columns: 1fr !important; }
 }
 .cp-action-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: center; }
+.two-col > *, .three-col > * { min-width: 0; }
 @media (max-width: 700px) {
   .cp-action-bar { display: grid; grid-template-columns: repeat(2, 1fr); }
   .two-col, .three-col { grid-template-columns: 1fr !important; }
