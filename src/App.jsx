@@ -17,6 +17,7 @@ import { useAiActionPlan } from "./data/aiActionPlan";
 import { useUserContext } from "./data/userContext";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { LANGUAGES } from "./i18n/languages";
+import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
 
 // Disable browser scroll restoration before React mounts — prevents the
 // browser from jumping to the last scroll position on page refresh.
@@ -465,11 +466,21 @@ function parseResumeDoc(rawText) {
 // Extracts a year-range date from the end of a role header line for right-aligned rendering.
 // Matches: "(2020–Present)", "Jan 2020 – Present", "2018–2020", "(Mar 2019 – Dec 2021)"
 function extractRoleDate(text) {
+  // Try date range first (e.g. "Jan 2022 – Present", "2016 – 2019")
   const m = text.match(/\s*[\(\[]?\s*(?:[A-Za-z]{3,9}\.?\s*)?\d{4}\s*[-–—]+\s*(?:Present|Current|(?:[A-Za-z]{3,9}\.?\s*)?\d{4})\s*[\)\]]?\s*$/i);
-  if (!m) return { left: text, date: null };
-  const date = m[0].trim().replace(/^[\(\[]+|[\)\]]+$/g, '').trim();
-  const left = text.slice(0, text.length - m[0].length).replace(/[\s,|–—-]+$/, '').trim();
-  return { left, date };
+  if (m) {
+    const date = m[0].trim().replace(/^[\(\[]+|[\)\]]+$/g, '').trim();
+    const left = text.slice(0, text.length - m[0].length).replace(/[\s,|–—-]+$/, '').trim();
+    return { left, date };
+  }
+  // Fallback: single year or month+year after a pipe/comma separator (e.g. "| 2016", "| May 2018")
+  const m2 = text.match(/\s*[|,]\s*(?:[A-Za-z]{3,9}\.?\s*)?\d{4}\s*$/i);
+  if (m2) {
+    const date = m2[0].replace(/^\s*[|,]\s*/, '').trim();
+    const left = text.slice(0, text.length - m2[0].length).replace(/[\s,|–—-]+$/, '').trim();
+    return { left, date };
+  }
+  return { left: text, date: null };
 }
 
 // Resume Engine theme — single source of truth for all five outputs (Preview, PDF, DOCX,
@@ -666,12 +677,12 @@ async function downloadPDF(content, filename) {
   const parsed = parseResumeDoc(content);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   // Layout constants — single source of truth for all alignment
-  const mL = 18; const mR = 18; const mT = 14; const mB = 14;
+  const mL = 8; const mR = 8; const mT = 14; const mB = 14;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const cW = pageW - mL - mR;
   const BULLET_INDENT = 4; const BULLET_HANG = 9; // consistent bullet grid
-  const ROLE_LINE_H = 5.5; const BODY_LINE_H = 5.3;
+  const ROLE_LINE_H = 5.5; const BODY_LINE_H = 5;
   let y = 0;
 
   const chk = (n) => { if (y + n > pageH - mB) { doc.addPage(); y = mT; } };
@@ -691,32 +702,32 @@ async function downloadPDF(content, filename) {
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
     // Pre-calculate header height before drawing rect (draw rect first, then text over it)
-    let headerH = 13; // space from page top to name baseline
-    if (parsed.name) headerH += 8;
-    headerH += titleLines.length * 5.5;
-    if (contactItems.length > 0) headerH += 8; // 1.5 gap + 6.5 for contact row
-    headerH += 5; // bottom padding
+    let headerH = 5; // name baseline at 5mm — ~1.3mm visual top margin matches Browser 5px padding
+    if (parsed.name) headerH += 7; // 15pt × 1.2 lineH ≈ 6.4mm + margin → 7mm to title baseline
+    headerH += titleLines.length * 4; // 9pt × 1.2 lineH ≈ 3.8mm + margin → 4mm per title line
+    if (contactItems.length > 0) headerH += 4; // 1mm gap + contact height + 1.5mm bottom
+    else headerH += 2; // bottom padding only
 
     doc.setFillColor(...ACCENT_BG);
     doc.rect(0, 0, pageW, headerH, 'F');
 
-    let hy = 13; // text baseline cursor within header
+    let hy = 5; // text baseline cursor — matches headerH initial (name baseline at 5mm)
     if (parsed.name) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...ACCENT);
       doc.text(parsed.name.toUpperCase(), pageW / 2, hy, { align: 'center' });
-      hy += 8;
+      hy += 7;
     }
     titleLines.forEach(h => {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BODY);
       doc.text(h.text, pageW / 2, hy, { align: 'center' });
-      hy += 5.5;
+      hy += 4;
     });
     if (contactItems.length > 0) {
-      hy += 1.5;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...BODY);
+      hy += 1;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...BODY);
       const sf = doc.internal.scaleFactor;
-      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8.5 / sf);
-      const itemGap = 7;
+      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8 / sf);
+      const itemGap = 4;
       const totalW = itemWidths.reduce((a, b) => a + b, 0) + itemGap * Math.max(0, contactItems.length - 1);
       let cx = (pageW - totalW) / 2;
       contactItems.forEach((c, i) => {
@@ -728,92 +739,258 @@ async function downloadPDF(content, filename) {
       });
     }
 
-    y = headerH + 5; // gap below header before first section
+    y = headerH + 3; // gap below header before first section
   } else {
     y = mT;
   }
 
+  // ── PDF section icon helper ──────────────────────────────────────────────────
+  function drawPdfSecIcon(type, cx, cy, r) {
+    doc.setDrawColor(...ACCENT); doc.setLineWidth(0.35);
+    doc.circle(cx, cy, r, 'S');
+    doc.setLineWidth(0.28);
+    const ir = r * 0.55;
+    if (type === 'person') {
+      doc.circle(cx, cy - ir * 0.45, ir * 0.4, 'S');
+      doc.line(cx - ir * 0.85, cy + ir, cx - ir * 0.2, cy + ir * 0.1);
+      doc.line(cx - ir * 0.2, cy + ir * 0.1, cx + ir * 0.2, cy + ir * 0.1);
+      doc.line(cx + ir * 0.2, cy + ir * 0.1, cx + ir * 0.85, cy + ir);
+    } else if (type === 'briefcase') {
+      doc.rect(cx - ir * 0.9, cy - ir * 0.3, ir * 1.8, ir, 'S');
+      doc.line(cx - ir * 0.45, cy - ir * 0.3, cx - ir * 0.45, cy - ir);
+      doc.line(cx - ir * 0.45, cy - ir, cx + ir * 0.45, cy - ir);
+      doc.line(cx + ir * 0.45, cy - ir, cx + ir * 0.45, cy - ir * 0.3);
+      doc.line(cx, cy - ir * 0.3, cx, cy + ir * 0.7);
+    } else if (type === 'graduation') {
+      doc.lines([[ir, 0.6 * ir], [-ir, 0.6 * ir], [-ir, -0.6 * ir], [ir, -0.6 * ir]], cx - ir, cy - 0.3 * ir, [1, 1], 'S', true);
+      doc.line(cx + ir, cy - 0.3 * ir + 0.6 * ir, cx + ir, cy + ir * 0.7);
+      doc.line(cx - ir * 0.4, cy + ir * 0.2, cx + ir * 0.4, cy + ir * 0.2);
+    } else if (type === 'code') {
+      doc.line(cx - ir * 0.2, cy, cx - ir * 0.85, cy - ir * 0.55);
+      doc.line(cx - ir * 0.2, cy, cx - ir * 0.85, cy + ir * 0.55);
+      doc.line(cx + ir * 0.2, cy, cx + ir * 0.85, cy - ir * 0.55);
+      doc.line(cx + ir * 0.2, cy, cx + ir * 0.85, cy + ir * 0.55);
+    } else if (type === 'award') {
+      const pts = Array.from({ length: 5 }, (_, k) => {
+        const a1 = (k * 72 - 90) * Math.PI / 180;
+        const a2 = (k * 72 + 36 - 90) * Math.PI / 180;
+        return [[cx + ir * 0.9 * Math.cos(a1), cy + ir * 0.9 * Math.sin(a1)],
+                [cx + ir * 0.38 * Math.cos(a2), cy + ir * 0.38 * Math.sin(a2)]];
+      }).flat();
+      for (let k = 0; k < pts.length; k++) doc.line(pts[k][0], pts[k][1], pts[(k + 1) % pts.length][0], pts[(k + 1) % pts.length][1]);
+    } else if (type === 'folder') {
+      doc.rect(cx - ir * 0.85, cy - ir * 0.1, ir * 1.7, ir * 0.95, 'S');
+      doc.line(cx - ir * 0.85, cy - ir * 0.1, cx - ir * 0.4, cy - ir * 0.7);
+      doc.line(cx - ir * 0.4, cy - ir * 0.7, cx + ir * 0.1, cy - ir * 0.1);
+    } else if (type === 'globe') {
+      doc.circle(cx, cy, ir * 0.6, 'S');
+      doc.line(cx - ir * 0.6, cy, cx + ir * 0.6, cy);
+      doc.ellipse(cx, cy, ir * 0.28, ir * 0.6, 'S');
+    }
+  }
+
   // ── Sections
-  parsed.sections.forEach((sec, si) => {
-    if (si > 0) y += 3;
+  for (let si = 0; si < parsed.sections.length; si++) {
+    const sec = parsed.sections[si];
+    y += si === 0 ? 4.5 : 3;
     chk(10);
 
-    // Section bar: full-width strip — consistent height across all sections
-    const barH = 6.5;
-    const barY = y - 4.5;
+    const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+    const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
+    const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
+
+    // Section bar
+    const barH = 8; const barY = y - 5.5;
     doc.setFillColor(...ACCENT_BG);
     doc.rect(0, barY, pageW, barH, 'F');
-    // Small filled square as icon (consistent at mL)
-    doc.setFillColor(...ACCENT);
-    doc.rect(mL, y - 2.8, 2, 2, 'F');
-    // Section title — baseline aligned with icon center, consistent left edge
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ACCENT);
-    doc.text(sec.title.toUpperCase(), mL + 5, y);
+    const secIconCX = mL + 3.8; const secIconCY = y - 1.5; const secIconR = 3.3;
+    drawPdfSecIcon(getSectionIconType(sec.title), secIconCX, secIconCY, secIconR);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...ACCENT);
+    doc.text(sec.title.toUpperCase(), mL + 9.5, y);
     y += barH - 3;
 
-    sec.items.forEach(item => {
+    // Experience: timeline line drawn retroactively after each entry
+    const EXP_INDENT = isExpSec ? 6 : 0; // shift content right for timeline
+    const TL_X = mL + 1.5; // timeline x
+    let entryStartY = null;
+
+    const items = sec.items;
+    for (let ii = 0; ii < items.length; ii++) {
+      const item = items[ii];
+
       if (item.type === 'gap') {
+        // Draw timeline line + dot for completed experience entry
+        if (isExpSec && entryStartY !== null) {
+          const entryEndY = y - 2;
+          doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
+          doc.line(TL_X, entryStartY, TL_X, entryEndY);
+          doc.setFillColor(...ACCENT);
+          doc.circle(TL_X, entryStartY, 1.8, 'F');
+          entryStartY = null;
+        }
         try { doc.setLineDash([1.5, 1.5], 0); } catch (_) {}
         doc.setDrawColor(...SEP); doc.setLineWidth(0.2);
         doc.line(mL, y + 1, pageW - mR, y + 1);
         try { doc.setLineDash([], 0); } catch (_) {}
         y += 5;
-        return;
+        continue;
       }
 
       if (item.type === 'roleHeader') {
         const { left, date } = extractRoleDate(item.text);
         const { role, company } = splitRoleAndCompany(left);
-        chk(6);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
-        if (date) {
+
+        if (isBodySec || (!company && !date && role.length > 60)) {
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+          for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
+          continue;
+        }
+
+        // Consume next text item as location
+        let location = null;
+        if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
+
+        chk(7);
+        const contentX = mL + EXP_INDENT;
+        const contentW = cW - EXP_INDENT;
+
+        if (isExpSec) {
+          // Mark entry start for timeline
+          entryStartY = y - 1;
+          // Role | Company on left, date right-aligned
           const sf = doc.internal.scaleFactor;
-          const dateW = doc.getStringUnitWidth(date) * 9.5 / sf;
-          const roleW = cW - dateW - 4;
-          const roleWrapped = doc.splitTextToSize(role, roleW);
-          roleWrapped.forEach((l, i) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (i < roleWrapped.length - 1) y += ROLE_LINE_H; });
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...DATE_CLR);
-          doc.text(date, pageW - mR, y, { align: 'right' }); // all dates right-aligned at same edge
+          let rightBlockW = 0;
+          if (date) { const dw = doc.getStringUnitWidth(date) * 9 / sf; rightBlockW = Math.max(rightBlockW, dw); }
+          if (location) { doc.setFontSize(9); const lw = doc.getStringUnitWidth(location) * 9 / sf; rightBlockW = Math.max(rightBlockW, lw); }
+          const leftW = contentW - rightBlockW - 3;
+
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          const roleText = company ? `${role} | ${company}` : role;
+          // Measure role part only for bold, then company in italic
+          const roleWrapped = doc.splitTextToSize(role, leftW - (company ? doc.getStringUnitWidth(' | ') * 10.5 / sf + doc.getStringUnitWidth(company) * 10 / sf : 0));
+          // Simplified: render "Role | Company" as mixed run on first line
+          const firstLineY = y;
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          doc.text(role, contentX, firstLineY);
+          if (company) {
+            const roleOnlyW = doc.getStringUnitWidth(role) * 10.5 / sf;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+            doc.text(' | ', contentX + roleOnlyW, firstLineY);
+            const sepW = doc.getStringUnitWidth(' | ') * 10 / sf;
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+            doc.text(company, contentX + roleOnlyW + sepW, firstLineY);
+          }
           y += ROLE_LINE_H;
+          // Date + location right-aligned
+          if (date) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            doc.text(date, pageW - mR, firstLineY, { align: 'right' });
+          }
+          if (location) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            doc.text(location, pageW - mR, firstLineY + ROLE_LINE_H - 0.5, { align: 'right' });
+          }
+        } else if (isEduSec) {
+          // Degree on left, date+location on right
+          const sf = doc.internal.scaleFactor;
+          let rightBlockW = 0;
+          if (date) { doc.setFontSize(9); rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(date) * 9 / sf); }
+          if (location) { rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(location) * 9 / sf); }
+          const leftW = cW - rightBlockW - 3;
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          const degreeLines = doc.splitTextToSize(role, leftW);
+          degreeLines.forEach((l, li) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (li < degreeLines.length - 1) y += ROLE_LINE_H; });
+          if (date) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            doc.text(date, pageW - mR, y - (degreeLines.length - 1) * ROLE_LINE_H, { align: 'right' });
+          }
+          if (location) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            doc.text(location, pageW - mR, y - (degreeLines.length - 1) * ROLE_LINE_H + ROLE_LINE_H - 0.5, { align: 'right' });
+          }
+          y += ROLE_LINE_H;
+          if (company) {
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+            for (const l of doc.splitTextToSize(company, cW)) { chk(5); doc.text(l, mL, y); y += 5; }
+          }
         } else {
-          for (const l of doc.splitTextToSize(role, cW)) { chk(ROLE_LINE_H); doc.text(l, mL, y); y += ROLE_LINE_H; }
+          // Generic (projects, certifications, etc.)
+          const sf = doc.internal.scaleFactor;
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          if (date) {
+            const dateW2 = doc.getStringUnitWidth(date) * 9 / sf;
+            const rW = cW - dateW2 - 4;
+            const rLines = doc.splitTextToSize(role, rW);
+            rLines.forEach((l, li) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (li < rLines.length - 1) y += ROLE_LINE_H; });
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            doc.text(date, pageW - mR, y, { align: 'right' });
+            y += ROLE_LINE_H;
+          } else {
+            for (const l of doc.splitTextToSize(role, cW)) { chk(ROLE_LINE_H); doc.text(l, mL, y); y += ROLE_LINE_H; }
+          }
+          if (company) {
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+            for (const l of doc.splitTextToSize(company, cW)) { chk(5); doc.text(l, mL, y); y += 5; }
+            y += 0.5;
+          }
+          if (location) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+            for (const l of doc.splitTextToSize(location, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
+          }
         }
-        if (company) {
-          doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
-          for (const l of doc.splitTextToSize(company, cW)) { chk(5); doc.text(l, mL, y); y += 5; }
-          y += 0.5;
-        }
-        return;
+        continue;
       }
 
       if (item.type === 'bullet') {
+        const bulletX = mL + EXP_INDENT + BULLET_INDENT;
+        const textX = mL + EXP_INDENT + BULLET_HANG;
+        const textW = cW - EXP_INDENT - BULLET_HANG;
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-        const wrapped = doc.splitTextToSize(item.text, cW - BULLET_HANG);
+        const wrapped = doc.splitTextToSize(item.text, textW);
         chk(BODY_LINE_H);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...ACCENT);
-        doc.text('•', mL + BULLET_INDENT, y - 0.3); // bullet at consistent indent
+        doc.text('•', bulletX, y - 0.3);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-        wrapped.forEach((l, i) => { chk(BODY_LINE_H); doc.text(l, mL + BULLET_HANG, y); if (i < wrapped.length - 1) y += BODY_LINE_H; });
+        wrapped.forEach((l, li) => { chk(BODY_LINE_H); doc.text(l, textX, y); if (li < wrapped.length - 1) y += BODY_LINE_H; });
         y += BODY_LINE_H;
-        return;
+        continue;
       }
 
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+      // Plain text item
+      const inEduSec = /education|university|college|school/i.test(sec.title);
+      const isYearGPA = /^\d{4}$|^GPA/i.test(item.text.trim());
+      if (inEduSec && !isYearGPA) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+      } else if (inEduSec && isYearGPA) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...DATE_CLR);
+      } else {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+      }
       for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
-    });
-  });
+    }
+
+    // Close last experience entry's timeline
+    if (isExpSec && entryStartY !== null) {
+      const entryEndY = y - 2;
+      doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
+      doc.line(TL_X, entryStartY, TL_X, entryEndY);
+      doc.setFillColor(...ACCENT);
+      doc.circle(TL_X, entryStartY, 1.8, 'F');
+      entryStartY = null;
+    }
+  }
 
   await triggerDownload(doc.output('blob'), filename + '.pdf');
 }
 
 async function downloadDOCX(content, filename) {
-  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, ShadingType } = await import('docx');
+  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, ShadingType, Table, TableRow, TableCell, WidthType } = await import('docx');
   const parsed = parseResumeDoc(content);
   const paragraphs = [];
 
   // Layout constants — single source of truth for all alignment
-  const marginTwips = 1134; // ~0.79in margins, wider content area
-  const contentW = 10206;   // twips: 8.5in - 2*0.79in ≈ 6.92in
+  const marginTwips = 720; // ~0.5in margins
+  const contentW = 10800;  // twips: 8.5in - 2*0.5in = 7.5in
   const CAL = 'Calibri';
   const ACCENT    = '6B21E8';
   const ACCENT_BG = 'F3EEFF';
@@ -830,111 +1007,225 @@ async function downloadDOCX(content, filename) {
     const contactItems = [];
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
+    const hdrIndent = { left: -marginTwips, right: -marginTwips };
     if (parsed.name) {
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: parsed.name.toUpperCase(), bold: true, size: 34, font: CAL, color: ACCENT })],
+        children: [new TextRun({ text: parsed.name.toUpperCase(), bold: true, size: 30, font: CAL, color: ACCENT })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        ...sp(120, 40),
+        indent: hdrIndent,
+        ...sp(60, 30),
       }));
     }
     titleLines.forEach(h => {
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: h.text, size: 20, font: CAL, color: BODY_CLR })],
+        children: [new TextRun({ text: h.text, size: 18, font: CAL, color: BODY_CLR })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        ...sp(0, 20),
+        indent: hdrIndent,
+        ...sp(0, 15),
       }));
     });
     if (contactItems.length > 0) {
       // Each contact item gets its own underline — spacing runs separate them
       const contactRuns = [];
       contactItems.forEach((c, i) => {
-        if (i > 0) contactRuns.push(new TextRun({ text: '   ', size: 18, font: CAL }));
-        contactRuns.push(new TextRun({ text: c, size: 18, font: CAL, color: BODY_CLR, underline: { type: 'single', color: ACCENT } }));
+        if (i > 0) contactRuns.push(new TextRun({ text: '   ', size: 16, font: CAL }));
+        contactRuns.push(new TextRun({ text: c, size: 16, font: CAL, color: BODY_CLR, underline: { type: 'single', color: ACCENT } }));
       });
       paragraphs.push(new Paragraph({
         alignment: AlignmentType.CENTER,
         children: contactRuns,
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        ...sp(0, 160),
+        indent: hdrIndent,
+        ...sp(0, 60),
       }));
     } else {
       // Close out header shading even with no contact row
       paragraphs.push(new Paragraph({
         children: [new TextRun({ text: '', size: 4 })],
         shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        ...sp(0, 160),
+        indent: hdrIndent,
+        ...sp(0, 60),
       }));
     }
   }
 
   // ── Sections
-  parsed.sections.forEach(sec => {
-    // Section bar: shaded with ▪ icon + bold uppercase title — consistent height via spacing
+  const DOCX_ICONS = { person: '◑', briefcase: '◈', graduation: '◆', code: '<>', award: '★', folder: '▭', globe: '◎' };
+  const noBorder = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const allNoBorder = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder };
+
+  for (let si = 0; si < parsed.sections.length; si++) {
+    const sec = parsed.sections[si];
+    const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+    const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
+    const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
+    const secIcon   = DOCX_ICONS[getSectionIconType(sec.title)] || '○';
+
+    // Section bar
     paragraphs.push(new Paragraph({
       children: [
-        new TextRun({ text: '▪ ', bold: true, size: 20, font: CAL, color: ACCENT }),
-        new TextRun({ text: sec.title, bold: true, size: 18, font: CAL, color: ACCENT, allCaps: true }),
+        new TextRun({ text: `${secIcon}  `, bold: true, size: 18, font: CAL, color: ACCENT }),
+        new TextRun({ text: sec.title, bold: true, size: 16, font: CAL, color: ACCENT, allCaps: true }),
       ],
       shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-      ...sp(200, 60),
+      indent: { left: -marginTwips, right: -marginTwips, firstLine: marginTwips },
+      ...sp(80, 60),
     }));
 
-    sec.items.forEach(item => {
+    const items = sec.items;
+    for (let ii = 0; ii < items.length; ii++) {
+      const item = items[ii];
+
       if (item.type === 'gap') {
         paragraphs.push(new Paragraph({
           children: [new TextRun({ text: '', size: 8 })],
           border: { bottom: { color: 'DDD6FE', space: 1, style: BorderStyle.DASHED, size: 2 } },
           ...sp(0, 60),
         }));
-        return;
+        continue;
       }
 
       if (item.type === 'roleHeader') {
         const { left, date } = extractRoleDate(item.text);
         const { role, company } = splitRoleAndCompany(left);
-        // Job title (dark gray bold) + date right-aligned via tab stop
-        if (date) {
+
+        if (isBodySec || (!company && !date && role.length > 60)) {
           paragraphs.push(new Paragraph({
-            tabStops: [{ type: TabStopType.RIGHT, position: contentW }],
-            children: [
-              new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY }),
-              new TextRun({ text: '\t' + date, size: 19, font: CAL, color: DATE_CLR }),
-            ],
-            ...sp(80, 20),
+            children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
+            ...sp(0, 30),
           }));
+          continue;
+        }
+
+        // Consume next text item as location
+        let location = null;
+        if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
+
+        const leftW = Math.floor(contentW * 0.68);
+        const rightW = contentW - leftW;
+
+        if (isExpSec) {
+          // Experience: "● Role | Company" left + date/location right
+          const leftRuns = [
+            new TextRun({ text: '● ', size: 20, font: CAL, color: ACCENT, bold: true }),
+            new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY }),
+          ];
+          if (company) {
+            leftRuns.push(new TextRun({ text: ' | ', size: 20, font: CAL, color: BODY_CLR }));
+            leftRuns.push(new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT }));
+          }
+          const rightRuns = [];
+          if (date)     rightRuns.push(new TextRun({ text: date, size: 17, font: CAL, color: DATE_CLR, break: rightRuns.length ? 1 : 0 }));
+          if (location) rightRuns.push(new TextRun({ text: location, size: 17, font: CAL, color: DATE_CLR, break: 1 }));
+
+          paragraphs.push(new Table({
+            width: { size: contentW, type: WidthType.DXA },
+            borders: allNoBorder,
+            rows: [new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: leftW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ children: leftRuns, indent: { left: 180 }, border: { left: { style: BorderStyle.SINGLE, size: 10, color: ACCENT, space: 4 } }, ...sp(80, 20) })],
+                }),
+                new TableCell({
+                  width: { size: rightW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 20) })],
+                }),
+              ],
+            })],
+          }));
+        } else if (isEduSec) {
+          // Education: degree left + date/location right
+          const rightRuns = [];
+          if (date)     rightRuns.push(new TextRun({ text: date,     size: 17, font: CAL, color: DATE_CLR }));
+          if (location) rightRuns.push(new TextRun({ text: location, size: 17, font: CAL, color: DATE_CLR, break: 1 }));
+
+          paragraphs.push(new Table({
+            width: { size: contentW, type: WidthType.DXA },
+            borders: allNoBorder,
+            rows: [new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: leftW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY })], ...sp(80, 10) })],
+                }),
+                new TableCell({
+                  width: { size: rightW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 10) })],
+                }),
+              ],
+            })],
+          }));
+          if (company) {
+            paragraphs.push(new Paragraph({
+              children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
+              ...sp(0, 40),
+            }));
+          }
         } else {
-          paragraphs.push(new Paragraph({
-            children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY })],
-            ...sp(80, 20),
+          // Generic (projects, certifications, etc.)
+          const rightRuns = date ? [new TextRun({ text: date, size: 17, font: CAL, color: DATE_CLR })] : [];
+          paragraphs.push(new Table({
+            width: { size: contentW, type: WidthType.DXA },
+            borders: allNoBorder,
+            rows: [new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: leftW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ children: [new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY })], ...sp(80, 10) })],
+                }),
+                new TableCell({
+                  width: { size: rightW, type: WidthType.DXA },
+                  borders: allNoBorder,
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 10) })],
+                }),
+              ],
+            })],
           }));
+          if (company) {
+            paragraphs.push(new Paragraph({
+              children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
+              ...sp(0, 40),
+            }));
+          }
+          if (location) {
+            paragraphs.push(new Paragraph({
+              children: [new TextRun({ text: location, size: 18, font: CAL, color: DATE_CLR })],
+              ...sp(0, 20),
+            }));
+          }
         }
-        if (company) {
-          paragraphs.push(new Paragraph({
-            children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
-            ...sp(0, 40),
-          }));
-        }
-        return;
+        continue;
       }
 
       if (item.type === 'bullet') {
-        // Native DOCX bullets — consistent indentation via bullet level
+        const bulletIndent = isExpSec ? { left: 540 } : {};
         paragraphs.push(new Paragraph({
           children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
           bullet: { level: 0 },
+          indent: isExpSec ? { left: 540, hanging: 360 } : undefined,
           ...sp(0, 30),
         }));
-        return;
+        continue;
       }
 
+      // Plain text item
+      const inEduSec2 = /education|university|college|school/i.test(sec.title);
+      const isYearGPA = /^\d{4}$|^GPA/i.test(item.text.trim());
+      const txtColor = inEduSec2 && !isYearGPA ? ACCENT : (inEduSec2 && isYearGPA ? DATE_CLR : BODY_CLR);
       paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
+        children: [new TextRun({ text: item.text, size: 20, font: CAL, color: txtColor, italics: inEduSec2 && !isYearGPA })],
         ...sp(0, 30),
       }));
-    });
-  });
+    }
+  }
 
   const doc = new Document({
     sections: [{
@@ -1279,109 +1570,297 @@ function ContentDisplay({ content }) {
   );
 }
 
-// Structured resume preview — same parsed data that drives PDF/DOCX/Print exports.
-// Matches the visual design reference: name card, rounded section headers, company in accent color.
+// ─── Resume renderer helpers ─────────────────────────────────────────────────
+function detectContactType(text) {
+  if (/@/.test(text)) return 'email';
+  if (/\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(text)) return 'phone';
+  if (/linkedin/i.test(text)) return 'linkedin';
+  if (/github/i.test(text)) return 'github';
+  if (/portfolio|website/i.test(text) || /^https?:\/\/|\.(io|dev|me|co|org|net|app|site)\b/i.test(text)) return 'portfolio';
+  return 'location';
+}
+function getSectionIconType(title) {
+  const t = title.toLowerCase();
+  if (/summary|profile|objective|about|overview|highlight/.test(t)) return 'person';
+  if (/experience|work|employment|career|relevant|internship|volunteer/.test(t)) return 'briefcase';
+  if (/education|academic|university|college|school/.test(t)) return 'graduation';
+  if (/skill|competenc|expertise|technolog/.test(t)) return 'code';
+  if (/cert|license|credential|training|development/.test(t)) return 'award';
+  if (/project|portfolio|open.source/.test(t)) return 'folder';
+  if (/language/.test(t)) return 'globe';
+  return 'person';
+}
+function ContactIcon({ type, size = 13, color = '#6B21E8' }) {
+  const props = { size, color, strokeWidth: 1.8, style: { display: 'block', flexShrink: 0 } };
+  if (type === 'email')     return <Mail {...props}/>;
+  if (type === 'phone')     return <Phone {...props}/>;
+  if (type === 'portfolio') return <Globe {...props}/>;
+  if (type === 'linkedin') return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+      <rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/>
+    </svg>
+  );
+  if (type === 'github') return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
+      <path d="M9 18c-4.51 2-5-2-7-2"/>
+    </svg>
+  );
+  return <MapPin {...props}/>;
+}
+function SectionCircleIcon({ type, size = 28 }) {
+  const iconProps = { size: Math.round(size * 0.55), color: '#fff', strokeWidth: 1.8, style: { display: 'block' } };
+  const icon = {
+    person:     <User {...iconProps}/>,
+    briefcase:  <Briefcase {...iconProps}/>,
+    graduation: <GraduationCap {...iconProps}/>,
+    code:       <Code2 {...iconProps}/>,
+    award:      <Award {...iconProps}/>,
+    folder:     <FolderOpen {...iconProps}/>,
+    globe:      <Globe {...iconProps}/>,
+  }[type] || <User {...iconProps}/>;
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#6B21E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      {icon}
+    </div>
+  );
+}
+
 function ResumeDoc({ content, profile }) {
   const [parsed, setParsed] = useState(() => parseResumeDoc(content));
   useEffect(() => { setParsed(parseResumeDoc(content)); }, [content]);
 
-  // Build contact items — prefer parsed resume header lines, fall back to profile fields
-  const profileContacts = [];
-  if (profile) {
-    if (profile.phone)         profileContacts.push(profile.phone);
-    if (profile.email_address) profileContacts.push(profile.email_address);
-    if (profile.location)      profileContacts.push(profile.location);
-    if (profile.linkedin)      profileContacts.push(profile.linkedin);
-    if (profile.portfolio)     profileContacts.push(profile.portfolio);
-  }
-  const titleLines = parsed.headerLines.filter(h => h.type === 'title');
-  const contactHeaderLines = parsed.headerLines.filter(h => h.type === 'contact');
+  const titleLines  = parsed.headerLines.filter(h => h.type === 'title');
+  const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
   const contactItems = [];
-  if (contactHeaderLines.length > 0) {
-    contactHeaderLines.forEach(h => {
-      h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); });
-    });
-  } else {
-    profileContacts.forEach(c => { if (c) contactItems.push(c); });
+  if (contactLines.length > 0) {
+    contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
+  } else if (profile) {
+    if (profile.location)      contactItems.push(profile.location);
+    if (profile.email_address) contactItems.push(profile.email_address);
+    if (profile.phone)         contactItems.push(profile.phone);
+    if (profile.linkedin)      contactItems.push(profile.linkedin);
+    if (profile.portfolio)     contactItems.push(profile.portfolio);
   }
-  const hasHeader = parsed.name || titleLines.length > 0 || contactItems.length > 0;
 
-  // Layout grid constant — all body content uses this horizontal padding
-  const PAD = "0 24px";
+  const ACC  = '#6B21E8';
+  const ABGC = '#F3EEFF';
+  const DARK = '#1F2937';
+  const BODY = '#374151';
+  const DATE = '#4B5563';
+  const SEP  = '#DDD6FE';
 
   return (
-    <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 600, overflowY: "auto", fontFamily: "Calibri, 'Helvetica Neue', Arial, sans-serif", fontSize: 13.5, lineHeight: 1.5, color: "#111" }}>
-      {/* Header: full-width purple strip — no outer padding so it reaches both edges */}
-      {hasHeader && (
-        <div style={{ background: RE.accentBg, padding: "14px 24px 12px", textAlign: "center" }}>
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 600, overflowY: 'auto', fontFamily: "Calibri,'Helvetica Neue',Arial,sans-serif", fontSize: 13, lineHeight: 1.5, color: '#111' }}>
+
+      {/* ── Header: name + title + contacts — all on accentBg per blueprint ── */}
+      {(parsed.name || titleLines.length > 0 || contactItems.length > 0) && (
+        <div style={{ background: ABGC, borderRadius: 16, margin: '0 0 30px 0', padding: '4px 40px 4px', textAlign: 'center' }}>
           {parsed.name && (
-            <div style={{ fontSize: 22, fontWeight: 800, color: RE.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+            <div style={{ fontSize: 55, fontWeight: 800, color: ACC, textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: 1.0, marginBottom: 0 }}>
               {parsed.name}
             </div>
           )}
           {titleLines.map((h, i) => (
-            <div key={i} style={{ fontSize: 12.5, fontWeight: 600, color: "#374151", marginBottom: 2 }}>{h.text}</div>
+            <div key={i} style={{ fontSize: 23, fontWeight: 400, color: DARK, lineHeight: 1.0, marginBottom: 4 }}>{h.text}</div>
           ))}
-          {/* Contact row: each item gets its own purple underline, evenly spaced */}
           {contactItems.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "5px 18px", marginTop: 7 }}>
-              {contactItems.map((c, i) => (
-                <span key={i} style={{ fontSize: 10.5, color: "#374151", borderBottom: `1.5px solid ${RE.accent}`, paddingBottom: 1 }}>{c}</span>
+            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 24px' }}>
+              {contactItems.filter(Boolean).map((ci, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: BODY }}>
+                  <ContactIcon type={detectContactType(ci)} size={15} color={ACC}/>
+                  <span style={{ borderBottom: `1.5px solid ${ACC}`, paddingBottom: 1, lineHeight: 1.3 }}>{ci}</span>
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
-      {/* Sections: section bars span full width; items use PAD for consistent margin */}
-      {parsed.sections.length > 0 && (
-        <div style={{ paddingBottom: 16 }}>
-          {parsed.sections.map((sec, si) => (
-            <div key={si}>
-              {/* Gap between sections (not before first) */}
-              {si > 0 && <div style={{ height: 10 }} />}
-              {/* Section bar: full-width, identical height and padding for every section */}
-              <div style={{ background: RE.accentBg, padding: "4px 24px", display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ color: RE.accent, fontWeight: 900, fontSize: 13, lineHeight: 1, userSelect: "none", flexShrink: 0 }}>▪</span>
-                <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: RE.accent }}>{sec.title}</span>
-              </div>
-              {/* Items: consistent left/right padding matching header */}
-              <div style={{ padding: "6px 24px 0" }}>
-                {sec.items.map((item, ii) => {
-                  if (item.type === "gap") return (
-                    <div key={ii} style={{ height: 0, borderTop: `1px dashed ${RE.separator}`, margin: "7px 0" }} />
+
+      {/* ── Sections ── */}
+      {parsed.sections.map((sec, si) => {
+        const iconType  = getSectionIconType(sec.title);
+        const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+        const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
+        const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
+
+        // Build experience timeline entry groups
+        let expEntries = null;
+        if (isExpSec) {
+          expEntries = [];
+          let cur = null;
+          sec.items.forEach(item => {
+            if (item.type === 'gap') {
+              if (cur) expEntries.push(cur);
+              cur = null;
+              expEntries.push({ isSep: true });
+            } else if (item.type === 'roleHeader') {
+              if (cur) expEntries.push(cur);
+              cur = { header: item, location: null, bullets: [] };
+            } else if (cur && !cur.location && !cur.bullets.length && item.type === 'text') {
+              cur.location = item.text;
+            } else if (cur && item.type === 'bullet') {
+              cur.bullets.push({ isText: false, text: item.text });
+            } else if (cur && item.type === 'text') {
+              cur.bullets.push({ isText: true, text: item.text });
+            } else {
+              expEntries.push({ isSingle: true, item });
+            }
+          });
+          if (cur) expEntries.push(cur);
+          while (expEntries.length && expEntries[expEntries.length - 1].isSep) expEntries.pop();
+        }
+
+        return (
+          <div key={si}>
+            {/* Section bar: accentBg + filled circle icon + uppercase title */}
+            <div style={{ background: ABGC, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <SectionCircleIcon type={iconType} size={26}/>
+              <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.09em', color: ACC }}>
+                {sec.title}
+              </span>
+            </div>
+
+            {/* Section content */}
+            <div style={{ padding: '8px 24px 6px' }}>
+
+              {/* ── Experience: timeline layout ── */}
+              {isExpSec && expEntries ? (
+                expEntries.map((entry, ei) => {
+                  if (entry.isSep) return (
+                    <div key={ei} style={{ borderTop: `1px dashed ${SEP}`, margin: '8px 0' }}/>
                   );
-                  if (item.type === "roleHeader") {
-                    const { left, date } = extractRoleDate(item.text);
-                    const { role, company } = splitRoleAndCompany(left);
-                    return (
-                      <div key={ii} style={{ marginBottom: 3, marginTop: 5 }}>
-                        {/* Role + date on one baseline — date always right-aligned */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                          <span style={{ fontWeight: 700, fontSize: 13.5, color: "#2d2d2d" }}>{role}</span>
-                          {date && <span style={{ fontSize: 11.5, color: RE.date, whiteSpace: "nowrap", paddingLeft: 12 }}>{date}</span>}
+                  if (entry.isSingle) {
+                    const it = entry.item;
+                    if (it.type === 'bullet') return (
+                      <div key={ei} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 20 }}>
+                        <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
+                        <span>{it.text}</span>
+                      </div>
+                    );
+                    return <div key={ei} style={{ fontSize: 12.5, color: BODY, marginBottom: 3 }}>{it.text}</div>;
+                  }
+                  const { left, date } = extractRoleDate(entry.header.text);
+                  const { role, company } = splitRoleAndCompany(left);
+                  return (
+                    <div key={ei} style={{ position: 'relative', borderLeft: `2px solid ${ACC}`, paddingLeft: 16, marginLeft: 6, paddingTop: 6, paddingBottom: 4, marginBottom: 2 }}>
+                      {/* Timeline dot */}
+                      <div style={{ position: 'absolute', left: -5, top: 9, width: 9, height: 9, borderRadius: '50%', background: ACC }}/>
+                      {/* Role | Company row + date/location */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: DARK, lineHeight: 1.3 }}>
+                          {role}
+                          {company && (
+                            <><span style={{ fontWeight: 400, color: BODY }}> | </span><em style={{ fontStyle: 'italic', color: ACC, fontWeight: 400 }}>{company}</em></>
+                          )}
                         </div>
-                        {company && (
-                          <div style={{ fontSize: 12.5, color: RE.accent, fontStyle: "italic", marginTop: 1 }}>{company}</div>
+                        {(date || entry.location) && (
+                          <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.4 }}>
+                            {date     && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{date}</div>}
+                            {entry.location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{entry.location}</div>}
+                          </div>
                         )}
+                      </div>
+                      {/* Bullets */}
+                      {entry.bullets.map((b, bi) =>
+                        b.isText ? (
+                          <div key={bi} style={{ fontSize: 12.5, color: BODY, marginBottom: 3 }}>{b.text}</div>
+                        ) : (
+                          <div key={bi} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3 }}>
+                            <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
+                            <span>{b.text}</span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                /* ── All other sections ── */
+                (() => {
+                  const elements = [];
+                  const items = sec.items;
+                  for (let ii = 0; ii < items.length; ii++) {
+                    const item = items[ii];
+
+                    if (item.type === 'gap') {
+                      elements.push(<div key={ii} style={{ borderTop: `1px dashed ${SEP}`, margin: '6px 0' }}/>);
+                      continue;
+                    }
+
+                    if (item.type === 'roleHeader') {
+                      const { left, date } = extractRoleDate(item.text);
+                      const { role, company } = splitRoleAndCompany(left);
+                      // Body sections (summary, skills, languages): treat header text as plain body
+                      if (isBodySec || (!company && !date && role.length > 60)) {
+                        elements.push(<div key={ii} style={{ fontSize: 12.5, color: BODY, marginBottom: 5, lineHeight: 1.6 }}>{item.text}</div>);
+                        continue;
+                      }
+                      // Consume next text item as location
+                      let location = null;
+                      if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
+
+                      if (isEduSec) {
+                        // Education: degree left, date+location right, institution italic below
+                        elements.push(
+                          <div key={ii} style={{ marginTop: 6, marginBottom: 6 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
+                              {(date || location) && (
+                                <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.4 }}>
+                                  {date     && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{date}</div>}
+                                  {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{location}</div>}
+                                </div>
+                              )}
+                            </div>
+                            {company && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 2 }}>{company}</div>}
+                          </div>
+                        );
+                      } else {
+                        // Generic (projects, certs, etc.): name left, year right, company italic below
+                        elements.push(
+                          <div key={ii} style={{ marginTop: 6, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
+                              {date && <span style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0 }}>{date}</span>}
+                            </div>
+                            {company  && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 1 }}>{company}</div>}
+                            {location && <div style={{ fontSize: 11.5, color: DATE, marginTop: 1 }}>{location}</div>}
+                          </div>
+                        );
+                      }
+                      continue;
+                    }
+
+                    if (item.type === 'bullet') {
+                      elements.push(
+                        <div key={ii} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 4 }}>
+                          <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
+                          <span style={{ minWidth: 0 }}>{item.text}</span>
+                        </div>
+                      );
+                      continue;
+                    }
+
+                    // Plain text item
+                    const isEduAccent = isEduSec && !/^\d{4}$|^GPA/i.test(item.text.trim());
+                    elements.push(
+                      <div key={ii} style={{ fontSize: 12.5, color: isEduAccent ? ACC : BODY, fontStyle: isEduAccent ? 'italic' : 'normal', marginBottom: 3 }}>
+                        {item.text}
                       </div>
                     );
                   }
-                  if (item.type === "bullet") return (
-                    /* Bullet: dot at fixed indent, text hanging — identical throughout */
-                    <div key={ii} style={{ display: "flex", gap: 7, fontSize: 12.5, color: "#374151", marginBottom: 2.5, paddingLeft: 4 }}>
-                      <span style={{ flexShrink: 0, color: RE.accent, fontSize: 15, lineHeight: "1.3" }}>•</span>
-                      <span style={{ minWidth: 0 }}>{item.text}</span>
-                    </div>
-                  );
-                  return <div key={ii} style={{ fontSize: 12.5, color: "#374151", marginBottom: 2 }}>{item.text}</div>;
-                })}
-              </div>
+                  return elements;
+                })()
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        );
+      })}
+
       {!parsed.name && parsed.sections.length === 0 && (
-        <div style={{ padding: "14px 24px", whiteSpace: "pre-wrap", fontSize: 13, color: C.text }}>{content}</div>
+        <div style={{ padding: '14px 24px', whiteSpace: 'pre-wrap', fontSize: 13, color: C.text }}>{content}</div>
       )}
     </div>
   );
