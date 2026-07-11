@@ -7106,10 +7106,10 @@ function MissingSkillsBadges({ skills }) {
   if (!skills?.length) return null;
   const show = skills.slice(0, 3);
   const extra = skills.length - show.length;
-  const pill = { background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" };
+  const pill = { background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30`, borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 };
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: 11, color: C.red, fontWeight: 700, flexShrink: 0 }}>Missing Skills:</span>
+    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
+      <span style={{ fontSize: 11, color: C.red, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>Missing Skills:</span>
       {show.map(s => <span key={s} style={pill}>{s}</span>)}
       {extra > 0 && <span style={pill}>+{extra}</span>}
     </div>
