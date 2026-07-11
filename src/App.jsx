@@ -6937,7 +6937,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 }
 
 // ─── SAVED JOBS ────────────────────────────────────────────
-function SwipeToApply({ onApply, applying, justApplied }) {
+function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
   const [offset, setOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const startX = useRef(null);
@@ -6962,11 +6962,11 @@ function SwipeToApply({ onApply, applying, justApplied }) {
   };
 
   if (justApplied) {
-    return <div style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, textAlign: "center", minWidth: 120 }}>✓ Applied</div>;
+    return <div style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, textAlign: "center", minWidth: 120, ...containerStyle }}>✓ Applied</div>;
   }
   const progress = Math.min(1, offset / THRESHOLD);
   return (
-    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: C.green, height: 40, minWidth: 140, userSelect: "none", touchAction: "pan-y", cursor: "pointer" }}
+    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: C.green, height: 40, minWidth: 140, userSelect: "none", touchAction: "pan-y", cursor: "pointer", ...containerStyle }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>✓ Applied</div>
       <div style={{ position: "absolute", left: offset, top: 0, bottom: 0, width: "100%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, color: C.text, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.12)", transition: swiping ? "none" : "left 0.2s ease" }}>
@@ -7340,7 +7340,7 @@ Company: ${item.company}`, 8000);
 
             return (
               <Card key={job.job_id}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: isMobile ? "flex-start" : "space-between", gap: isMobile ? 12 : 16, alignItems: isMobile ? "stretch" : "flex-start" }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
                       <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{job.title}</div>
@@ -7354,7 +7354,7 @@ Company: ${item.company}`, 8000);
                       <MissingSkillsBadges skills={readyEntry?.missing_skills} />
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: "nowrap" }}>
                     {readyEntry && (
                       <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleJobExpanded(job.job_id)}>
                         {isExpanded ? "Hide Details" : "View Details"}
@@ -7362,7 +7362,7 @@ Company: ${item.company}`, 8000);
                     )}
                     <Btn variant="danger" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
                     {readyEntry && (isMobile ? (
-                      <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} />
+                      <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
                     ) : appliedId === readyEntry.id ? (
                       <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
                     ) : (
