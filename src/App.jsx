@@ -7356,11 +7356,11 @@ Company: ${item.company}`, 8000);
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: "nowrap" }}>
                     {readyEntry && (
-                      <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleJobExpanded(job.job_id)}>
-                        {isExpanded ? "Hide Details" : "View Details"}
+                      <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => toggleJobExpanded(job.job_id)}>
+                        {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
                       </Btn>
                     )}
-                    <Btn variant="danger" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
+                    <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
                     {readyEntry && (isMobile ? (
                       <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
                     ) : appliedId === readyEntry.id ? (
