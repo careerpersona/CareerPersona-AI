@@ -5297,6 +5297,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [selectedResumeId, setSelectedResumeId] = useState(null);
   const [autoApplyingCount, setAutoApplyingCount] = useState(0);
   const userContext = useUserContext({ profile, applications, savedJobs });
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
+  const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
+  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
@@ -5331,6 +5334,16 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, profile?.id, savedJobs, queue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const tq = window.matchMedia("(min-width: 768px) and (max-width: 1024px)");
+    const onMq = e => setIsMobile(e.matches);
+    const onTq = e => setIsTablet(e.matches);
+    mq.addEventListener("change", onMq);
+    tq.addEventListener("change", onTq);
+    return () => { mq.removeEventListener("change", onMq); tq.removeEventListener("change", onTq); };
+  }, []);
 
   // Shared extraction core — accepts a File object
   const extractResumeFile = async (file) => {
@@ -5738,10 +5751,101 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
               </span>}
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : isTablet ? 10 : 14 }}>
             {jobs.map(job => {
               const mr = matchResults[job.id];
               const displayMatch = mr ? mr.matchScore : job.matchScore;
+              const isAnalysisExpanded = expandedAnalysis.has(job.id);
+
+              if (isMobile || isTablet) {
+                const compact = isMobile;
+                return (
+                  <Card key={job.id} style={{ padding: compact ? "10px 12px" : "14px 18px", ...(mr ? { border: `1.5px solid ${matchColor(mr.matchScore)}30` } : {}) }}>
+                    {/* Badges + match score */}
+                    <div style={{ display: "flex", gap: 4, marginBottom: 5, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ background: `${C.blue}15`, color: C.blue, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{job.source}</span>
+                      {job.remote && <span style={{ background: `${C.green}15`, color: C.green, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.remoteBadge")}</span>}
+                      <span style={{ background: `${C.textMuted}12`, color: C.textMuted, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.employmentType}</span>
+                      {job.experienceLevel && <span style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.experienceLevel}</span>}
+                      <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
+                    </div>
+                    {/* Title */}
+                    <div style={{ fontSize: compact ? 14 : 15, fontWeight: 800, color: C.text, marginBottom: 2, lineHeight: 1.3 }}>{job.title}</div>
+                    {/* Company · Location */}
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 3 }}>{job.company} · {job.location}</div>
+                    {/* Salary + Posted date on one line */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>
+                      <span style={{ fontSize: 10, color: C.textMuted }}>{job.datePosted ? new Date(job.datePosted).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t("jobSearch.recently")}</span>
+                    </div>
+                    {/* Skill badges (compact) */}
+                    {job.skills?.length > 0 && (
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 8 }}>
+                        {job.skills.slice(0, compact ? 4 : 5).map(s => (
+                          <span key={s} style={{ background: C.purpleLight, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{s}</span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Row 1: Apply Now | AI Match | Save Job */}
+                    <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ flex: 1, background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 4px", fontSize: 11, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}>{t("jobSearch.applyNow")}</a>
+                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => { analyzeMatch(job); setExpandedAnalysis(prev => { const next = new Set(prev); next.add(job.id); return next; }); }}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
+                    </div>
+                    {/* Row 2: Track | Smart Apply | AI Analysis */}
+                    <div style={{ display: "flex", gap: 5 }}>
+                      {isTracked(job)
+                        ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
+                        : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
+                      {isSmartApplied(job)
+                        ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.smartApplied")}</Btn>
+                        : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={smartApplying === job.id} onClick={() => smartApply(job)}>{smartApplying === job.id ? "…" : t("jobSearch.smartApply")}</Btn>}
+                      <Btn
+                        variant={isAnalysisExpanded ? "secondary" : "ghost"}
+                        style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap", ...(isAnalysisExpanded && mr ? { color: matchColor(mr.matchScore) } : {}) }}
+                        onClick={() => {
+                          setExpandedAnalysis(prev => { const next = new Set(prev); next.has(job.id) ? next.delete(job.id) : next.add(job.id); return next; });
+                          if (!matchResults[job.id]) analyzeMatch(job);
+                        }}
+                      >{isAnalysisExpanded ? "▲ Analysis" : "▼ Analysis"}</Btn>
+                    </div>
+                    {/* Collapsible AI Analysis panel */}
+                    {isAnalysisExpanded && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                        {mr ? (
+                          <>
+                            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{mr.summary}</div>
+                            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                              {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
+                                <div key={l} style={{ flex: 1 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
+                                  <PBar val={v} color={matchColor(v)} />
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                              <div style={{ background: C.greenLight, borderRadius: 7, padding: 8 }}>
+                                <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youHave")}</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div>
+                              </div>
+                              <div style={{ background: C.redLight, borderRadius: 7, padding: 8 }}>
+                                <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youNeed")}</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ textAlign: "center", fontSize: 12, color: C.textMuted, padding: "6px 0" }}>
+                            {analyzing === job.id ? t("jobSearch.analyzing") : !resume.trim() ? t("jobSearch.addResumeForMatch") : t("jobSearch.aiMatch")}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                );
+              }
+
+              // Desktop layout (unchanged)
               return (
                 <Card key={job.id} style={{ ...(mr ? { border: `1.5px solid ${matchColor(mr.matchScore)}30` } : {}) }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
