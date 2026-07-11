@@ -15,6 +15,7 @@ import { useNotifications, insertNotification } from "./data/notifications";
 import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
 import { useUserContext } from "./data/userContext";
+import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
@@ -182,7 +183,7 @@ const useAuth = () => {
 // Toggle below to switch between Development (mock AI) and Production (real API).
 //   DEV_MODE = true  → no Anthropic API calls, no credits consumed, instant mocks
 //   DEV_MODE = false → real Claude API via Cloudflare Worker (production behavior)
-const DEV_MODE = true;
+const DEV_MODE = import.meta.env.DEV;
 
 async function askClaude(prompt, maxTokens = 2500) {
   if (DEV_MODE) {
@@ -320,6 +321,42 @@ function _devMockRoute(prompt) {
   // ── Networking Outreach ────────────────────────────────────────────────────
   if (p.includes("networking outreach") || (p.includes("linkedin") && p.includes("networkin"))) {
     return JSON.stringify({ linkedinMessage: "Hi [Name], I've been following [Company]'s engineering blog and was really impressed by the distributed systems work your team published. I'm a Senior Software Engineer with 5 years of Python/AWS experience exploring new opportunities, and [Company] is at the top of my list. Would you be open to a 15-minute chat?", emailSubject: "Software Engineer curious about the [Team] team at [Company]", emailBody: "Hi [Name],\n\nMy name is John Smith and I'm a Senior Software Engineer with 5 years of experience building scalable backend systems at Acme Corp.\n\nI came across your profile while researching [Company]'s engineering team and would love to learn more about the distributed systems and infrastructure challenges your team is solving.\n\nIf you have 15 minutes for a quick chat I'd really appreciate it.\n\nThanks,\nJohn Smith", followUpMessage: "Hi [Name], just wanted to resurface my message from last week! Totally understand if now isn't a good time — but if you ever have 10 minutes to chat about [Company]'s engineering team, I'd love to connect. No pressure!", tips: ["Personalize the opening with a specific observation about their work or company", "Keep the ask small — '15-minute chat' is less intimidating than 'informational interview'", "Mention a mutual connection or shared interest if one exists", "Follow up once after 7 days — most people just forget, they're not saying no"] });
+  }
+
+  // ── Opportunity Intelligence ───────────────────────────────────────────────
+  if (p.includes("career intelligence advisor") && p.includes("careerpivotopportunities")) {
+    return JSON.stringify({
+      careerPivotOpportunities: [
+        { role: "Engineering Manager", fit: 82, reason: "Your track record leading a 5-engineer team and delivering high-impact projects positions you for people management.", skillsNeeded: ["Roadmap planning", "Performance reviews", "Headcount budgeting"], salaryUplift: "+18%" },
+        { role: "Staff Engineer", fit: 78, reason: "Your system design experience and measurable impact at scale qualify you for Staff-level technical scope.", skillsNeeded: ["Cross-team architecture docs", "Technical strategy", "Mentoring program design"], salaryUplift: "+25%" },
+        { role: "Platform Engineer / SRE", fit: 71, reason: "Your AWS, Docker, and reliability work translates directly into platform and infrastructure roles.", skillsNeeded: ["Terraform", "Incident runbooks", "SLO/SLI definition"], salaryUplift: "+12%" },
+      ],
+      trendingSkills: [
+        { skill: "AI/LLM Integration", demand: "Exploding", frequency: 78, salaryPremium: "+22%" },
+        { skill: "Kubernetes", demand: "High", frequency: 65, salaryPremium: "+15%" },
+        { skill: "TypeScript", demand: "High", frequency: 61, salaryPremium: "+9%" },
+        { skill: "System Design", demand: "High", frequency: 58, salaryPremium: "+18%" },
+        { skill: "Terraform / IaC", demand: "Growing", frequency: 47, salaryPremium: "+14%" },
+        { skill: "GraphQL", demand: "Growing", frequency: 44, salaryPremium: "+8%" },
+      ],
+      emergingIndustries: [
+        { industry: "AI/LLM Tooling & Infrastructure", growth: "+340% YoY", roles: ["LLM Engineer", "ML Platform Engineer", "AI Product Engineer"], avgSalary: "$185K" },
+        { industry: "Climate Tech & Clean Energy", growth: "+89% YoY", roles: ["Backend Engineer", "Platform Engineer", "Data Engineer"], avgSalary: "$162K" },
+        { industry: "FinTech Infrastructure", growth: "+67% YoY", roles: ["Senior Backend Engineer", "Security Engineer", "Platform Lead"], avgSalary: "$175K" },
+      ],
+      growingCompanies: [
+        { company: "Anthropic", signal: "Tripling engineering headcount through 2026 across infrastructure and product teams.", category: "AI", openRoles: 34, yourMatch: 74 },
+        { company: "Stripe", signal: "Expanding backend and platform engineering for their global payments infrastructure.", category: "FinTech", openRoles: 18, yourMatch: 81 },
+        { company: "Figma", signal: "Post-acquisition rebuild phase with active senior engineering hiring.", category: "Design Tools", openRoles: 9, yourMatch: 68 },
+        { company: "Linear", signal: "Scaling product engineering team significantly after Series C close.", category: "Dev Tools", openRoles: 6, yourMatch: 72 },
+      ],
+      internalPromotionSignals: [
+        "Staff Engineer promotion typically requires ownership of a system used by 3+ teams — document your architecture impact with user and reliability metrics.",
+        "Your 40% latency reduction is promotion-level evidence — quantify the business impact (revenue, cost savings, user retention) to make the case concrete.",
+        "Build visibility across teams: present your work in all-hands, write internal design docs that get referenced by other engineers.",
+        "Ask your manager for a gap analysis against the Staff Engineer level rubric before your next review cycle starts.",
+      ],
+    });
   }
 
   // ── Fallback ───────────────────────────────────────────────────────────────
@@ -2129,7 +2166,7 @@ async function buildPlanPayload(ctx) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist }) {
   const { t } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -2253,6 +2290,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     activityLog: aiActivity,
     notifications: notifications ?? [],
     chatHistory: chatMessages,
+    companyWatchlist: companyWatchlist ?? [],
   });
 
   // Generate AI Briefing
@@ -2533,7 +2571,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               </div>
             </div>
           )}
-          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("saved")}>View Saved Jobs →</Btn>
+          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("opportunity")}>View Opportunities →</Btn>
         </Card>
       </div>
 
@@ -7390,6 +7428,644 @@ function ProfilePage({ profile, updateProfile }) {
 }
 
 
+// ─── OPPORTUNITY INTELLIGENCE PAGE ─────────────────────────
+function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus }) {
+  const [tab, setTab] = useState("opportunities");
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState(null);
+  const [addInput, setAddInput] = useState("");
+  const [addingCompany, setAddingCompany] = useState(false);
+  const [addError, setAddError] = useState("");
+
+  const { data: salaryData } = useSalaryResearch(profile?.id);
+  const [networkContacts] = useNetworkingContacts(profile?.id);
+
+  const saved = savedJobs || [];
+  const apps = applications || [];
+  const contacts = networkContacts || [];
+
+  // ── Better Job Opportunities ──────────────────────────────
+  const scoredJobs = saved.filter(j => j.matchScore != null).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  const betterJobs = scoredJobs.length ? scoredJobs.slice(0, 8) : saved.slice(0, 8);
+  const appliedCompanies = new Set(apps.map(a => (a.company || "").toLowerCase()));
+
+  // ── Salary Improvement Opportunities ─────────────────────
+  const desiredNum = profile?.desired_salary ? parseInt(String(profile.desired_salary).replace(/[^0-9]/g, "")) || null : null;
+  const marketMedian = salaryData?.results?.marketRange?.median || null;
+  const salaryJobs = saved.filter(j => {
+    const hi = j.salaryMax || j.salaryMin;
+    if (!hi) return false;
+    if (desiredNum && hi > desiredNum * 0.95) return true;
+    if (marketMedian && hi >= marketMedian * 0.95) return true;
+    return false;
+  }).sort((a, b) => (b.salaryMax || b.salaryMin || 0) - (a.salaryMax || a.salaryMin || 0));
+
+  // ── Referral Opportunities ────────────────────────────────
+  const referralJobs = saved.map(j => {
+    const contact = contacts.find(c => c.company && j.company && c.company.toLowerCase() === j.company.toLowerCase());
+    return contact ? { ...j, referralContact: contact } : null;
+  }).filter(Boolean);
+
+  // ── Trending Skills from saved jobs ──────────────────────
+  const skillFreq = {};
+  saved.forEach(j => (j.skills || []).forEach(s => { skillFreq[s] = (skillFreq[s] || 0) + 1; }));
+  const jobTrendingSkills = Object.entries(skillFreq).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // ── Growing Companies from saved jobs ────────────────────
+  const coFreq = {};
+  saved.forEach(j => { if (j.company) coFreq[j.company] = (coFreq[j.company] || 0) + 1; });
+  const frequentCompanies = Object.entries(coFreq).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
+
+  // ── Watchlist with saved job counts ──────────────────────
+  const wl = watchlist || [];
+  const watchlistEnriched = wl.map(w => ({
+    ...w,
+    jobCount: saved.filter(j => j.company && j.company.toLowerCase() === w.company_name.toLowerCase()).length,
+    hasContact: contacts.some(c => c.company && c.company.toLowerCase() === w.company_name.toLowerCase()),
+  }));
+
+  const userContext = useUserContext({ profile, applications, savedJobs, networkContacts: contacts, companyWatchlist: wl });
+  const matchColor = v => !v ? C.textMuted : v >= 80 ? C.green : v >= 60 ? C.yellow : C.red;
+  const fmtSal = (min, max) => {
+    if (!min && !max) return null;
+    const f = n => `$${Math.round(n / 1000)}K`;
+    if (min && max) return `${f(min)}–${f(max)}`;
+    return min ? `${f(min)}+` : `Up to ${f(max)}`;
+  };
+
+  const refreshAnalysis = async () => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const ctx = userContext.getContextString();
+      const topSkills = jobTrendingSkills.slice(0, 5).map(([s]) => s).join(", ");
+      const topCos = [...new Set(saved.slice(0, 8).map(j => j.company).filter(Boolean))].join(", ");
+      const raw = await askClaude(
+        `You are a career intelligence advisor. Generate opportunity intelligence for this job seeker. Return ONLY valid JSON with these exact keys:
+{"careerPivotOpportunities":[{"role":"...","fit":0,"reason":"1 sentence","skillsNeeded":["..."],"salaryUplift":"+X%"}],"trendingSkills":[{"skill":"...","demand":"Exploding|High|Growing","frequency":0,"salaryPremium":"+X%"}],"emergingIndustries":[{"industry":"...","growth":"+X% YoY","roles":["..."],"avgSalary":"$XXXk"}],"growingCompanies":[{"company":"...","signal":"1 sentence","category":"...","openRoles":0,"yourMatch":0}],"internalPromotionSignals":["1 sentence"]}
+User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.job_title || "not set"}. Skills from jobs: ${topSkills}. Companies: ${topCos}.`,
+        1800
+      );
+      const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+      const result = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+      if (!result?.careerPivotOpportunities) throw new Error("invalid");
+      setAnalysis({ ...result, generatedAt: new Date().toISOString() });
+    } catch {
+      setAnalysisError("Analysis failed. Please try again.");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleAdd = async (status = "watching") => {
+    if (!addInput.trim()) return;
+    setAddingCompany(true);
+    setAddError("");
+    try {
+      await watchlistAdd(addInput.trim(), status);
+      setAddInput("");
+    } catch {
+      setAddError("Failed to add company. Please try again.");
+    } finally {
+      setAddingCompany(false);
+    }
+  };
+
+  const pageTabs = [
+    { id: "opportunities", label: "Opportunities" },
+    { id: "watchlist", label: `Company Watchlist${wl.length ? ` (${wl.length})` : ""}` },
+    { id: "trends", label: "Market Trends" },
+  ];
+
+  return (
+    <div>
+      <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        ← Back to Dashboard
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.purple}40` }}>
+            <span style={{ fontSize: 24 }}>🎯</span>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>Opportunity Intelligence</h1>
+            <p style={{ fontSize: 13, color: C.textMuted }}>AI-powered career opportunities ranked for your profile.</p>
+          </div>
+        </div>
+        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={refreshAnalysis} loading={analysisLoading}>
+          {analysisLoading ? "Analyzing…" : "↻ Refresh AI Analysis"}
+        </Btn>
+      </div>
+
+      {analysis?.generatedAt && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 20 }}>
+          Analysis generated {new Date(analysis.generatedAt).toLocaleString()}
+        </div>
+      )}
+
+      {analysisError && (
+        <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 16 }}>{analysisError}</div>
+      )}
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
+        {pageTabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ border: "none", background: "none", padding: "10px 16px", fontSize: 14, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.purple : C.textMuted, cursor: "pointer", borderBottom: `2px solid ${tab === t.id ? C.purple : "transparent"}`, marginBottom: -1, fontFamily: "inherit" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── OPPORTUNITIES TAB ── */}
+      {tab === "opportunities" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* Better Job Opportunities */}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🏆 Better Job Opportunities</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>Your saved jobs ranked by AI match score.</div>
+              </div>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("jobs")}>Find More Jobs →</Btn>
+            </div>
+            {betterJobs.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: "24px 0" }}>
+                Save jobs from Job Search to see AI-ranked opportunities here.
+                <div style={{ marginTop: 12 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage("jobs")}>Go to Job Search</Btn></div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {betterJobs.map((j, i) => {
+                  const sal = fmtSal(j.salaryMin, j.salaryMax);
+                  const applied = appliedCompanies.has((j.company || "").toLowerCase());
+                  const watched = wl.some(w => w.company_name?.toLowerCase() === (j.company || "").toLowerCase());
+                  const refCon = contacts.find(c => c.company && j.company && c.company.toLowerCase() === j.company.toLowerCase());
+                  return (
+                    <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < betterJobs.length - 1 ? `1px solid ${C.border}` : "none", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", marginBottom: 3 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{j.title}</span>
+                          {watched && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "2px 6px" }}>Watched</span>}
+                          {refCon && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 8, padding: "2px 6px" }}>Referral</span>}
+                          {applied && <span style={{ fontSize: 10, fontWeight: 700, color: C.blue, background: C.blueLight, borderRadius: 8, padding: "2px 6px" }}>Applied</span>}
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textMuted }}>{j.company}{j.location ? ` · ${j.location}` : ""}{sal ? ` · ${sal}` : ""}</div>
+                        {refCon && <div style={{ fontSize: 11, color: C.green, marginTop: 3 }}>You know {refCon.name} here — ask for a referral</div>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        {j.matchScore != null && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: matchColor(j.matchScore) }}>{j.matchScore}%</div>
+                            <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>Match</div>
+                          </div>
+                        )}
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>Apply →</a>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {saved.length > 0 && (
+              <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("saved")}>All Saved Jobs →</Btn>
+                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("tracker")}>Job Tracker →</Btn>
+              </div>
+            )}
+          </Card>
+
+          {/* Salary Improvement Opportunities */}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>💰 Salary Improvement Opportunities</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>
+                  {desiredNum ? `Jobs exceeding your target of $${Math.round(desiredNum / 1000)}K/yr.` : marketMedian ? `Jobs near or above the $${Math.round(marketMedian / 1000)}K market median.` : "Jobs with competitive salary ranges from your saved list."}
+                </div>
+              </div>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("salary")}>Salary Research →</Btn>
+            </div>
+            {salaryData?.results?.marketRange && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                {[["Low", salaryData.results.marketRange.low, C.textMuted], ["Median", salaryData.results.marketRange.median, C.green], ["High", salaryData.results.marketRange.high, C.purple]].map(([label, val, color]) => val ? (
+                  <div key={label} style={{ flex: 1, minWidth: 72, background: C.bgSoft, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color }}>${Math.round(val / 1000)}K</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Market {label}</div>
+                  </div>
+                ) : null)}
+              </div>
+            )}
+            {salaryJobs.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMuted, padding: "12px 0" }}>
+                {!desiredNum && !marketMedian
+                  ? "Set your desired salary in Profile, or run Salary Intelligence to establish a market baseline — then matching jobs will surface here."
+                  : "No saved jobs currently exceed your salary target. Search for more jobs or adjust your target role."}
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!desiredNum && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("profile")}>Update Profile →</Btn>}
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Research Salaries →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Find Jobs →</Btn>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {salaryJobs.slice(0, 5).map((j, i) => {
+                  const sal = fmtSal(j.salaryMin, j.salaryMax);
+                  return (
+                    <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < Math.min(salaryJobs.length, 5) - 1 ? `1px solid ${C.border}` : "none", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{j.title}</div>
+                        <div style={{ fontSize: 13, color: C.textMuted }}>{j.company}{j.location ? ` · ${j.location}` : ""}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: C.green }}>{sal}</div>
+                        {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: matchColor(j.matchScore) }}>{j.matchScore}%</span>}
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>Apply →</a>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* Referral Opportunities */}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🤝 Referral Opportunities</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>Jobs where your network contacts can refer you. Referrals increase interview chances by 3–5×.</div>
+              </div>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("network")}>Manage Network →</Btn>
+            </div>
+            {referralJobs.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMuted, padding: "12px 0" }}>
+                {contacts.length === 0 ? "Add contacts in Networking Intelligence and save jobs — when a contact works at a company you saved, it appears here as a referral opportunity." : "None of your contacts currently work at companies in your saved jobs. Save more jobs or expand your network."}
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Add Contacts →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Save More Jobs →</Btn>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {referralJobs.slice(0, 5).map((j, i) => (
+                  <div key={j.job_id || i} style={{ background: C.greenLight, border: `1px solid ${C.green}20`, borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{j.title} — {j.company}</div>
+                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ {j.referralContact.name} works here</div>
+                        {j.referralContact.email && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{j.referralContact.email}</div>}
+                        {j.matchScore != null && <div style={{ fontSize: 12, color: matchColor(j.matchScore), fontWeight: 600, marginTop: 4 }}>{j.matchScore}% match</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                        <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Draft Message</Btn>
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Btn style={{ fontSize: 12, padding: "5px 12px" }}>Apply</Btn></a>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Internal Promotion Signals */}
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>📈 Internal Promotion Signals</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>What it takes to advance from your current level based on your experience and target role.</div>
+            {analysis?.internalPromotionSignals?.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {analysis.internalPromotionSignals.map((sig, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ color: C.purple, fontWeight: 800, flexShrink: 0, fontSize: 14 }}>→</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{sig}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("interview")}>Interview Prep →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("resume")}>Update Resume →</Btn>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                {analysisLoading ? "Generating promotion signals…" : "Run AI Analysis to generate personalized internal promotion signals based on your role and experience."}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+              </div>
+            )}
+          </Card>
+
+          {/* Career Pivot Opportunities */}
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🔄 Career Pivot Opportunities</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Adjacent roles your skills transfer to, with salary uplift estimates.</div>
+            {analysis?.careerPivotOpportunities?.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }} className="three-col">
+                {analysis.careerPivotOpportunities.map((opp, i) => (
+                  <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, marginRight: 8 }}>{opp.role}</div>
+                      <div style={{ textAlign: "center", flexShrink: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: matchColor(opp.fit) }}>{opp.fit}%</div>
+                        <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>Fit</div>
+                      </div>
+                    </div>
+                    {opp.salaryUplift && <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 8 }}>{opp.salaryUplift} salary uplift</div>}
+                    <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 10 }}>{opp.reason}</div>
+                    {opp.skillsNeeded?.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, marginBottom: 5, letterSpacing: 0.5 }}>SKILLS TO ADD</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                          {opp.skillsNeeded.map(s => <span key={s} style={{ fontSize: 11, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px", fontWeight: 600 }}>{s}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px", width: "100%" }} onClick={() => setPage("jobs")}>Search This Role →</Btn>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                {analysisLoading ? "Analyzing career pivot opportunities…" : "Run AI Analysis to discover adjacent roles where your existing skills give you a competitive head start."}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+              </div>
+            )}
+          </Card>
+
+          {/* Cross-module quick actions */}
+          <Card style={{ background: C.bgSoft }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navText, marginBottom: 12 }}>Continue in CareerPersona AI</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[["Resume Intelligence", "resume"], ["Interview Prep", "interview"], ["Salary Research", "salary"], ["Networking", "network"], ["Smart Apply", "saved"], ["Job Tracker", "tracker"], ["AI Briefing", "briefing"], ["Action Plan", "plan"]].map(([label, pid]) => (
+                <Btn key={pid} variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage(pid)}>{label} →</Btn>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── COMPANY WATCHLIST TAB ── */}
+      {tab === "watchlist" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>Track a Company</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                value={addInput}
+                onChange={e => setAddInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAdd("watching")}
+                placeholder="Company name (e.g. Stripe, Anthropic, Google…)"
+                style={{ flex: 1, minWidth: 200, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, color: C.text, outline: "none", fontFamily: "inherit" }}
+              />
+              <Btn style={{ padding: "10px 20px" }} onClick={() => handleAdd("watching")} loading={addingCompany}>Watch</Btn>
+              <Btn variant="secondary" style={{ padding: "10px 20px" }} onClick={() => handleAdd("dream_company")} loading={addingCompany}>⭐ Dream</Btn>
+            </div>
+            {addError && <div style={{ fontSize: 12, color: C.red, marginTop: 8 }}>{addError}</div>}
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 10 }}>Press Enter or click Watch to add. Mark companies as Dream to prioritize them across all AI recommendations.</div>
+          </Card>
+
+          {watchlistEnriched.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: "40px 24px" }}>
+              <div style={{ fontSize: 36, marginBottom: 14 }}>🏢</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>No companies tracked yet</div>
+              <div style={{ fontSize: 13, color: C.textMuted, maxWidth: 380, margin: "0 auto" }}>
+                Track your target companies. Dream companies get prioritized in your AI briefings, action plans, and opportunity rankings.
+              </div>
+            </Card>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {watchlistEnriched.map(w => (
+                  <Card key={w.id}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{w.company_name}</div>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: w.status === "dream_company" ? "#FEF3C7" : C.purpleLight, color: w.status === "dream_company" ? "#B45309" : C.purple }}>
+                            {w.status === "dream_company" ? "⭐ Dream Company" : "👁 Watching"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                          {w.jobCount > 0 && <div style={{ fontSize: 12, color: C.blue }}>{w.jobCount} saved job{w.jobCount !== 1 ? "s" : ""}</div>}
+                          {w.hasContact && <div style={{ fontSize: 12, color: C.green }}>✓ You have a contact here</div>}
+                        </div>
+                        {w.notes && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, lineHeight: 1.5 }}>{w.notes}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                        <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => watchlistUpdateStatus(w.id, w.status === "dream_company" ? "watching" : "dream_company")}>
+                          {w.status === "dream_company" ? "→ Watching" : "⭐ Dream"}
+                        </Btn>
+                        {w.jobCount > 0 && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("saved")}>View Jobs</Btn>}
+                        {w.hasContact && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Contact</Btn>}
+                        <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px", color: C.red }} onClick={() => watchlistRemove(w.id)}>✕</Btn>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              <Card style={{ background: C.bgSoft }}>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "space-around" }}>
+                  {[["Tracked", wl.length, C.purple], ["Dream Companies", wl.filter(w => w.status === "dream_company").length, "#B45309"], ["Jobs Found", watchlistEnriched.reduce((s, w) => s + w.jobCount, 0), C.blue], ["With Contacts", watchlistEnriched.filter(w => w.hasContact).length, C.green]].map(([label, val, color]) => (
+                    <div key={label} style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── MARKET TRENDS TAB ── */}
+      {tab === "trends" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* Trending Skills */}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🔥 Trending Skills</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>Skills in highest demand across your saved and matched jobs, with AI salary premium data.</div>
+              </div>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("resume")}>Update Resume →</Btn>
+            </div>
+            {analysis?.trendingSkills?.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
+                {analysis.trendingSkills.map((s, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgSoft, borderRadius: 9, padding: "10px 14px" }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{s.skill}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, color: s.demand === "Exploding" ? C.red : s.demand === "High" ? C.orange : C.yellow }}>
+                        {s.demand === "Exploding" ? "🔥" : s.demand === "High" ? "📈" : "↗"} {s.demand}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: C.green }}>{s.salaryPremium}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted }}>salary premium</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : jobTrendingSkills.length > 0 ? (
+              <div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 10 }}>From your {saved.length} saved jobs — run AI Analysis to add demand and salary premium data:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                  {jobTrendingSkills.map(([skill, count]) => (
+                    <div key={skill} style={{ display: "flex", alignItems: "center", gap: 5, background: C.purpleLight, borderRadius: 20, padding: "6px 12px" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{skill}</span>
+                      <span style={{ fontSize: 11, color: C.textMuted }}>×{count}</span>
+                    </div>
+                  ))}
+                </div>
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{analysisLoading ? "Analyzing…" : "↻ Get AI Demand Insights"}</Btn>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                Save jobs with skills tags to see trending skills, or run AI Analysis to get market demand insights for your target role.
+                <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Find Jobs →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>AI Analysis</Btn>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Emerging Industries */}
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🌱 Emerging Industries</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Fast-growing sectors where your skills are in demand, with average compensation data.</div>
+            {analysis?.emergingIndustries?.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {analysis.emergingIndustries.map((ind, i) => (
+                  <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{ind.industry}</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: C.green, background: C.greenLight, borderRadius: 8, padding: "3px 9px" }}>↑ {ind.growth}</span>
+                        {ind.avgSalary && <span style={{ fontSize: 12, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "3px 9px" }}>{ind.avgSalary} avg</span>}
+                      </div>
+                    </div>
+                    {ind.roles?.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+                        {ind.roles.map(r => <span key={r} style={{ fontSize: 11, color: C.textMid, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px" }}>{r}</span>)}
+                      </div>
+                    )}
+                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>Explore Jobs →</Btn>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                {analysisLoading ? "Identifying emerging industries…" : "Run AI Analysis to discover fast-growing industries aligned with your skills and career trajectory."}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+              </div>
+            )}
+          </Card>
+
+          {/* Growing Companies */}
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🚀 Growing Companies</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Companies actively expanding in your target field, with hiring signals and your match score.</div>
+            {frequentCompanies.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>ACTIVE IN YOUR SAVED JOBS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {frequentCompanies.map(([company, count]) => (
+                    <div key={company} style={{ display: "flex", alignItems: "center", gap: 5, background: C.purpleLight, borderRadius: 20, padding: "6px 12px" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{company}</span>
+                      <span style={{ fontSize: 11, color: C.textMuted }}>{count} roles</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {analysis?.growingCompanies?.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {frequentCompanies.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>AI MARKET INTELLIGENCE</div>}
+                {analysis.growingCompanies.map((c, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", background: C.bgSoft, borderRadius: 9, flexWrap: "wrap", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{c.company}</span>
+                        {c.category && <Badge color={C.purple}>{c.category}</Badge>}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 4 }}>{c.signal}</div>
+                      {c.openRoles > 0 && <div style={{ fontSize: 11, color: C.blue }}>{c.openRoles} open roles</div>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                      {c.yourMatch != null && (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: matchColor(c.yourMatch) }}>{c.yourMatch}%</div>
+                          <div style={{ fontSize: 9, color: C.textMuted }}>Match</div>
+                        </div>
+                      )}
+                      <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>Search →</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : frequentCompanies.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                {analysisLoading ? "Identifying growing companies…" : "Run AI Analysis to discover which companies in your field are expanding rapidly and hiring."}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+              </div>
+            ) : null}
+          </Card>
+
+          {/* Market Intelligence from Salary Research */}
+          {salaryData?.results ? (
+            <Card>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>📊 Market Intelligence</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
+                From your salary research for {salaryData.results.jobTitle || profile?.preferred_job_title || "your role"}{salaryData.results.location ? ` in ${salaryData.results.location}` : ""}.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                {[["Demand", salaryData.results.demandLevel, salaryData.results.demandLevel === "High" ? C.green : C.yellow], ["Trend", salaryData.results.trend, salaryData.results.trendDirection === "up" ? C.green : C.textMuted]].map(([label, val, color]) => val ? (
+                  <div key={label} style={{ background: C.bgSoft, borderRadius: 9, padding: "8px 14px" }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
+                  </div>
+                ) : null)}
+                {(salaryData.results.skills || []).length > 0 && (
+                  <div style={{ flex: 1, background: C.bgSoft, borderRadius: 9, padding: "8px 14px" }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 4 }}>Top Skills</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {salaryData.results.skills.slice(0, 4).map(s => <Badge key={s} color={C.purple}>{s}</Badge>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {salaryData.results.topPayingCompanies?.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>TOP PAYING COMPANIES</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {salaryData.results.topPayingCompanies.map(co => <span key={co} style={{ fontSize: 12, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px" }}>{co}</span>)}
+                  </div>
+                </div>
+              )}
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Full Salary Report →</Btn>
+            </Card>
+          ) : (
+            <Card style={{ background: C.bgSoft }}>
+              <div style={{ fontSize: 13, color: C.textMuted }}>
+                <strong style={{ color: C.text }}>Unlock Market Intelligence:</strong> Run Salary Intelligence to add market demand data, top-paying companies, and in-demand skills to this page.
+                <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Research Salaries →</Btn></div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", paddingTop: 32 }}>
+        <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Back to Dashboard</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── SETTINGS PAGE ─────────────────────────────────────────
 function SettingsPage({ profile, updateProfile, logout, setPage }) {
   const { t } = useI18n();
@@ -7509,7 +8185,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  const validPages = new Set(["dashboard","briefing","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings"]);
+  const validPages = new Set(["dashboard","briefing","plan","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -7592,6 +8268,7 @@ export default function App() {
     { id: "tracker", icon: "📋", label: `${t("nav.tracker")}${applications.length > 0 ? ` (${applications.length})` : ""}` },
     { id: "salary", icon: "💰", label: t("nav.salary") },
     { id: "network", icon: "🤝", label: t("nav.network") },
+    { id: "opportunity", icon: "🎯", label: "Opportunities" },
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
   const planName = (profile?.plan || "free").toUpperCase();
@@ -7634,6 +8311,7 @@ export default function App() {
   const { data: rootSalaryData } = useSalaryResearch(profile?.id);
   const [rootNetworkContacts] = useNetworkingContacts(profile?.id);
   const networkingSessionCtx = useNetworkingSession(profile?.id);
+  const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = useCompanyWatchlist(profile?.id);
 
   if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;
   // Show a branded loading screen while Supabase exchanges the auth callback
@@ -7792,7 +8470,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
@@ -7803,6 +8481,7 @@ export default function App() {
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "pricing" && <PricingPage profile={profile} />}
+        {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>

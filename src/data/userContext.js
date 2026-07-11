@@ -13,20 +13,21 @@ const PROFILE_FIELDS = [
  * Returns a normalized context object plus a getContextString() helper for AI prompts.
  *
  * Data param keys:
- *   profile          — from fetchProfile / useAuth
- *   applications     — from useApplications
- *   savedJobs        — from useSavedJobs
- *   resumes          — from useResumes
- *   smartApplyQueue  — from useSmartApplyQueue (raw rows)
- *   interviewSession — from useInterviewSession { session } value
- *   salaryData       — from useSalaryResearch { data } value ({ form, results } | null)
- *   networkContacts  — from useNetworkingContacts array
- *   networkingSession— from useNetworkingSession { form, results, draft, ... }
- *   briefing         — daily briefing content object (v:2 shape)
- *   dailyPlan        — daily plan content object (v:2, categories shape)
- *   activityLog      — from useActivityLog { activity } array
- *   notifications    — from useNotifications array
- *   chatHistory      — chat messages array [{ role, text }]
+ *   profile           — from fetchProfile / useAuth
+ *   applications      — from useApplications
+ *   savedJobs         — from useSavedJobs
+ *   resumes           — from useResumes
+ *   smartApplyQueue   — from useSmartApplyQueue (raw rows)
+ *   interviewSession  — from useInterviewSession { session } value
+ *   salaryData        — from useSalaryResearch { data } value ({ form, results } | null)
+ *   networkContacts   — from useNetworkingContacts array
+ *   networkingSession — from useNetworkingSession { form, results, draft, ... }
+ *   briefing          — daily briefing content object (v:2 shape)
+ *   dailyPlan         — daily plan content object (v:2, categories shape)
+ *   activityLog       — from useActivityLog { activity } array
+ *   notifications     — from useNotifications array
+ *   chatHistory       — chat messages array [{ role, text }]
+ *   companyWatchlist  — from useCompanyWatchlist array [{ company_name, status }]
  */
 export function buildUserContext({
   profile = null,
@@ -43,6 +44,7 @@ export function buildUserContext({
   activityLog = [],
   notifications = [],
   chatHistory = [],
+  companyWatchlist = [],
 } = {}) {
 
   // ── Identity ─────────────────────────────────────────────────────────────
@@ -192,6 +194,14 @@ export function buildUserContext({
       );
     }
 
+    if ((all || sections?.opportunities) && (companyWatchlist ?? []).length > 0) {
+      const wl = companyWatchlist ?? [];
+      const dreams = wl.filter(w => w.status === "dream_company").map(w => w.company_name);
+      parts.push(
+        `Company watchlist: ${wl.length} tracked (${dreams.length} dream companies${dreams.length ? ": " + dreams.slice(0, 3).join(", ") : ""}).`
+      );
+    }
+
     if ((all || sections?.smartApply) && smartApply.latestSalaryInsight) {
       const si = smartApply.latestSalaryInsight;
       const range = si.marketRange;
@@ -252,6 +262,7 @@ export function useUserContext({
   activityLog = [],
   notifications = [],
   chatHistory = [],
+  companyWatchlist = [],
 } = {}) {
   return useMemo(
     () =>
@@ -270,8 +281,8 @@ export function useUserContext({
         activityLog,
         notifications,
         chatHistory,
+        companyWatchlist,
       }),
-    // Each individual value is a dep so the memo invalidates only on real changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       profile,
@@ -288,6 +299,7 @@ export function useUserContext({
       activityLog,
       notifications,
       chatHistory,
+      companyWatchlist,
     ]
   );
 }
