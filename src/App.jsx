@@ -7102,6 +7102,20 @@ function PackageView({ item, resumes }) {
   );
 }
 
+function MissingSkillsBadges({ skills }) {
+  if (!skills?.length) return null;
+  const show = skills.slice(0, 3);
+  const extra = skills.length - show.length;
+  const pill = { background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" };
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 11, color: C.red, fontWeight: 700, flexShrink: 0 }}>Missing Skills:</span>
+      {show.map(s => <span key={s} style={pill}>{s}</span>)}
+      {extra > 0 && <span style={pill}>+{extra}</span>}
+    </div>
+  );
+}
+
 function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -7126,13 +7140,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
               {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
-              {item.missing_skills?.length > 0 && (
-                <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, color: C.red, fontWeight: 700 }}>Missing:</span>
-                  {item.missing_skills.slice(0, 3).map(s => <Badge key={s} color={C.red}>{s}</Badge>)}
-                  {item.missing_skills.length > 3 && <span style={{ fontSize: 11, color: C.red }}>+{item.missing_skills.length - 3}</span>}
-                </div>
-              )}
+              <MissingSkillsBadges skills={item.missing_skills} />
             </div>
           )}
         </div>
@@ -7326,13 +7334,7 @@ Company: ${item.company}`, 8000);
                       {job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}
                       {(job.salaryMin || job.salaryMax) && <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>}
                       {job.saved_at && <span style={{ fontSize: 12, color: C.textMuted }}>Saved {fmtDate(job.saved_at)}</span>}
-                      {readyEntry?.missing_skills?.length > 0 && (
-                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 11, color: C.red, fontWeight: 700 }}>Missing:</span>
-                          {readyEntry.missing_skills.slice(0, 3).map(s => <Badge key={s} color={C.red}>{s}</Badge>)}
-                          {readyEntry.missing_skills.length > 3 && <span style={{ fontSize: 11, color: C.red }}>+{readyEntry.missing_skills.length - 3}</span>}
-                        </div>
-                      )}
+                      <MissingSkillsBadges skills={readyEntry?.missing_skills} />
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
