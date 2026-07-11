@@ -7102,17 +7102,34 @@ function PackageView({ item, resumes }) {
   );
 }
 
+function extractSkillName(raw) {
+  if (!raw || typeof raw !== "string") return raw;
+  let s = raw.trim();
+  s = s.replace(/\s*\([^)]*\)/g, "").trim();
+  s = s.replace(/\.{2,}$/, "").trim();
+  s = s.split(/\s*\/\s*/)[0].trim();
+  const usingIdx = s.search(/\busing\s+/i);
+  if (usingIdx >= 0) s = s.slice(usingIdx).replace(/^using\s+/i, "").trim();
+  const withMatch = s.match(/\bwith\s+([A-Z]\S+(?:\s+[A-Z]\S+)?)/);
+  if (withMatch) s = withMatch[1].trim();
+  if (/\band\b.*\b(experience|knowledge|integration|development)\b/i.test(s)) s = s.split(/\s+and\s+/i)[0].trim();
+  s = s.replace(/\s+(experience|knowledge|development|integration|expertise|background|skills?|proficiency|familiarity|domain|language|environment|framework|stack)(\s.*)?$/i, "").trim();
+  const words = s.split(/\s+/);
+  if (words.length > 3) s = words.slice(0, 2).join(" ");
+  return s || raw.split(/\s+/)[0];
+}
+
 function MissingSkillsBadges({ skills }) {
   if (!skills?.length) return null;
-  const show = skills.slice(0, 3);
-  const extra = skills.length - show.length;
-  const pill = { background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30`, borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 };
+  const cleaned = skills.map(extractSkillName).filter(Boolean);
+  const show = cleaned.slice(0, 3);
+  const extra = cleaned.length - show.length;
+  const text = show.join(" • ") + (extra > 0 ? ` • +${extra}` : "");
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
-      <span style={{ fontSize: 11, color: C.red, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>Missing Skills:</span>
-      {show.map(s => <span key={s} style={pill}>{s}</span>)}
-      {extra > 0 && <span style={pill}>+{extra}</span>}
-    </div>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: `${C.red}12`, border: `1px solid ${C.red}25`, borderRadius: 6, padding: "3px 10px", fontSize: 11, color: C.red, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
+      <span style={{ fontWeight: 700, flexShrink: 0 }}>Missing Skills:</span>
+      <span style={{ fontWeight: 500 }}>{text}</span>
+    </span>
   );
 }
 
