@@ -6272,10 +6272,10 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
 }
 
 // ─── TRACKER PAGE ──────────────────────────────────────────
-const STATUSES = ["Saved","Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Withdrawn","Ghosted"];
-const SCOLOR = { Saved: C.textMuted, Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: "#9333EA", Ghosted: C.textMuted };
+const STATUSES = ["Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Withdrawn","Ghosted"];
+const SCOLOR = { Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: "#9333EA", Ghosted: C.textMuted };
 
-const STATUS_LABEL_KEY = { Saved: "statusSaved", Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
+const STATUS_LABEL_KEY = { Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
 
 function TrackerPage({ applications, deleteApplication, saveApplication, resumes }) {
   const { t } = useI18n();
@@ -6937,11 +6937,182 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 }
 
 // ─── SAVED JOBS ────────────────────────────────────────────
-function SmartApplyQueueCard({ item, onApply, onSkip, onRetry, applying, retrying, resumes, justApplied }) {
+function SwipeToApply({ onApply, applying, justApplied }) {
+  const [offset, setOffset] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const startX = useRef(null);
+  const THRESHOLD = 80;
+  const MAX = 140;
+
+  const onTouchStart = (e) => {
+    if (justApplied || applying) return;
+    startX.current = e.touches[0].clientX;
+    setSwiping(true);
+  };
+  const onTouchMove = (e) => {
+    if (startX.current == null) return;
+    const delta = Math.max(0, Math.min(MAX, e.touches[0].clientX - startX.current));
+    setOffset(delta);
+  };
+  const onTouchEnd = () => {
+    if (offset >= THRESHOLD) { setOffset(MAX); onApply(); }
+    else setOffset(0);
+    startX.current = null;
+    setSwiping(false);
+  };
+
+  if (justApplied) {
+    return <div style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, textAlign: "center", minWidth: 120 }}>✓ Applied</div>;
+  }
+  const progress = Math.min(1, offset / THRESHOLD);
+  return (
+    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: C.green, height: 40, minWidth: 140, userSelect: "none", touchAction: "pan-y", cursor: "pointer" }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>✓ Applied</div>
+      <div style={{ position: "absolute", left: offset, top: 0, bottom: 0, width: "100%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, color: C.text, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.12)", transition: swiping ? "none" : "left 0.2s ease" }}>
+        {applying ? "Applying…" : "Swipe to Apply →"}
+      </div>
+    </div>
+  );
+}
+
+function PackageView({ item, resumes }) {
+  const { t } = useI18n();
+  const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
+  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied") }[item.status] || item.status;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: C.purple, letterSpacing: 1, marginBottom: 8 }}>APPLICATION PACKAGE</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
+        {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Resume: {selectedResumeName}</div>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Badge color={C.green}>{statusLabel}</Badge>
+          {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
+          {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
+        </div>
+      </div>
+      {item.missing_skills?.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
+        </div>
+      )}
+      {item.cover_letter && (
+        <div>
+          <Label>{t("savedJobs.coverLetter")}</Label>
+          <ContentDisplay content={item.cover_letter} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <CopyBtn text={item.cover_letter} label="Copy" />
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>Download PDF</Btn>
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>Download DOCX</Btn>
+          </div>
+        </div>
+      )}
+      {item.tailored_resume && (
+        <div>
+          <Label>{t("savedJobs.tailoredResume")}</Label>
+          <ContentDisplay content={item.tailored_resume} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <CopyBtn text={item.tailored_resume} label="Copy" />
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>Download PDF</Btn>
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>Download DOCX</Btn>
+          </div>
+        </div>
+      )}
+      {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /></div>}
+      {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /></div>}
+      {item.application_questions?.length > 0 && (
+        <div>
+          <Label>{t("savedJobs.likelyQuestions")}</Label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+            {item.application_questions.map((q, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, background: C.bgSoft, borderRadius: 8, padding: "8px 12px" }}>{q}</div>)}
+          </div>
+        </div>
+      )}
+      {item.salary_insight && (() => {
+        const si = item.salary_insight;
+        const r = si.marketRange || {};
+        const fmt = n => n ? `$${Math.round(n / 1000)}K` : null;
+        const low = fmt(r.low); const med = fmt(r.median); const high = fmt(r.high);
+        return (
+          <div>
+            <Label>💰 Salary Insight</Label>
+            <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {(low || med || high) && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>MARKET RANGE</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[["Low", low, C.yellow], ["Median", med, C.green], ["High", high, C.blue]].filter(([, v]) => v).map(([label, val, color]) => (
+                      <div key={label} style={{ flex: 1, background: `${color}12`, border: `1px solid ${color}30`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
+                        <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {si.userPositioning && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>YOUR POSITIONING</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.userPositioning}</div></div>}
+              {si.negotiationLeverage && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>NEGOTIATION LEVERAGE</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.negotiationLeverage}</div></div>}
+              {si.benchmarks?.length > 0 && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>BENCHMARKS</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{si.benchmarks.map((b, i) => <Badge key={i} color={C.textMuted}>{b}</Badge>)}</div></div>}
+            </div>
+          </div>
+        );
+      })()}
+      {item.company_insight && (() => {
+        const ci = item.company_insight;
+        const trendColor = ci.hiringTrend === "growing" ? C.green : ci.hiringTrend === "shrinking" ? C.red : C.yellow;
+        const trendLabel = ci.hiringTrend === "growing" ? "↑ Growing" : ci.hiringTrend === "shrinking" ? "↓ Shrinking" : "→ Stable";
+        return (
+          <div>
+            <Label>🏢 Company Insight</Label>
+            <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {ci.hiringTrend && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>HIRING TREND</div><Badge color={trendColor}>{trendLabel}</Badge></div>}
+              {ci.culture && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>CULTURE</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.culture}</div></div>}
+              {ci.recentNews && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>RECENT NEWS</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.recentNews}</div></div>}
+              {ci.greenFlags?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>GREEN FLAGS</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {ci.greenFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
+                  </div>
+                </div>
+              )}
+              {ci.redFlags?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>RED FLAGS</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {ci.redFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
+                  </div>
+                </div>
+              )}
+              {ci.talkingPoints?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>INTERVIEW TALKING POINTS</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {ci.talkingPoints.map((p, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span></div>)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1024px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued"), failed: t("savedJobs.statusFailed") }[item.status] || item.status;
-  const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -6952,25 +7123,28 @@ function SmartApplyQueueCard({ item, onApply, onSkip, onRetry, applying, retryin
           </div>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{item.company}</div>
           {item.status === "ready" && (
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
               {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
+              {item.missing_skills?.length > 0 && <Badge color={C.red}>Missing: {item.missing_skills.slice(0, 2).join(", ")}{item.missing_skills.length > 2 ? ` +${item.missing_skills.length - 2}` : ""}</Badge>}
             </div>
           )}
         </div>
         {(item.status === "ready" || justApplied) && (
-          <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
             {!justApplied && (
               <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
             )}
             {!justApplied && (
-              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
+              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>Remove</Btn>
             )}
-            {justApplied ? (
+            {isMobile ? (
+              <SwipeToApply onApply={() => onApply(item)} applying={applying} justApplied={justApplied} />
+            ) : justApplied ? (
               <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
             ) : (
               <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>
-                {applying ? "Applying…" : "Mark as Applied"}
+                {applying ? "Applying…" : "Apply"}
               </Btn>
             )}
           </div>
@@ -6982,198 +7156,36 @@ function SmartApplyQueueCard({ item, onApply, onSkip, onRetry, applying, retryin
           <div style={{ fontSize: 13, color: C.red, marginBottom: 8 }}>{t("savedJobs.generationFailed")}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
-            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onSkip(item)}>{t("savedJobs.skip")}</Btn>
+            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>Remove</Btn>
           </div>
         </div>
       )}
       {expanded && item.status === "ready" && (
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Application Package header — organizes all assets for this application */}
-          <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: C.purple, letterSpacing: 1, marginBottom: 8 }}>APPLICATION PACKAGE</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
-            {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Resume: {selectedResumeName}</div>}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Badge color={C.green}>{statusLabel}</Badge>
-              {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
-              {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
-            </div>
-          </div>
-
-          {item.missing_skills?.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
-            </div>
-          )}
-          {item.cover_letter && (
-            <div>
-              <Label>{t("savedJobs.coverLetter")}</Label>
-              <ContentDisplay content={item.cover_letter} />
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <CopyBtn text={item.cover_letter} label="Copy" />
-                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>Download PDF</Btn>
-                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>Download DOCX</Btn>
-              </div>
-            </div>
-          )}
-          {item.tailored_resume && (
-            <div>
-              <Label>{t("savedJobs.tailoredResume")}</Label>
-              <ContentDisplay content={item.tailored_resume} />
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <CopyBtn text={item.tailored_resume} label="Copy" />
-                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>Download PDF</Btn>
-                <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>Download DOCX</Btn>
-              </div>
-            </div>
-          )}
-          {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /></div>}
-          {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /></div>}
-          {item.application_questions?.length > 0 && (
-            <div>
-              <Label>{t("savedJobs.likelyQuestions")}</Label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                {item.application_questions.map((q, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, background: C.bgSoft, borderRadius: 8, padding: "8px 12px" }}>{q}</div>)}
-              </div>
-            </div>
-          )}
-
-          {item.salary_insight && (() => {
-            const si = item.salary_insight;
-            const r = si.marketRange || {};
-            const fmt = n => n ? `$${Math.round(n / 1000)}K` : null;
-            const low = fmt(r.low); const med = fmt(r.median); const high = fmt(r.high);
-            return (
-              <div>
-                <Label>💰 Salary Insight</Label>
-                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-                  {(low || med || high) && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>MARKET RANGE</div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {[["Low", low, C.yellow], ["Median", med, C.green], ["High", C.blue === C.blue ? high : high, C.blue]].filter(([, v]) => v).map(([label, val, color]) => (
-                          <div key={label} style={{ flex: 1, background: `${color}12`, border: `1px solid ${color}30`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
-                            <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
-                            <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, marginTop: 2 }}>{label}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {si.userPositioning && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>YOUR POSITIONING</div>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.userPositioning}</div>
-                    </div>
-                  )}
-                  {si.negotiationLeverage && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>NEGOTIATION LEVERAGE</div>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.negotiationLeverage}</div>
-                    </div>
-                  )}
-                  {si.benchmarks?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>BENCHMARKS</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {si.benchmarks.map((b, i) => <Badge key={i} color={C.textMuted}>{b}</Badge>)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {item.company_insight && (() => {
-            const ci = item.company_insight;
-            const trendColor = ci.hiringTrend === "growing" ? C.green : ci.hiringTrend === "shrinking" ? C.red : C.yellow;
-            const trendLabel = ci.hiringTrend === "growing" ? "↑ Growing" : ci.hiringTrend === "shrinking" ? "↓ Shrinking" : "→ Stable";
-            return (
-              <div>
-                <Label>🏢 Company Insight</Label>
-                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-                  {ci.hiringTrend && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>HIRING TREND</div>
-                      <Badge color={trendColor}>{trendLabel}</Badge>
-                    </div>
-                  )}
-                  {ci.culture && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>CULTURE</div>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.culture}</div>
-                    </div>
-                  )}
-                  {ci.recentNews && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>RECENT NEWS</div>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.recentNews}</div>
-                    </div>
-                  )}
-                  {ci.greenFlags?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>GREEN FLAGS</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {ci.greenFlags.map((f, i) => (
-                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                            <span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span>
-                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {ci.redFlags?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>RED FLAGS</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {ci.redFlags.map((f, i) => (
-                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                            <span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span>
-                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {ci.talkingPoints?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>INTERVIEW TALKING POINTS</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {ci.talkingPoints.map((p, i) => (
-                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                            <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span>
-                            <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+          <PackageView item={item} resumes={resumes} />
         </div>
       )}
     </Card>
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId, enqueue }) {
   const { t } = useI18n();
-  const remove = id => { setSavedJobs(p => p.filter(j => j.job_id !== id)); purgeQueueByJobId?.(id); };
-  const addTracker = async (job) => {
-    const newApp = { id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl };
-    try { await insertApplicationRow(profile.id, newApp); } catch (e) { console.error("[SavedJobs] addTracker DB insert failed:", e.message); }
-    setApplications(p => [newApp, ...p]);
-  };
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
+  const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
+
   const [applyingId, setApplyingId] = useState(null);
   const [appliedId, setAppliedId] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
+  const [enqueuingId, setEnqueuingId] = useState(null);
+  const [expandedJobs, setExpandedJobs] = useState(new Set());
   const [queueError, setQueueError] = useState("");
+
+  // Per-job queue status helpers
+  const getActiveEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status !== "applied" && q.status !== "skipped");
+  const getAppliedEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status === "applied");
+  const getReadyEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status === "ready");
+
   const visibleQueue = queue.filter(q => (q.status !== "applied" && q.status !== "skipped") || q.id === appliedId);
 
   const handleMarkApplied = async (item) => {
@@ -7182,14 +7194,11 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
     try {
       const appId = uid();
       const newApp = { id: appId, company: item.company, jobTitle: item.job_title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", resume: item.tailored_resume || "", coverLetter: item.cover_letter || "" };
-      // Insert directly and wait for it to land before pointing smart_apply_queue's
-      // FK at it — setApplications alone would sync in the background and could
-      // lose the race, causing a foreign-key violation on the next update.
       await insertApplicationRow(profile.id, newApp);
       setApplications(p => [newApp, ...p]);
       await markApplied(item.id, appId);
+      setSavedJobs(p => p.filter(j => j.job_id !== item.job_id));
       onQueueChange?.();
-      // Show "✓ Applied" state briefly before the card disappears from the queue.
       setAppliedId(item.id);
       setTimeout(() => setAppliedId(null), 1500);
     } catch {
@@ -7199,10 +7208,13 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
     }
   };
 
-  const handleSkip = async (item) => {
+  const handleRemoveFromQueue = async (item) => {
     setQueueError("");
-    try { await skip(item.id); onQueueChange?.(); }
-    catch { setQueueError(t("savedJobs.skipError")); }
+    try {
+      await purgeQueueByJobId?.(item.job_id);
+      setSavedJobs(p => p.filter(j => j.job_id !== item.job_id));
+      onQueueChange?.();
+    } catch { setQueueError("Failed to remove. Please try again."); }
   };
 
   const handleRetry = async (item) => {
@@ -7213,16 +7225,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
     setQueueError("");
     try {
       console.log(`[SmartApply] 🔄 RETRY — "${item.job_title}" at ${item.company} (queue_id: ${item.id})`);
-
-      console.log(`[SmartApply] ⏳ [1/6] Resetting to queued (queue_id: ${item.id})`);
       await resetToQueued(item.id);
-      console.log(`[SmartApply] ✅ [1/6] Status reset to queued`);
-
-      console.log(`[SmartApply] ⏳ [2/6] Building prompt (resume: ${resumeText.length} chars)`);
-      // Note: job description is not stored in smart_apply_queue; retry uses title + company only
-      console.log(`[SmartApply] ✅ [2/6] Prompt ready`);
-
-      console.log(`[SmartApply] ⏳ [3/6] Calling Claude API (max 8000 tokens)`);
       const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
 {"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
 
@@ -7232,42 +7235,166 @@ ${resumeText}
 JOB:
 Title: ${item.job_title}
 Company: ${item.company}`, 8000);
-      console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
-
-      console.log(`[SmartApply] ⏳ [4/6] Parsing JSON`);
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
-
-      console.log(`[SmartApply] ⏳ [5/6] Validating fields`);
       const trLen = (result.tailoredResume || "").trim().length;
       const clLen = (result.coverLetter || "").trim().length;
-      console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c`);
       if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-
-      console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${item.id})`);
       await markReady(item.id, result);
-      console.log(`[SmartApply] ✅ [6/6] Retry complete — status: ready ✓`);
+      console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
     } catch (e) {
       console.error(`[SmartApply] ❌ RETRY failed for "${item.job_title}":`, e?.code, e?.message, e);
       await markFailed(item.id);
       setQueueError(t("savedJobs.retryError"));
     } finally {
       setRetryingId(null);
-      onQueueChange?.(); // sync Dashboard + SavedJobsPage regardless of success/failure
+      onQueueChange?.();
     }
+  };
+
+  const smartApplyFromSaved = async (job) => {
+    if (!profile?.id || !enqueue) { setQueueError("Sign in to use Smart Apply."); return; }
+    const defaultResume = (resumes || []).find(r => r.is_default) || (resumes || [])[0];
+    const resumeText = defaultResume?.content || (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("cp_jobs_resume") || "" : "");
+    if (!resumeText.trim()) { setQueueError(t("savedJobs.retryNoResume")); return; }
+    setEnqueuingId(job.job_id);
+    setQueueError("");
+    let queued;
+    try {
+      console.log(`[SmartApply] ⏳ [1/6] Enqueueing saved job "${job.title}" at ${job.company}`);
+      queued = await enqueue(profile.id, job, defaultResume?.id || null);
+      if (!queued) {
+        console.log(`[SmartApply] ⏭️ [1/6] Already queued/ready — skipping generation`);
+        onQueueChange?.();
+        return;
+      }
+      console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}`);
+
+      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
+
+RESUME:
+${resumeText}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}
+Description: ${(job.description || "").slice(0, 1200)}`, 8000);
+
+      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+      const result = JSON.parse(cleanRaw);
+      const trLen = (result.tailoredResume || "").trim().length;
+      const clLen = (result.coverLetter || "").trim().length;
+      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+      await markReady(queued.id, result);
+      console.log(`[SmartApply] ✅ [6/6] Package ready for "${job.title}"`);
+    } catch (e) {
+      console.error(`[SmartApply] ❌ Failed for saved job "${job.title}":`, e?.code, e?.message, e);
+      if (queued) await markFailed(queued.id);
+      setQueueError(t("jobSearch.smartApplyFailed") || "Smart Apply failed. Please try again.");
+    } finally {
+      setEnqueuingId(null);
+      onQueueChange?.();
+    }
+  };
+
+  const removeSavedJob = (jobId) => {
+    setSavedJobs(p => p.filter(j => j.job_id !== jobId));
+    purgeQueueByJobId?.(jobId);
+  };
+
+  const toggleJobExpanded = (jobId) => {
+    setExpandedJobs(prev => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId); else next.add(jobId);
+      return next;
+    });
   };
 
   return (
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("savedJobs.heading")}</h1>
-      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("savedJobs.subtitleCount").replace("{n}", savedJobs.length)}</p>
+      <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 28 }}>{t("savedJobs.subtitleCount").replace("{n}", savedJobs.length)}</p>
 
+      {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 16 }}>{queueError}</div>}
+
+      {/* ── Section 1: Your Saved Jobs ─────────────────────────── */}
+      <div style={{ marginBottom: 36 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>Your Saved Jobs</div>
+        {savedJobs.length === 0 && (
+          <Card style={{ textAlign: "center", padding: 64 }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>♡</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.emptyTitle")}</div>
+            <div style={{ fontSize: 14, color: C.textMuted }}>{t("savedJobs.emptyBody")}</div>
+          </Card>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {savedJobs.map(job => {
+            const activeEntry = getActiveEntry(job);
+            const appliedEntry = getAppliedEntry(job);
+            const readyEntry = getReadyEntry(job);
+            const isQueued = !!activeEntry;
+            const isApplied = !!appliedEntry;
+            const isExpanded = expandedJobs.has(job.job_id);
+
+            // Status badge
+            let statusColor = C.textMuted;
+            let statusLabel = "Saved";
+            if (isApplied) { statusColor = C.blue; statusLabel = "Applied"; }
+            else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = "AI Package Ready"; }
+            else if (activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = "In Queue"; }
+            else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = "Generation Failed"; }
+
+            return (
+              <Card key={job.job_id}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{job.title}</div>
+                      <Badge color={statusColor}>{statusLabel}</Badge>
+                    </div>
+                    <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 6 }}>{job.company}{job.location ? ` · ${job.location}` : ""}</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      {job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}
+                      {(job.salaryMin || job.salaryMax) && <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>}
+                      {job.saved_at && <span style={{ fontSize: 12, color: C.textMuted }}>Saved {fmtDate(job.saved_at)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    {readyEntry && (
+                      <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleJobExpanded(job.job_id)}>
+                        {isExpanded ? "Hide Details" : "View Details"}
+                      </Btn>
+                    )}
+                    {isQueued ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: `${C.purple}12`, border: `1px solid ${C.purple}30`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.purple, fontWeight: 600 }}>
+                        ✓ Already in Smart Apply Queue
+                      </div>
+                    ) : !isApplied && (
+                      <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={enqueuingId === job.job_id} onClick={() => smartApplyFromSaved(job)}>
+                        {enqueuingId === job.job_id ? "Preparing…" : "Add to Smart Apply Queue"}
+                      </Btn>
+                    )}
+                    <Btn variant="danger" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
+                  </div>
+                </div>
+                {isExpanded && readyEntry && (
+                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+                    <PackageView item={readyEntry} resumes={resumes} />
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Section 2: Smart Apply Queue ───────────────────────── */}
       {(visibleQueue.length > 0 || queueLoading) && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("savedJobs.smartApplyQueue")}</div>
-          {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 12 }}>{queueError}</div>}
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("savedJobs.smartApplyQueue")}</div>
           {queueLoading && visibleQueue.length === 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
@@ -7276,32 +7403,11 @@ Company: ${item.company}`, 8000);
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
-              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onSkip={handleSkip} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} />
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} />
             ))}
           </div>
         </div>
       )}
-
-      {savedJobs.length === 0 && <Card style={{ textAlign: "center", padding: 64 }}><div style={{ fontSize: 48, marginBottom: 16 }}>♡</div><div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.emptyTitle")}</div><div style={{ fontSize: 14, color: C.textMuted }}>{t("savedJobs.emptyBody")}</div></Card>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {savedJobs.map(job => (
-          <Card key={job.job_id}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 4 }}>{job.title}</div>
-                <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{job.company} · {job.location}</div>
-                <div style={{ fontSize: 14, color: C.green, fontWeight: 600, marginBottom: 8 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</div>
-                <div style={{ display: "flex", gap: 6 }}>{job.remote && <Badge color={C.green}>🌐 {t("savedJobs.remote")}</Badge>}{job.employmentType && <Badge color={C.textMuted}>{job.employmentType}</Badge>}{job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}</div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>{t("savedJobs.applyNow")}</a>
-                <Btn variant="secondary" onClick={() => addTracker(job)}>{t("savedJobs.track")}</Btn>
-                <Btn variant="danger" onClick={() => remove(job.job_id)}>{t("savedJobs.remove")}</Btn>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
@@ -8475,7 +8581,7 @@ export default function App() {
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
