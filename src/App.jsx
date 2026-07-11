@@ -7126,7 +7126,13 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
               {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
-              {item.missing_skills?.length > 0 && <Badge color={C.red}>Missing: {item.missing_skills.slice(0, 2).join(", ")}{item.missing_skills.length > 2 ? ` +${item.missing_skills.length - 2}` : ""}</Badge>}
+              {item.missing_skills?.length > 0 && (
+                <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: C.red, fontWeight: 700 }}>Missing:</span>
+                  {item.missing_skills.slice(0, 3).map(s => <Badge key={s} color={C.red}>{s}</Badge>)}
+                  {item.missing_skills.length > 3 && <span style={{ fontSize: 11, color: C.red }}>+{item.missing_skills.length - 3}</span>}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7177,9 +7183,15 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
   const [applyingId, setApplyingId] = useState(null);
   const [appliedId, setAppliedId] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
-  const [enqueuingId, setEnqueuingId] = useState(null);
   const [expandedJobs, setExpandedJobs] = useState(new Set());
   const [queueError, setQueueError] = useState("");
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1024px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   // Per-job queue status helpers
   const getActiveEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status !== "applied" && q.status !== "skipped");
@@ -7197,6 +7209,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
       await insertApplicationRow(profile.id, newApp);
       setApplications(p => [newApp, ...p]);
       await markApplied(item.id, appId);
+      await purgeQueueByJobId?.(item.job_id);
       setSavedJobs(p => p.filter(j => j.job_id !== item.job_id));
       onQueueChange?.();
       setAppliedId(item.id);
@@ -7249,53 +7262,6 @@ Company: ${item.company}`, 8000);
       setQueueError(t("savedJobs.retryError"));
     } finally {
       setRetryingId(null);
-      onQueueChange?.();
-    }
-  };
-
-  const smartApplyFromSaved = async (job) => {
-    if (!profile?.id || !enqueue) { setQueueError("Sign in to use Smart Apply."); return; }
-    const defaultResume = (resumes || []).find(r => r.is_default) || (resumes || [])[0];
-    const resumeText = defaultResume?.content || (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("cp_jobs_resume") || "" : "");
-    if (!resumeText.trim()) { setQueueError(t("savedJobs.retryNoResume")); return; }
-    setEnqueuingId(job.job_id);
-    setQueueError("");
-    let queued;
-    try {
-      console.log(`[SmartApply] ⏳ [1/6] Enqueueing saved job "${job.title}" at ${job.company}`);
-      queued = await enqueue(profile.id, job, defaultResume?.id || null);
-      if (!queued) {
-        console.log(`[SmartApply] ⏭️ [1/6] Already queued/ready — skipping generation`);
-        onQueueChange?.();
-        return;
-      }
-      console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}`);
-
-      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
-{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
-
-RESUME:
-${resumeText}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${(job.description || "").slice(0, 1200)}`, 8000);
-
-      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
-      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-      const result = JSON.parse(cleanRaw);
-      const trLen = (result.tailoredResume || "").trim().length;
-      const clLen = (result.coverLetter || "").trim().length;
-      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      await markReady(queued.id, result);
-      console.log(`[SmartApply] ✅ [6/6] Package ready for "${job.title}"`);
-    } catch (e) {
-      console.error(`[SmartApply] ❌ Failed for saved job "${job.title}":`, e?.code, e?.message, e);
-      if (queued) await markFailed(queued.id);
-      setQueueError(t("jobSearch.smartApplyFailed") || "Smart Apply failed. Please try again.");
-    } finally {
-      setEnqueuingId(null);
       onQueueChange?.();
     }
   };
@@ -7360,24 +7326,31 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       {job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}
                       {(job.salaryMin || job.salaryMax) && <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>}
                       {job.saved_at && <span style={{ fontSize: 12, color: C.textMuted }}>Saved {fmtDate(job.saved_at)}</span>}
+                      {readyEntry?.missing_skills?.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, color: C.red, fontWeight: 700 }}>Missing:</span>
+                          {readyEntry.missing_skills.slice(0, 3).map(s => <Badge key={s} color={C.red}>{s}</Badge>)}
+                          {readyEntry.missing_skills.length > 3 && <span style={{ fontSize: 11, color: C.red }}>+{readyEntry.missing_skills.length - 3}</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     {readyEntry && (
                       <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleJobExpanded(job.job_id)}>
                         {isExpanded ? "Hide Details" : "View Details"}
                       </Btn>
                     )}
-                    {isQueued ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: `${C.purple}12`, border: `1px solid ${C.purple}30`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.purple, fontWeight: 600 }}>
-                        ✓ Already in Smart Apply Queue
-                      </div>
-                    ) : !isApplied && (
-                      <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={enqueuingId === job.job_id} onClick={() => smartApplyFromSaved(job)}>
-                        {enqueuingId === job.job_id ? "Preparing…" : "Add to Smart Apply Queue"}
-                      </Btn>
-                    )}
                     <Btn variant="danger" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
+                    {readyEntry && (isMobile ? (
+                      <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} />
+                    ) : appliedId === readyEntry.id ? (
+                      <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
+                    ) : (
+                      <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
+                        {applyingId === readyEntry.id ? "Applying…" : "Apply"}
+                      </Btn>
+                    ))}
                   </div>
                 </div>
                 {isExpanded && readyEntry && (
