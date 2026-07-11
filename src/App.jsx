@@ -7105,18 +7105,35 @@ function PackageView({ item, resumes }) {
 function extractSkillName(raw) {
   if (!raw || typeof raw !== "string") return raw;
   let s = raw.trim();
-  s = s.replace(/\s*\([^)]*\)/g, "").trim();
-  s = s.replace(/\.{2,}$/, "").trim();
-  s = s.split(/\s*\/\s*/)[0].trim();
+  // Remove parenthetical phrases: "Java (primary language)" → "Java"
+  s = s.replace(/\s*\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  // Remove trailing punctuation
+  s = s.replace(/[.,;:]+$/, "").trim();
+  // Split on SPACED slash only — preserves "CI/CD", splits "Java / Spring Boot"
+  s = s.split(/\s+\/\s+/)[0].trim();
+  // "...using X" → take X: "development using C#" → "C#"
   const usingIdx = s.search(/\busing\s+/i);
   if (usingIdx >= 0) s = s.slice(usingIdx).replace(/^using\s+/i, "").trim();
+  // "...with [Capital word(s)]" → take capital phrase: "Linux with Yocto Project" → "Yocto Project"
   const withMatch = s.match(/\bwith\s+([A-Z]\S+(?:\s+[A-Z]\S+)?)/);
   if (withMatch) s = withMatch[1].trim();
-  if (/\band\b.*\b(experience|knowledge|integration|development)\b/i.test(s)) s = s.split(/\s+and\s+/i)[0].trim();
-  s = s.replace(/\s+(experience|knowledge|development|integration|expertise|background|skills?|proficiency|familiarity|domain|language|environment|framework|stack)(\s.*)?$/i, "").trim();
+  // "A and B [descriptor]" → take A: "Firmware and hardware integration" → "Firmware"
+  if (/\band\b.*\b(experience|knowledge|integration|development|hardware|software|skills?)\b/i.test(s)) {
+    s = s.split(/\s+and\s+/i)[0].trim();
+  }
+  // Strip one or more trailing generic descriptor words in one pass
+  s = s.replace(
+    /(\s+(experience|knowledge|expertise|background|proficiency|familiarity|domain|tooling|engineering|programming|coding|methodology|methodologies|project|architecture|principles?|patterns?|practices?|concepts?|technologies?|language|pipelines?|frameworks?|stack|infrastructure|platform|environment|analysis|integration|development))+\s*$/gi,
+    ""
+  ).trim();
+  // Strip leading filler/context modifiers: "Production monitoring" → "monitoring"
+  s = s.replace(/^(production|enterprise|embedded|server|client|advanced|basic|strong|deep|solid)\s+/i, "").trim();
+  // Capitalize first letter
+  if (s) s = s.charAt(0).toUpperCase() + s.slice(1);
+  // Limit to 2 words max
   const words = s.split(/\s+/);
-  if (words.length > 3) s = words.slice(0, 2).join(" ");
-  return s || raw.split(/\s+/)[0];
+  if (words.length > 2) s = words.slice(0, 2).join(" ");
+  return s || raw.trim().split(/\s+/).slice(0, 2).join(" ");
 }
 
 function MissingSkillsBadges({ skills }) {
