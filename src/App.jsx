@@ -5306,6 +5306,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
+  const [analyzeStatus, setAnalyzeStatus] = useState(null); // { state: 'scoring'|'complete', done, total }
+  const analyzeRunRef = useRef(0);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
@@ -5601,8 +5603,11 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
   // Auto-analyze all jobs silently using the same engine as manual AI Match
   const autoAnalyzeAll = async (newJobs) => {
     if (!resume.trim()) return;
+    const runId = ++analyzeRunRef.current;
+    setAnalyzeStatus({ state: "scoring", done: 0, total: newJobs.length });
     const ctx = userContext.getContextString({ identity: true });
     for (const job of newJobs) {
+      if (analyzeRunRef.current !== runId) return;
       try {
         const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Analyze resume-job match. Return ONLY valid JSON, no markdown:
 {"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
@@ -5615,9 +5620,15 @@ Title: ${job.title}
 Company: ${job.company}
 Description: ${(job.description || "").slice(0, 400)}
 Skills required: ${(job.skills || []).join(", ")}`, 600);
+        if (analyzeRunRef.current !== runId) return;
         setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
       } catch { /* silent fail per job */ }
+      if (analyzeRunRef.current !== runId) return;
+      setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: prev.done + 1 } : prev);
     }
+    if (analyzeRunRef.current !== runId) return;
+    setAnalyzeStatus({ state: "complete", total: newJobs.length });
+    setTimeout(() => { if (analyzeRunRef.current === runId) setAnalyzeStatus(null); }, 3000);
   };
 
 
@@ -5840,6 +5851,11 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                 <option value="date">Date ↓</option>
               </select>
               {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? "All" : `Dupes (${dupeSet.size})`}</Btn>}
+              {analyzeStatus && (
+                <span style={{ fontSize: 12, color: analyzeStatus.state === "complete" ? C.green : C.textMuted, fontWeight: 500, display: "flex", alignItems: "center", gap: 4, userSelect: "none" }}>
+                  {analyzeStatus.state === "scoring" ? `🤖 AI Scoring ${analyzeStatus.done}/${analyzeStatus.total}` : `✅ AI Analysis Complete`}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : isTablet ? 10 : 14 }}>
