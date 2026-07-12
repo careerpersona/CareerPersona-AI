@@ -5617,6 +5617,7 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
 
   // Score all unscored jobs beyond the initial auto-match of first 5
   const scoreAll = async () => {
+    console.log("[ScoreAll] clicked — resume.length:", resume.length, "resume.trim().length:", resume.trim().length, "scoringAll:", scoringAll, "jobs:", jobs.length, "matchResults keys:", Object.keys(matchResults).length, "unscored:", jobs.filter(j => !matchResults[j.id]).length);
     if (!resume.trim() || scoringAll) return;
     const unscored = jobs.filter(j => !matchResults[j.id]);
     if (!unscored.length) return;
