@@ -5305,13 +5305,13 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [showAdvFilters, setShowAdvFilters] = useState(false);
   const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "relevance");
   const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
-  const [recentSearches, setRecentSearches] = useLocalState("cp_recent_searches", []);
-  const [savedSearches, setSavedSearches] = useLocalState("cp_saved_searches", []);
-  const [jobAlerts, setJobAlerts] = useLocalState("cp_job_alerts", []);
+  const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
+  const [savedSearches, setSavedSearches] = useStorage("cp_saved_searches", []);
+  const [jobAlerts, setJobAlerts] = useStorage("cp_job_alerts", []);
   const [showAlerts, setShowAlerts] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
   const [scoreProgress, setScoreProgress] = useState({ done: 0, total: 0 });
-  const [lastVisit, setLastVisit] = useLocalState("cp_jobs_last_visit", null);
+  const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
