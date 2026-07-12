@@ -2574,9 +2574,12 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                     <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
                       {item.status === "completed" && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                     </div>
-                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4 }}>
-                      <span>{item.category}</span>
-                      <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4 }}>
+                        <span>{item.category}</span>
+                        <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
+                      </div>
+                      {item.task && <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{item.task}</div>}
                     </div>
                   </div>
                 ))}
