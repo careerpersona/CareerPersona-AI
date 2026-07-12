@@ -2169,7 +2169,7 @@ async function buildPlanPayload(ctx) {
 // ─── CAREER PROGRESS PAYLOAD BUILDER ─────────────────────────────────────────
 async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
   const goalLine = careerGoal ? `Career Goal: ${careerGoal}.${careerTimeline ? ` Target Timeline: ${careerTimeline}.` : ""}` : "No career goal set yet.";
-  const raw = await askClaude(`You are CareerPersona AI. Assess this user's career progress against their stated goal. Be honest, specific, and actionable. Return ONLY valid JSON, no markdown:\n{"v":1,"progressPercent":<integer 0-100 based on how far they are toward their career goal given their current data>,"careerHealth":"excellent|good|fair|needs_attention","assessment":"<2-3 sentences: where they are today relative to their goal, what's working>","blockers":[{"issue":"<specific blocker>","priority":"high|medium|low","detail":"<1 sentence on how to address it>"}],"nextMilestone":"<the single most impactful next step they should take>","recommendations":["<actionable tip 1>","<actionable tip 2>","<actionable tip 3>"]}\nUser data: ${ctx}\n${goalLine}`, 900);
+  const raw = await askClaude(`You are CareerPersona AI. Assess this user's career progress against their stated goal. Be honest, specific, and actionable. Return ONLY valid JSON, no markdown:\n{"v":1,"progressPercent":<integer 0-100 based on how far they are toward their career goal given their current data>,"careerHealth":"excellent|good|fair|needs_attention","assessment":"<2-3 sentences: where they are today relative to their goal, what's working>","blockers":[{"issue":"<specific blocker>","priority":"high|medium|low","detail":"<1 sentence on how to address it>"}],"nextMilestone":"<the single most impactful next step they should take>","skills":[{"name":"<skill name relevant to their target role>","level":"advanced|intermediate|beginner","gap":"<one specific sentence on what to improve, or null if already strong>"}]}\nUser data: ${ctx}\n${goalLine}\nProvide 4-6 skills most critical for their target role, ordered by importance.`, 1000);
   let result;
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
@@ -2183,7 +2183,7 @@ async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
     assessment: "Set your career goal in your profile to unlock a personalized AI progress assessment. The more data you add, the more accurate your progress tracking becomes.",
     blockers: [{ issue: "Career goal not defined", priority: "high", detail: "Set your target role, goal, and timeline in your profile to enable AI progress tracking." }],
     nextMilestone: "Complete your career profile with a specific goal and target timeline.",
-    recommendations: ["Define your career goal with a specific target role and timeline.", "Complete your profile to 100% for personalized recommendations.", "Add job applications to let AI track your pipeline health."]
+    skills: []
   };
 }
 
@@ -3353,7 +3353,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
 }
 
 // ─── CAREER PROGRESS PAGE ────────────────────────────────────────────────────
-function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile }) {
+function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile, resumes }) {
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
@@ -3432,6 +3432,19 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
   const atsScores = apps.map(a => Number(a.atsScore) || 0).filter(n => n > 0);
   const bestAts = atsScores.length ? Math.max(...atsScores) : null;
   const profileComplete = profile ? Math.round((["full_name","email_address","phone","location","job_title","years_experience","preferred_job_title","work_type"].filter(f => profile[f]).length / 8) * 100) : 0;
+
+  // Resume Improvements — live data from existing Resume Intelligence module
+  const resumeList = resumes ?? [];
+  const bestResume = resumeList.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
+  const resumeAts = bestResume?.ats_score ?? null;
+  const resumePotential = bestResume?.potential_ats_score ?? (resumeAts != null ? Math.min(resumeAts + 20, 98) : null);
+
+  // Salary Growth — live data from existing Market Intelligence module
+  const salaryRange = salaryData?.results?.salaryRange || salaryData?.results?.marketRange || null;
+  const marketMedian = salaryRange?.median ?? null;
+  const desiredRaw = parseInt((profile?.desired_salary || "").replace(/[^0-9]/g, ""), 10);
+  const desiredSalary = isNaN(desiredRaw) ? null : desiredRaw;
+  const salaryGrowthPct = marketMedian && desiredSalary ? Math.round(((desiredSalary - marketMedian) / marketMedian) * 100) : null;
 
   return (
     <div>
@@ -3585,22 +3598,104 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
             </div>
           </Card>
 
-          {/* Recommendations */}
-          {a.recommendations?.length > 0 && (
-            <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>AI RECOMMENDATIONS</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {a.recommendations.map((rec, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                      <span style={{ color: "#fff", fontSize: 10, fontWeight: 800 }}>{i + 1}</span>
+          {/* Skills Progress */}
+          <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>SKILLS PROGRESS</div>
+            {a.skills?.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {a.skills.map((sk, i) => {
+                  const lvl = { advanced: { label: "Advanced", color: C.green, bg: C.greenLight, pct: 90 }, intermediate: { label: "Intermediate", color: C.blue, bg: C.blueLight, pct: 55 }, beginner: { label: "Beginner", color: C.yellow, bg: C.yellowLight, pct: 25 } }[sk.level] || { label: sk.level, color: C.textMuted, bg: C.bgSoft, pct: 30 };
+                  return (
+                    <div key={i}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{sk.name}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: lvl.color, background: lvl.bg, borderRadius: 20, padding: "2px 10px" }}>{lvl.label}</span>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 3, background: C.border, overflow: "hidden", marginBottom: sk.gap ? 5 : 0 }}>
+                        <div style={{ height: "100%", width: `${lvl.pct}%`, background: lvl.color, borderRadius: 3, transition: "width 0.4s ease" }} />
+                      </div>
+                      {sk.gap && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>{sk.gap}</div>}
                     </div>
-                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{rec}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </Card>
-          )}
+            ) : (
+              <div style={{ fontSize: 13, color: C.textMuted }}>Regenerate to unlock AI skill assessment for your target role.</div>
+            )}
+          </Card>
+
+          {/* Resume Improvements */}
+          <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>RESUME IMPROVEMENTS</div>
+            {resumeAts != null ? (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: C.textMid }}>{bestResume?.name || "Resume"}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: resumeAts >= 80 ? C.green : resumeAts >= 60 ? C.yellow : C.red }}>{resumeAts}% ATS</span>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: C.border, overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ height: "100%", width: `${resumeAts}%`, background: resumeAts >= 80 ? C.green : resumeAts >= 60 ? C.yellow : C.red, borderRadius: 3 }} />
+                </div>
+                {resumePotential > resumeAts && (
+                  <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
+                    AI estimates you can reach <strong style={{ color: C.purple }}>{resumePotential}%</strong> with targeted improvements.{" "}
+                    {resumeAts < 60 ? "Focus on adding missing keywords and quantifying achievements." : resumeAts < 80 ? "Add role-specific keywords and strengthen your summary." : "Minor keyword tuning can push you above 90%."}
+                  </div>
+                )}
+                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                  Go to Resume Intelligence →
+                </button>
+              </div>
+            ) : resumeList.length > 0 ? (
+              <div>
+                <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{resumeList.length} resume{resumeList.length !== 1 ? "s" : ""} uploaded. Run ATS analysis to get improvement recommendations.</div>
+                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>Upload your resume to get AI-powered ATS analysis and targeted improvement recommendations.</div>
+                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
+              </div>
+            )}
+          </Card>
+
+          {/* Salary Growth */}
+          <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>SALARY GROWTH</div>
+            {marketMedian ? (
+              <div>
+                <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                  {[
+                    { label: "Market Median", value: `$${Math.round(marketMedian / 1000)}K`, color: C.blue },
+                    salaryRange?.low ? { label: "Market Low", value: `$${Math.round(salaryRange.low / 1000)}K`, color: C.textMuted } : null,
+                    salaryRange?.high ? { label: "Market High", value: `$${Math.round(salaryRange.high / 1000)}K`, color: C.green } : null,
+                    desiredSalary ? { label: "Your Target", value: `$${Math.round(desiredSalary / 1000)}K`, color: C.purple } : null,
+                  ].filter(Boolean).map(({ label, value, color }) => (
+                    <div key={label} style={{ flex: 1, background: `${color}0F`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color }}>{value}</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, marginTop: 2 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+                {salaryGrowthPct !== null && (
+                  <div style={{ fontSize: 13, color: salaryGrowthPct > 0 ? C.green : salaryGrowthPct < 0 ? C.red : C.textMid, fontWeight: 600, marginBottom: 8 }}>
+                    {salaryGrowthPct > 0 ? `Your target is ${salaryGrowthPct}% above market median — achievable with strong negotiation and role fit.`
+                      : salaryGrowthPct < 0 ? `Your target is ${Math.abs(salaryGrowthPct)}% below market median — you may be undervaluing yourself.`
+                      : "Your target matches the market median."}
+                  </div>
+                )}
+                {salaryData?.form?.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>Based on research for: {salaryData.form.jobTitle}{salaryData.form.location ? ` · ${salaryData.form.location}` : ""}</div>}
+                <button onClick={() => setPage("salary")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                  Go to Market Intelligence →
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>Run salary research to see your market value, growth trajectory, and negotiation position.</div>
+                <button onClick={() => setPage("salary")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Market Intelligence →</button>
+              </div>
+            )}
+          </Card>
         </>
       ) : (
         <Card style={{ padding: "28px 24px", textAlign: "center" }}>
@@ -9233,7 +9328,7 @@ export default function App() {
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} />}
+        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
