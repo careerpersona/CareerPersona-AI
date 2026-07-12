@@ -5303,6 +5303,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
+  // Use functional updater so the toggle decision reads the latest state,
+  // not a potentially-stale closure captured during async analysis re-renders.
+  const handleAiMatch = (job) => {
+    let expanding = false;
+    setExpandedAnalysisId(prev => {
+      expanding = prev !== job.id;
+      return expanding ? job.id : null;
+    });
+    if (expanding && !matchResults[job.id]) analyzeMatch(job);
+  };
+
   // Auto-load the default saved resume the first time resumes arrive from Supabase.
   // Without this, resume is always empty on first visit and autoSmartApply never fires.
   useEffect(() => {
@@ -5788,7 +5799,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                     )}
                     {/* Row 1: AI Match | Save | Track */}
                     <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => { if (expandedAnalysisId === job.id) { setExpandedAnalysisId(null); } else { setExpandedAnalysisId(job.id); if (!matchResults[job.id]) analyzeMatch(job); } }}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => handleAiMatch(job)}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
@@ -5852,7 +5863,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={analyzing === job.id} onClick={() => { if (expandedAnalysisId === job.id) { setExpandedAnalysisId(null); } else { setExpandedAnalysisId(job.id); if (!matchResults[job.id]) analyzeMatch(job); } }}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={analyzing === job.id} onClick={() => handleAiMatch(job)}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
