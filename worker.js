@@ -135,7 +135,7 @@ function deduplicate(jobs) {
 
 // ── Fetch from Adzuna ─────────────────────────────────────────────────────────
 async function fetchAdzuna(params, env, page = 1) {
-  const { title, country, city, remote, employmentType, salaryMin } = params;
+  const { title, keywords, country, city, remote, employmentType, salaryMin } = params;
   const countryCode = COUNTRY_MAP[country] || "us";
   const appId = env.ADZUNA_APP_ID;
   const appKey = env.ADZUNA_APP_KEY;
@@ -153,7 +153,8 @@ async function fetchAdzuna(params, env, page = 1) {
   url.searchParams.set("results_per_page", "20");
 
   if (city && city.trim()) url.searchParams.set("where", city.trim());
-  if (remote) url.searchParams.set("what_and", "remote");
+  const whatAnd = [remote ? "remote" : null, keywords?.trim() || null].filter(Boolean).join(" ");
+  if (whatAnd) url.searchParams.set("what_and", whatAnd);
   if (salaryMin && !isNaN(Number(salaryMin))) {
     url.searchParams.set("salary_min", String(Math.floor(Number(salaryMin))));
   }
@@ -183,15 +184,16 @@ async function fetchAdzuna(params, env, page = 1) {
 
 // ── Fetch from RapidAPI JSearch ───────────────────────────────────────────────
 async function fetchRapid(params, env, page = 1) {
-  const { title, country, city, remote, employmentType, experienceLevel, salaryMin } = params;
+  const { title, keywords, country, city, remote, employmentType, experienceLevel, salaryMin } = params;
   const rapidKey = env.RAPIDAPI_KEY;
 
   if (!rapidKey) {
     return { jobs: [], debug: { url: null, status: null, body: "RAPIDAPI_KEY missing" } };
   }
 
-  // Build query string
+  // Build query string — combine title + keywords for richer matching
   let query = title;
+  if (keywords && keywords.trim()) query += ` ${keywords.trim()}`;
   if (city) query += ` in ${city}`;
   else if (country && country !== "Remote Worldwide") query += ` in ${country}`;
   if (remote) query += " remote";
@@ -285,6 +287,7 @@ async function handleJobSearch(request, env) {
   const safeParams = {
     ...params,
     title: params.title.slice(0, 200),
+    keywords: typeof params.keywords === "string" ? params.keywords.slice(0, 200) : "",
     city: typeof params.city === "string" ? params.city.slice(0, 200) : "",
     page: Math.min(Math.max(parseInt(params.page, 10) || 1, 1), 20),
   };
