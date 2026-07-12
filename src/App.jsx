@@ -7764,7 +7764,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
         ← Back to Dashboard
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.purple}40` }}>
             <span style={{ fontSize: 24 }}>🎯</span>
@@ -8488,7 +8488,6 @@ export default function App() {
     { id: "tracker", icon: "📋", label: `${t("nav.tracker")}${applications.length > 0 ? ` (${applications.length})` : ""}` },
     { id: "salary", icon: "💰", label: t("nav.salary") },
     { id: "network", icon: "🤝", label: t("nav.network") },
-    { id: "opportunity", icon: "🎯", label: "Opportunities" },
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
   const planName = (profile?.plan || "free").toUpperCase();
