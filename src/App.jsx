@@ -2570,16 +2570,16 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             <div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
                 {dailyPlan.categories.map((item, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       {item.status === "completed" && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4 }}>
-                        <span>{item.category}</span>
-                        <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
-                      </div>
-                      {item.task && <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{item.task}</div>}
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, minWidth: 0 }}>
+                      <span style={{ display: "flex", flex: 1, minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{item.category}</span>
+                        {item.task && <span style={{ color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>&nbsp;—&nbsp;{item.task}</span>}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
                     </div>
                   </div>
                 ))}
