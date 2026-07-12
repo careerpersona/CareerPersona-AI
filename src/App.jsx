@@ -5622,18 +5622,23 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
     if (!unscored.length) return;
     setScoringAll(true);
     setScoreProgress({ done: 0, total: unscored.length });
-    const ctx = userContext.getContextString({ identity: true });
-    for (const job of unscored) {
-      try {
-        const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      for (const job of unscored) {
+        try {
+          const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
 {"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
 RESUME:${resume.slice(0, 300)}
 JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
-        setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
-      } catch { /* silent fail per job */ }
-      setScoreProgress(prev => ({ ...prev, done: prev.done + 1 }));
+          setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
+        } catch (e) {
+          console.error("[ScoreAll] job failed:", job.id, e?.message);
+        }
+        setScoreProgress(prev => ({ ...prev, done: prev.done + 1 }));
+      }
+    } finally {
+      setScoringAll(false);
     }
-    setScoringAll(false);
   };
 
 
