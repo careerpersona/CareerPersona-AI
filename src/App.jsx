@@ -5285,7 +5285,7 @@ const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employment
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId }) {
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate }) {
   const { t } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
@@ -5299,7 +5299,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const userContext = useUserContext({ profile, applications, savedJobs });
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
-  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
@@ -5482,6 +5481,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
   const smartApply = async (job) => {
     if (!resume.trim()) { setShowResume(true); return; }
     if (!profile?.id) { setError(t("jobSearch.signInForSmartApply")); return; }
+    setSavedJobs(p => p.some(j => j.job_id === job.id) ? p : [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]);
     setSmartApplying(job.id);
     let queued;
     try {
@@ -5755,7 +5755,6 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
             {jobs.map(job => {
               const mr = matchResults[job.id];
               const displayMatch = mr ? mr.matchScore : job.matchScore;
-              const isAnalysisExpanded = expandedAnalysis.has(job.id);
 
               if (isMobile || isTablet) {
                 const compact = isMobile;
@@ -5786,66 +5785,53 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                         ))}
                       </div>
                     )}
-                    {/* Row 1: Apply Now | AI Match | Save Job */}
+                    {/* Row 1: AI Match | Save | Track */}
                     <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ flex: 1, background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 4px", fontSize: 11, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}>{t("jobSearch.applyNow")}</a>
-                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => { analyzeMatch(job); setExpandedAnalysis(prev => { const next = new Set(prev); next.add(job.id); return next; }); }}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => analyzeMatch(job)}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
-                    </div>
-                    {/* Row 2: Track | Smart Apply | AI Analysis */}
-                    <div style={{ display: "flex", gap: 5 }}>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
                         : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
-                      {isSmartApplied(job)
-                        ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.smartApplied")}</Btn>
-                        : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={smartApplying === job.id} onClick={() => smartApply(job)}>{smartApplying === job.id ? "…" : t("jobSearch.smartApply")}</Btn>}
-                      <Btn
-                        variant={isAnalysisExpanded ? "secondary" : "ghost"}
-                        style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap", ...(isAnalysisExpanded && mr ? { color: matchColor(mr.matchScore) } : {}) }}
-                        onClick={() => {
-                          setExpandedAnalysis(prev => { const next = new Set(prev); next.has(job.id) ? next.delete(job.id) : next.add(job.id); return next; });
-                          if (!matchResults[job.id]) analyzeMatch(job);
-                        }}
-                      >{isAnalysisExpanded ? "▲ Analysis" : "▼ Analysis"}</Btn>
                     </div>
-                    {/* Collapsible AI Analysis panel */}
-                    {isAnalysisExpanded && (
+                    {/* Row 2: Smart Apply — full width, state machine */}
+                    <div style={{ marginBottom: mr ? 8 : 0 }}>
+                      {smartApplying === job.id ? (
+                        <Btn variant="secondary" loading style={{ width: "100%", fontSize: 11, padding: "8px 4px" }}>🟡 Preparing AI Package…</Btn>
+                      ) : isSmartApplied(job) ? (
+                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>➡️ Continue in Saved Jobs</Btn>
+                      ) : (
+                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>✨ Smart Apply</Btn>
+                      )}
+                    </div>
+                    {/* AI Analysis panel — auto-shows when AI Match scores this job */}
+                    {mr && (
                       <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                        {mr ? (
-                          <>
-                            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{mr.summary}</div>
-                            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                              {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
-                                <div key={l} style={{ flex: 1 }}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
-                                  <PBar val={v} color={matchColor(v)} />
-                                </div>
-                              ))}
+                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{mr.summary}</div>
+                        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                          {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
+                            <div key={l} style={{ flex: 1 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
+                              <PBar val={v} color={matchColor(v)} />
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                              <div style={{ background: C.greenLight, borderRadius: 7, padding: 8 }}>
-                                <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youHave")}</div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div>
-                              </div>
-                              <div style={{ background: C.redLight, borderRadius: 7, padding: 8 }}>
-                                <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youNeed")}</div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{ textAlign: "center", fontSize: 12, color: C.textMuted, padding: "6px 0" }}>
-                            {analyzing === job.id ? t("jobSearch.analyzing") : !resume.trim() ? t("jobSearch.addResumeForMatch") : t("jobSearch.aiMatch")}
+                          ))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                          <div style={{ background: C.greenLight, borderRadius: 7, padding: 8 }}>
+                            <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youHave")}</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div>
                           </div>
-                        )}
+                          <div style={{ background: C.redLight, borderRadius: 7, padding: 8 }}>
+                            <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youNeed")}</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </Card>
                 );
               }
 
-              // Desktop layout (unchanged)
+              // Desktop
               return (
                 <Card key={job.id} style={{ ...(mr ? { border: `1.5px solid ${matchColor(mr.matchScore)}30` } : {}) }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -5865,15 +5851,18 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <a href={job.applyUrl} target="_blank" rel="noreferrer" className="btn-link" style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, textDecoration: "none", textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" }}>{t("jobSearch.applyNow")}</a>
                       <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
                         : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
-                      {isSmartApplied(job)
-                        ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.smartApplied")}</Btn>
-                        : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)} loading={smartApplying === job.id}>{smartApplying === job.id ? t("jobSearch.preparing") : t("jobSearch.smartApply")}</Btn>}
+                      {smartApplying === job.id ? (
+                        <Btn variant="secondary" loading style={{ fontSize: 13, padding: "9px 14px" }}>🟡 Preparing AI Package…</Btn>
+                      ) : isSmartApplied(job) ? (
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>➡️ Continue in Saved Jobs</Btn>
+                      ) : (
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)}>✨ Smart Apply</Btn>
+                      )}
                     </div>
                   </div>
                   {mr && (
@@ -8693,7 +8682,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
