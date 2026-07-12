@@ -5299,6 +5299,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const userContext = useUserContext({ profile, applications, savedJobs });
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
+  const [expandedAnalysisId, setExpandedAnalysisId] = useState(null);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
@@ -5787,14 +5788,14 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                     )}
                     {/* Row 1: AI Match | Save | Track */}
                     <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => analyzeMatch(job)}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => { if (expandedAnalysisId === job.id) { setExpandedAnalysisId(null); } else { setExpandedAnalysisId(job.id); if (!matchResults[job.id]) analyzeMatch(job); } }}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
                         : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
                     </div>
                     {/* Row 2: Smart Apply — full width, state machine */}
-                    <div style={{ marginBottom: mr ? 8 : 0 }}>
+                    <div style={{ marginBottom: (mr && expandedAnalysisId === job.id) ? 8 : 0 }}>
                       {smartApplying === job.id ? (
                         <Btn variant="secondary" loading style={{ width: "100%", fontSize: 11, padding: "8px 4px" }}>🟡 Preparing AI Package…</Btn>
                       ) : isSmartApplied(job) ? (
@@ -5803,8 +5804,8 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                         <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>✨ Smart Apply</Btn>
                       )}
                     </div>
-                    {/* AI Analysis panel — auto-shows when AI Match scores this job */}
-                    {mr && (
+                    {/* AI Analysis panel — toggle-controlled by AI Match button */}
+                    {mr && expandedAnalysisId === job.id && (
                       <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
                         <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{mr.summary}</div>
                         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -5851,7 +5852,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => analyzeMatch(job)} loading={analyzing === job.id}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={analyzing === job.id} onClick={() => { if (expandedAnalysisId === job.id) { setExpandedAnalysisId(null); } else { setExpandedAnalysisId(job.id); if (!matchResults[job.id]) analyzeMatch(job); } }}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
@@ -5865,7 +5866,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       )}
                     </div>
                   </div>
-                  {mr && (
+                  {mr && expandedAnalysisId === job.id && (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
                       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{mr.summary}</div>
                       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
