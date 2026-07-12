@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   nav: {
     dashboard: "Painel",
     resume: "Currículo",
@@ -70,7 +70,7 @@ export default {
     activityTitle: "Atividade IA",
     activityEmpty: "A sua atividade IA vai aparecer aqui à medida que usa a CareerPersona.",
     assistantTitle: "Assistente CareerPersona AI",
-    assistantEmpty: "Pergunte-me qualquer coisa sobre a sua carreira, currículo, entrevistas, negociação salarial ou estratégia de procura de emprego.",
+    assistantEmpty: "Sou o seu coach de carreira IA pessoal. Já compreendo o seu perfil CareerPersona AI, currículo, candidaturas, entrevistas, objetivos de carreira e insights de IA. Pergunte-me qualquer coisa sobre a sua carreira e fornecerei orientação personalizada com base nos seus dados CareerPersona AI.",
     thinking: "A pensar...",
     chatPlaceholder: "Pergunte algo à CareerPersona AI...",
     send: "Enviar",

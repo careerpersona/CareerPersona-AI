@@ -1,4 +1,4 @@
-// Baseline locale — every other locale falls back to this one for any
+﻿// Baseline locale — every other locale falls back to this one for any
 // key it doesn't yet define. Namespaces are added page-by-page as the
 // app is translated; only global chrome (nav, user menu, notifications,
 // language switcher) is translated so far.
@@ -74,7 +74,7 @@ export default {
     activityTitle: "AI Activity",
     activityEmpty: "Your AI activity will appear here as you use CareerPersona.",
     assistantTitle: "CareerPersona AI Assistant",
-    assistantEmpty: "Ask me anything about your career, resume, interviews, salary negotiation, or job search strategy.",
+    assistantEmpty: "I'm your personal AI Career Coach. I already understand your CareerPersona AI profile, resume, applications, interviews, career goals, and AI insights. Ask me anything about your career, and I'll provide personalized guidance based on your CareerPersona AI data.",
     thinking: "Thinking...",
     chatPlaceholder: "Ask CareerPersona AI anything...",
     send: "Send",

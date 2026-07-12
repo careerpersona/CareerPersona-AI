@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   nav: {
     dashboard: "لوحة التحكم",
     resume: "السيرة الذاتية",
@@ -70,7 +70,7 @@ export default {
     activityTitle: "نشاط الذكاء الاصطناعي",
     activityEmpty: "سيظهر نشاطك مع الذكاء الاصطناعي هنا أثناء استخدامك لـ CareerPersona.",
     assistantTitle: "مساعد CareerPersona AI",
-    assistantEmpty: "اسألني أي شيء عن مسارك المهني أو سيرتك الذاتية أو المقابلات أو التفاوض على الراتب أو استراتيجية البحث عن عمل.",
+    assistantEmpty: "أنا مدربك الشخصي للمسار المهني بالذكاء الاصطناعي. أفهم بالفعل ملفك الشخصي على CareerPersona AI ومؤهلاتك وطلباتك ومقابلاتك وأهدافك المهنية ورؤاك. اسألني أي شيء عن مسارك المهني وسأقدم لك إرشادات مخصصة بناءً على بيانات CareerPersona AI.",
     thinking: "جارٍ التفكير...",
     chatPlaceholder: "اسأل CareerPersona AI أي شيء...",
     send: "إرسال",

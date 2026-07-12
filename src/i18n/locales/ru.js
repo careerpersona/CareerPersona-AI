@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   nav: {
     dashboard: "Панель управления",
     resume: "Резюме",
@@ -70,7 +70,7 @@ export default {
     activityTitle: "Активность ИИ",
     activityEmpty: "Здесь будет отображаться ваша активность с ИИ по мере использования CareerPersona.",
     assistantTitle: "Ассистент CareerPersona AI",
-    assistantEmpty: "Спросите меня о чём угодно: карьера, резюме, собеседования, переговоры о зарплате или стратегия поиска работы.",
+    assistantEmpty: "Я ваш персональный AI-карьерный коуч. Я уже понимаю ваш профиль CareerPersona AI, резюме, заявки, собеседования, карьерные цели и AI-инсайты. Спросите меня о чём угодно, связанном с карьерой, и я дам персонализированные рекомендации на основе ваших данных CareerPersona AI.",
     thinking: "Думаю...",
     chatPlaceholder: "Спросите что-нибудь у CareerPersona AI...",
     send: "Отправить",

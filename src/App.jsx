@@ -2843,7 +2843,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {t("dashboard.assistantEmpty")}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                {["Review my resume", "Analyze today's job opportunities", "Help improve my ATS score", "Prepare me for my interview", "Review my application pipeline", "Build today's career action plan", "Help me negotiate salary", "Improve my LinkedIn profile"].map(p => (
+                {["Review my resume", "Analyze today's opportunities", "Improve my ATS score", "Prepare me for my interview", "Review my application pipeline", "Build today's action plan", "Compare two job offers", "Help me negotiate my salary"].map(p => (
                   <button key={p} onClick={() => sendChat(p)} style={{ fontSize: 11, color: C.purple, background: `${C.purple}0D`, border: `1px solid ${C.purple}30`, borderRadius: 20, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{p}</button>
                 ))}
               </div>

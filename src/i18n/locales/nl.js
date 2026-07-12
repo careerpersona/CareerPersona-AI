@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   nav: {
     dashboard: "Dashboard",
     resume: "Cv",
@@ -70,7 +70,7 @@ export default {
     activityTitle: "AI-activiteit",
     activityEmpty: "Je AI-activiteit verschijnt hier naarmate je CareerPersona gebruikt.",
     assistantTitle: "CareerPersona AI-assistent",
-    assistantEmpty: "Vraag me iets over je loopbaan, cv, sollicitatiegesprekken, salarisonderhandeling of vacaturestrategie.",
+    assistantEmpty: "Ik ben uw persoonlijke AI-carrièrecoach. Ik begrijp al uw CareerPersona AI-profiel, cv, sollicitaties, interviews, carrièredoelen en AI-inzichten. Stel me alles over uw carrière en ik bied gepersonaliseerde begeleiding op basis van uw CareerPersona AI-gegevens.",
     thinking: "Aan het nadenken...",
     chatPlaceholder: "Vraag iets aan CareerPersona AI...",
     send: "Versturen",

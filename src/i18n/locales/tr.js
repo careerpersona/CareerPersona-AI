@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   nav: {
     dashboard: "Panel",
     resume: "Özgeçmiş",
@@ -70,7 +70,7 @@ export default {
     activityTitle: "Yapay Zekâ Etkinliği",
     activityEmpty: "CareerPersona'yı kullandıkça yapay zekâ etkinliğiniz burada görünecek.",
     assistantTitle: "CareerPersona AI Asistanı",
-    assistantEmpty: "Kariyeriniz, özgeçmişiniz, mülakatlar, maaş pazarlığı veya iş arama stratejiniz hakkında bana her şeyi sorun.",
+    assistantEmpty: "Ben kişisel AI kariyer koçunuzum. CareerPersona AI profilinizi, özgeçmişinizi, başvurularınızı, mülakatlarınızı, kariyer hedeflerinizi ve AI içgörülerinizi zaten anlıyorum. Kariyerinizle ilgili her şeyi sorun, CareerPersona AI verilerinize dayalı kişiselleştirilmiş rehberlik sağlayacağım.",
     thinking: "Düşünüyor...",
     chatPlaceholder: "CareerPersona AI'ya bir şey sorun...",
     send: "Gönder",
