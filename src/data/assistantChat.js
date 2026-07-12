@@ -61,5 +61,19 @@ export function useAssistantChat(userId) {
     if (error) throw error;
   }, [userId]);
 
-  return { messages, loading, loadedFor, addMessage };
+  const newConversation = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.from(CONV_TABLE).insert({ user_id: userId }).select().single();
+    if (error) throw error;
+    conversationIdRef.current = data.id;
+    setMessages([]);
+  }, [userId]);
+
+  const clearConversation = useCallback(async () => {
+    if (!userId || !conversationIdRef.current) { setMessages([]); return; }
+    await supabase.from(MSG_TABLE).delete().eq("conversation_id", conversationIdRef.current);
+    setMessages([]);
+  }, [userId]);
+
+  return { messages, loading, loadedFor, addMessage, newConversation, clearConversation };
 }

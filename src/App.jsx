@@ -2165,6 +2165,74 @@ async function buildPlanPayload(ctx) {
   };
 }
 
+// ─── MARKDOWN TEXT RENDERER ──────────────────────────────────
+function MarkdownText({ text }) {
+  if (!text) return null;
+  const fmt = (str, pfx) => {
+    if (!str) return null;
+    const out = []; let rest = str; let k = 0;
+    while (rest.length) {
+      const m = [
+        { pat: /\*\*(.+?)\*\*/, tag: "b" },
+        { pat: /\*(.+?)\*/, tag: "i" },
+        { pat: /`([^`]+)`/, tag: "c" },
+        { pat: /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/, tag: "a" },
+      ].reduce((best, { pat, tag }) => {
+        const r = pat.exec(rest);
+        return r && (!best || r.index < best.index) ? { tag, idx: r.index, len: r[0].length, g: r } : best;
+      }, null);
+      if (!m) { out.push(<span key={`${pfx}${k++}`}>{rest}</span>); break; }
+      if (m.idx > 0) out.push(<span key={`${pfx}${k++}`}>{rest.slice(0, m.idx)}</span>);
+      if (m.tag === "b") out.push(<strong key={`${pfx}${k++}`}>{m.g[1]}</strong>);
+      else if (m.tag === "i") out.push(<em key={`${pfx}${k++}`}>{m.g[1]}</em>);
+      else if (m.tag === "c") out.push(<code key={`${pfx}${k++}`} style={{ fontFamily: "monospace", fontSize: "0.88em", background: "rgba(0,0,0,0.08)", padding: "1px 4px", borderRadius: 3 }}>{m.g[1]}</code>);
+      else if (m.tag === "a") out.push(<a key={`${pfx}${k++}`} href={m.g[2]} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>{m.g[1]}</a>);
+      rest = rest.slice(m.idx + m.len);
+    }
+    return out;
+  };
+  const lines = text.split("\n");
+  const els = []; let i = 0;
+  while (i < lines.length) {
+    const s = i; const line = lines[i];
+    if (line.startsWith("```")) {
+      const code = []; i++;
+      while (i < lines.length && !lines[i].startsWith("```")) { code.push(lines[i]); i++; }
+      els.push(<pre key={`cb${s}`} style={{ background: "rgba(0,0,0,0.06)", borderRadius: 6, padding: "8px 10px", margin: "4px 0", fontSize: 12, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}><code style={{ fontFamily: "monospace" }}>{code.join("\n")}</code></pre>);
+      i++; continue;
+    }
+    const hm = line.match(/^(#{1,3}) (.+)/);
+    if (hm) {
+      const sz = [15, 14, 13][hm[1].length - 1] ?? 13;
+      els.push(<div key={`h${s}`} style={{ fontWeight: 700, fontSize: sz, margin: "8px 0 3px", lineHeight: 1.4 }}>{fmt(hm[2], `h${s}`)}</div>);
+      i++; continue;
+    }
+    if (/^[-*+] /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*+] /.test(lines[i])) { items.push(<li key={i} style={{ marginBottom: 2 }}>{fmt(lines[i].slice(2), `ul${i}`)}</li>); i++; }
+      els.push(<ul key={`ul${s}`} style={{ margin: "3px 0", paddingLeft: 18, lineHeight: 1.55 }}>{items}</ul>);
+      continue;
+    }
+    if (/^\d+\. /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) { items.push(<li key={i} style={{ marginBottom: 2 }}>{fmt(lines[i].replace(/^\d+\. /, ""), `ol${i}`)}</li>); i++; }
+      els.push(<ol key={`ol${s}`} style={{ margin: "3px 0", paddingLeft: 18, lineHeight: 1.55 }}>{items}</ol>);
+      continue;
+    }
+    if (line.includes("|") && lines[i + 1] && /^\|?[-| :]+\|?$/.test(lines[i + 1])) {
+      const splitRow = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const headers = splitRow(line); i += 2;
+      const rows = []; while (i < lines.length && lines[i].includes("|")) { rows.push(splitRow(lines[i])); i++; }
+      els.push(<div key={`tbl${s}`} style={{ overflowX: "auto", margin: "4px 0" }}><table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}><thead><tr>{headers.map((h, ci) => <th key={ci} style={{ padding: "4px 8px", borderBottom: "2px solid rgba(0,0,0,0.15)", textAlign: "left", fontWeight: 700 }}>{fmt(h, `th${s}${ci}`)}</th>)}</tr></thead><tbody>{rows.map((row, ri) => <tr key={ri}>{row.map((c, ci) => <td key={ci} style={{ padding: "3px 8px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>{fmt(c, `td${s}${ri}${ci}`)}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+    if (!line.trim()) { els.push(<div key={`g${s}`} style={{ height: 4 }} />); i++; continue; }
+    els.push(<div key={`p${s}`} style={{ lineHeight: 1.6, marginBottom: 1 }}>{fmt(line, `p${s}`)}</div>);
+    i++;
+  }
+  return <>{els}</>;
+}
+
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
 function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist }) {
   const { t } = useI18n();
@@ -2180,7 +2248,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const chatEndRef = useRef();
   const chatScrollEnabledRef = useRef(false);
 
-  const { messages: savedChatMessages, loading: chatHistoryLoading, loadedFor: chatLoadedFor, addMessage: addChatMessage } = useAssistantChat(profile?.id);
+  const { messages: savedChatMessages, loading: chatHistoryLoading, loadedFor: chatLoadedFor, addMessage: addChatMessage, newConversation: newChatConversation, clearConversation: clearChatConversation } = useAssistantChat(profile?.id);
   const chatAppliedForRef = useRef(undefined);
 
   // ── Load chat history once the Supabase fetch for this user resolves ──
@@ -2338,17 +2406,19 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   };
 
   // Chat
-  const sendChat = async () => {
-    if (!chatInput.trim() || chatLoading) return;
+  const sendChat = async (directMsg) => {
+    const userMsg = (typeof directMsg === "string" ? directMsg : chatInput).trim();
+    if (!userMsg || chatLoading) return;
     chatScrollEnabledRef.current = true;
-    const userMsg = chatInput.trim();
     setChatInput("");
+    const history = chatMessages.slice(-12).map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`).join("\n");
     setChatMessages(prev => [...prev, { role: "user", text: userMsg }]);
     addChatMessage("user", userMsg).catch(err => console.error("assistant chat save failed", err));
     setChatLoading(true);
     try {
-      const context = `You are CareerPersona AI career assistant. ${userContext.getContextString()} Answer concisely (2-3 sentences) using this context.`;
-      const raw = await askClaude(`${context}\nUser question: ${userMsg}`, 400);
+      const ctx = userContext.getContextString();
+      const prompt = `You are CareerPersona AI, a professional AI career coach. Give expert, personalized career advice based on this user's profile.\n\n${ctx}${history ? `\n\nConversation history:\n${history}` : ""}\n\nUser: ${userMsg}`;
+      const raw = await askClaude(prompt, 2500);
       setChatMessages(prev => [...prev, { role: "ai", text: raw }]);
       addChatMessage("ai", raw).catch(err => console.error("assistant chat save failed", err));
       logActivity("Chat: " + userMsg.slice(0, 30));
@@ -2358,6 +2428,15 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   };
 
   useEffect(() => { if (!chatScrollEnabledRef.current || chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  const handleNewConversation = async () => {
+    try { await newChatConversation(); } catch {}
+    setChatMessages([]);
+  };
+  const handleClearConversation = async () => {
+    try { await clearChatConversation(); } catch {}
+    setChatMessages([]);
+  };
 
   // Re-generate briefing and plan when the user switches to a different resume in the Library
   useEffect(() => {
@@ -2747,18 +2826,33 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
       {/* BOTTOM: AI Chat Assistant */}
       <Card>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</span>
+          {chatMessages.length > 0 && (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={handleClearConversation} style={{ fontSize: 11, color: C.textMuted, background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
+              <button onClick={handleNewConversation} style={{ fontSize: 11, color: C.purple, background: "none", border: `1px solid ${C.purple}50`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>+ New</button>
+            </div>
+          )}
+        </div>
         <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           {chatMessages.length === 0 && (
-            <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 14 }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
-              {t("dashboard.assistantEmpty")}
+            <div>
+              <div style={{ textAlign: "center", padding: "16px 0 10px", color: C.textMuted, fontSize: 14 }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>🤖</div>
+                {t("dashboard.assistantEmpty")}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                {["Review my resume", "Analyze today's job opportunities", "Help improve my ATS score", "Prepare me for my interview", "Review my application pipeline", "Build today's career action plan", "Help me negotiate salary", "Improve my LinkedIn profile"].map(p => (
+                  <button key={p} onClick={() => sendChat(p)} style={{ fontSize: 11, color: C.purple, background: `${C.purple}0D`, border: `1px solid ${C.purple}30`, borderRadius: 20, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{p}</button>
+                ))}
+              </div>
             </div>
           )}
           {chatMessages.map((m, i) => (
             <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
               <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: 12, background: m.role === "user" ? C.purple : "#fff", color: m.role === "user" ? "#fff" : C.text, fontSize: 14, lineHeight: 1.6, boxShadow: m.role === "ai" ? "0 1px 4px rgba(0,0,0,0.06)" : "none" }}>
-                {m.text}
+                {m.role === "ai" ? <MarkdownText text={m.text} /> : m.text}
               </div>
             </div>
           ))}
