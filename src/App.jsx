@@ -5304,8 +5304,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "relevance");
   const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
   const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
-  const [scoringAll, setScoringAll] = useState(false);
-  const [scoreProgress, setScoreProgress] = useState({ done: 0, total: 0 });
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
@@ -5503,7 +5501,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
       // Auto AI-match + auto Smart Apply on initial searches when resume is present
       if (!loadMore && resume.trim() && newJobs.length > 0) {
-        autoMatchAll(newJobs); // scores job cards (fire and forget)
+        autoAnalyzeAll(newJobs); // scores job cards (fire and forget)
         autoSmartApply(newJobs); // generates full packages for top 3 (fire and forget)
       }
     } catch (e) {
@@ -5600,45 +5598,25 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
     }
   };
 
-  // Auto-match up to 5 jobs silently when resume is present
-  const autoMatchAll = async (newJobs) => {
+  // Auto-analyze all jobs silently using the same engine as manual AI Match
+  const autoAnalyzeAll = async (newJobs) => {
+    if (!resume.trim()) return;
     const ctx = userContext.getContextString({ identity: true });
-    const toMatch = newJobs.slice(0, 5);
-    for (const job of toMatch) {
+    for (const job of newJobs) {
       try {
-        const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
-{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
-RESUME:${resume.slice(0, 300)}
-JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
+        const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Analyze resume-job match. Return ONLY valid JSON, no markdown:
+{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
+
+RESUME (first 600 chars):
+${resume.slice(0, 600)}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}
+Description: ${(job.description || "").slice(0, 400)}
+Skills required: ${(job.skills || []).join(", ")}`, 600);
         setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
       } catch { /* silent fail per job */ }
-    }
-  };
-
-  // Score all unscored jobs beyond the initial auto-match of first 5
-  const scoreAll = async () => {
-    console.log("[ScoreAll] clicked — resume.length:", resume.length, "resume.trim().length:", resume.trim().length, "scoringAll:", scoringAll, "jobs:", jobs.length, "matchResults keys:", Object.keys(matchResults).length, "unscored:", jobs.filter(j => !matchResults[j.id]).length);
-    if (!resume.trim() || scoringAll) return;
-    const unscored = jobs.filter(j => !matchResults[j.id]);
-    if (!unscored.length) return;
-    setScoringAll(true);
-    setScoreProgress({ done: 0, total: unscored.length });
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      for (const job of unscored) {
-        try {
-          const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
-{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
-RESUME:${resume.slice(0, 300)}
-JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
-          setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
-        } catch (e) {
-          console.error("[ScoreAll] job failed:", job.id, e?.message);
-        }
-        setScoreProgress(prev => ({ ...prev, done: prev.done + 1 }));
-      }
-    } finally {
-      setScoringAll(false);
     }
   };
 
@@ -5862,7 +5840,6 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                 <option value="date">Date ↓</option>
               </select>
               {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? "All" : `Dupes (${dupeSet.size})`}</Btn>}
-              {resume && <Btn variant="ghost" style={{ fontSize: 12, padding: "5px 10px" }} loading={scoringAll} onClick={scoreAll}>{scoringAll ? `${scoreProgress.done}/${scoreProgress.total}` : "Score All"}</Btn>}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : isTablet ? 10 : 14 }}>
