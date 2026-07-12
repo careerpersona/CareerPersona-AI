@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow } from "./data/applications";
@@ -5300,6 +5300,19 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
   const [expandedAnalysisId, setExpandedAnalysisId] = useState(null);
+  // ── Job Intelligence features ────────────────────────────────────────────
+  const [advFilters, setAdvFilters] = useSessionState("cp_jobs_adv", { datePosted: "any", source: "all", skills: "" });
+  const [showAdvFilters, setShowAdvFilters] = useState(false);
+  const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "relevance");
+  const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
+  const [recentSearches, setRecentSearches] = useLocalState("cp_recent_searches", []);
+  const [savedSearches, setSavedSearches] = useLocalState("cp_saved_searches", []);
+  const [jobAlerts, setJobAlerts] = useLocalState("cp_job_alerts", []);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [scoringAll, setScoringAll] = useState(false);
+  const [scoreProgress, setScoreProgress] = useState({ done: 0, total: 0 });
+  const [lastVisit, setLastVisit] = useLocalState("cp_jobs_last_visit", null);
+  const prevVisitRef = useRef(lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
@@ -5313,6 +5326,54 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     });
     if (expanding && !matchResults[job.id]) analyzeMatch(job);
   };
+
+  // Detect same title+company appearing from multiple sources
+  const dupeSet = useMemo(() => {
+    const seen = {};
+    const dupes = new Set();
+    jobs.forEach(job => {
+      const key = `${(job.company || "").toLowerCase().trim()}|${(job.title || "").toLowerCase().trim().replace(/\s+/g, " ")}`;
+      if (seen[key] !== undefined) dupes.add(job.id);
+      else seen[key] = job.id;
+    });
+    return dupes;
+  }, [jobs]);
+
+  // Post-filter + sort derived list — never mutates raw `jobs` session state
+  const displayJobs = useMemo(() => {
+    let result = [...jobs];
+    if (advFilters.source !== "all") {
+      const src = advFilters.source.toLowerCase();
+      result = result.filter(j => (j.source || "").toLowerCase().includes(src));
+    }
+    if (advFilters.skills.trim()) {
+      const sk = advFilters.skills.trim().toLowerCase();
+      result = result.filter(j =>
+        j.skills?.some(s => s.toLowerCase().includes(sk)) ||
+        (j.description || "").toLowerCase().includes(sk)
+      );
+    }
+    if (advFilters.datePosted !== "any") {
+      const cutoff = new Date();
+      if (advFilters.datePosted === "24h") cutoff.setDate(cutoff.getDate() - 1);
+      else if (advFilters.datePosted === "week") cutoff.setDate(cutoff.getDate() - 7);
+      else if (advFilters.datePosted === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+      result = result.filter(j => !j.datePosted || new Date(j.datePosted) >= cutoff);
+    }
+    if (hideDupes) result = result.filter(j => !dupeSet.has(j.id));
+    if (sortBy === "match") {
+      result = [...result].sort((a, b) => {
+        const sa = matchResults[a.id]?.matchScore ?? a.matchScore ?? 0;
+        const sb = matchResults[b.id]?.matchScore ?? b.matchScore ?? 0;
+        return sb - sa;
+      });
+    } else if (sortBy === "date") {
+      result = [...result].sort((a, b) => new Date(b.datePosted || 0) - new Date(a.datePosted || 0));
+    }
+    return result;
+  }, [jobs, advFilters, hideDupes, sortBy, matchResults, dupeSet]);
+
+  const isNewJob = (job) => !!(prevVisitRef.current && job.datePosted && new Date(job.datePosted) > new Date(prevVisitRef.current));
 
   // Auto-load the default saved resume the first time resumes arrive from Supabase.
   // Without this, resume is always empty on first visit and autoSmartApply never fires.
@@ -5355,6 +5416,10 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     tq.addEventListener("change", onTq);
     return () => { mq.removeEventListener("change", onMq); tq.removeEventListener("change", onTq); };
   }, []);
+
+  // Record this visit so next session can badge "new since last visit"
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setLastVisit(new Date().toISOString()); }, []);
 
   // Shared extraction core — accepts a File object
   const extractResumeFile = async (file) => {
@@ -5448,6 +5513,15 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       setPage(nextPage);
       setHasMore(newJobs.length >= 10); // if we got results, there may be more
       if (data.sources) setSourceCounts(data.sources);
+
+      // Track recent searches (last 8 unique titles)
+      if (!loadMore && filters.title.trim()) {
+        setRecentSearches(prev => {
+          const entry = { title: filters.title.trim(), city: filters.city.trim(), ts: Date.now() };
+          const deduped = prev.filter(r => r.title.toLowerCase() !== filters.title.trim().toLowerCase());
+          return [entry, ...deduped].slice(0, 8);
+        });
+      }
 
       // Auto AI-match + auto Smart Apply on initial searches when resume is present
       if (!loadMore && resume.trim() && newJobs.length > 0) {
@@ -5562,6 +5636,47 @@ JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 4
       } catch { /* silent fail per job */ }
     }
   };
+
+  // Score all unscored jobs beyond the initial auto-match of first 5
+  const scoreAll = async () => {
+    if (!resume.trim() || scoringAll) return;
+    const unscored = jobs.filter(j => !matchResults[j.id]);
+    if (!unscored.length) return;
+    setScoringAll(true);
+    setScoreProgress({ done: 0, total: unscored.length });
+    const ctx = userContext.getContextString({ identity: true });
+    for (const job of unscored) {
+      try {
+        const raw = await askClaude(`${ctx ? ctx + "\n" : ""}Match score only. Return ONLY JSON:
+{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>"],"missingSkills":["<m1>","<m2>"],"summary":"<1 sentence>"}
+RESUME:${resume.slice(0, 300)}
+JOB:${job.title} at ${job.company}. ${(job.description || "").slice(0, 200)}`, 400);
+        setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
+      } catch { /* silent fail per job */ }
+      setScoreProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    setScoringAll(false);
+  };
+
+  const saveSearch = () => {
+    const name = filters.title.trim() || `Search ${new Date().toLocaleDateString()}`;
+    setSavedSearches(prev => {
+      const without = prev.filter(s => s.name !== name);
+      return [{ name, filters: { ...filters }, advFilters: { ...advFilters }, ts: Date.now() }, ...without].slice(0, 10);
+    });
+  };
+  const loadSavedSearch = (s) => { setFilters(s.filters); setAdvFilters(s.advFilters || { datePosted: "any", source: "all", skills: "" }); };
+  const deleteSavedSearch = (name) => setSavedSearches(prev => prev.filter(s => s.name !== name));
+
+  const addAlert = () => {
+    if (!filters.title.trim()) return;
+    const a = { id: uid(), title: filters.title.trim(), city: filters.city.trim(), country: filters.country, createdAt: new Date().toISOString() };
+    setJobAlerts(prev => {
+      const without = prev.filter(x => x.title.toLowerCase() !== a.title.toLowerCase());
+      return [a, ...without].slice(0, 5);
+    });
+  };
+  const deleteAlert = (id) => setJobAlerts(prev => prev.filter(a => a.id !== id));
 
   // Auto-generate full Smart Apply packages for all provided jobs after search or save.
   // Runs in the background — queue cards appear in Saved Jobs as each completes.
@@ -5748,23 +5863,104 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
         </div>}
       </Card>
 
+      {/* Saved & recent search chips — persistent shortcuts above results */}
+      {(savedSearches.length > 0 || recentSearches.length > 0) && (
+        <div style={{ marginBottom: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {savedSearches.length > 0 && <>
+            <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>Saved:</span>
+            {savedSearches.map(s => (
+              <span key={s.name} style={{ display: "inline-flex", alignItems: "center", gap: 3, background: C.purpleLight, color: C.purple, borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                <span onClick={() => loadSavedSearch(s)}>{s.name}</span>
+                <span onClick={() => deleteSavedSearch(s.name)} style={{ opacity: 0.55, marginLeft: 2 }}>×</span>
+              </span>
+            ))}
+          </>}
+          {recentSearches.length > 0 && <>
+            <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginLeft: savedSearches.length > 0 ? 6 : 0 }}>Recent:</span>
+            {recentSearches.map(r => (
+              <span key={r.ts} onClick={() => setFilters(f => ({ ...f, title: r.title, city: r.city || f.city }))} style={{ background: C.bgSoft, color: C.textMid, borderRadius: 20, padding: "3px 10px", fontSize: 12, cursor: "pointer", border: `1px solid ${C.border}` }}>{r.title}</span>
+            ))}
+          </>}
+        </div>
+      )}
+
       {loading && jobs.length === 0 && <Spinner steps={[t("jobSearch.step1"), t("jobSearch.step2"), t("jobSearch.step3")]} currentStep={1} />}
       {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>{t("jobSearch.noResultsFound")}</div><div style={{ color: C.textMuted, marginTop: 6 }}>{t("jobSearch.tryDifferentKeywords")}</div></Card>}
 
       {jobs.length > 0 && (
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          {/* Results toolbar */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>
-              {t("jobSearch.jobsFoundFor").replace("{n}", jobs.length)}"<strong style={{ color: C.text }}>{filters.title}</strong>"
+              {t("jobSearch.jobsFoundFor").replace("{n}", displayJobs.length !== jobs.length ? `${displayJobs.length} of ${jobs.length}` : jobs.length)}"<strong style={{ color: C.text }}>{filters.title}</strong>"
               {sourceCounts && <span style={{ marginLeft: 10, fontSize: 12 }}>
                 <span style={{ color: C.blue }}>Adzuna: {sourceCounts.adzuna}</span>
                 {" · "}
                 <span style={{ color: C.purple }}>JSearch: {sourceCounts.rapidapi}</span>
               </span>}
+              {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginLeft: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} New</span> : null; })()}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
+                <option value="relevance">Relevance</option>
+                <option value="match">Match ↓</option>
+                <option value="date">Date ↓</option>
+              </select>
+              <Btn variant={showAdvFilters || advFilters.source !== "all" || advFilters.skills.trim() || advFilters.datePosted !== "any" ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setShowAdvFilters(v => !v)}>⚙️{(advFilters.source !== "all" || advFilters.skills.trim() || advFilters.datePosted !== "any") ? " •" : ""}</Btn>
+              {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? "All" : `Dupes (${dupeSet.size})`}</Btn>}
+              {resume && <Btn variant="ghost" style={{ fontSize: 12, padding: "5px 10px" }} loading={scoringAll} onClick={scoreAll}>{scoringAll ? `${scoreProgress.done}/${scoreProgress.total}` : "Score All"}</Btn>}
+              <Btn variant="ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={saveSearch}>⭐</Btn>
+              <Btn variant={showAlerts ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setShowAlerts(v => !v)}>🔔</Btn>
             </div>
           </div>
+          {/* Advanced filters panel */}
+          {showAdvFilters && (
+            <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 16px", marginBottom: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>Date Posted</div>
+                <select value={advFilters.datePosted} onChange={e => setAdvFilters(f => ({ ...f, datePosted: e.target.value }))} style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: "#fff", color: C.text }}>
+                  <option value="any">Any time</option>
+                  <option value="24h">Last 24h</option>
+                  <option value="week">Last week</option>
+                  <option value="month">Last month</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>Source</div>
+                <select value={advFilters.source} onChange={e => setAdvFilters(f => ({ ...f, source: e.target.value }))} style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: "#fff", color: C.text }}>
+                  <option value="all">All</option>
+                  <option value="adzuna">Adzuna</option>
+                  <option value="jsearch">JSearch</option>
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>Skills keyword</div>
+                <input value={advFilters.skills} onChange={e => setAdvFilters(f => ({ ...f, skills: e.target.value }))} placeholder="e.g. React, Python…" style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, color: C.text, outline: "none", width: "100%", boxSizing: "border-box" }} />
+              </div>
+              {(advFilters.datePosted !== "any" || advFilters.source !== "all" || advFilters.skills.trim()) && (
+                <Btn variant="ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setAdvFilters({ datePosted: "any", source: "all", skills: "" })}>Clear</Btn>
+              )}
+            </div>
+          )}
+          {/* Alerts panel */}
+          {showAlerts && (
+            <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 16px", marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>🔔 Job Alerts</span>
+                {filters.title.trim() && <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={addAlert}>+ Add "{filters.title}"</Btn>}
+              </div>
+              {jobAlerts.length === 0 ? (
+                <div style={{ fontSize: 12, color: C.textMuted }}>No alerts yet. Click "+ Add" to save the current search as an alert.</div>
+              ) : jobAlerts.map(a => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 12, color: C.text }}>{a.title}{a.city ? ` · ${a.city}` : ""}</span>
+                  <span onClick={() => deleteAlert(a.id)} style={{ fontSize: 11, color: C.red, cursor: "pointer", padding: "2px 6px" }}>×</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : isTablet ? 10 : 14 }}>
-            {jobs.map(job => {
+            {displayJobs.map(job => {
               const mr = matchResults[job.id];
               const displayMatch = mr ? mr.matchScore : job.matchScore;
 
@@ -5778,6 +5974,8 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       {job.remote && <span style={{ background: `${C.green}15`, color: C.green, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.remoteBadge")}</span>}
                       <span style={{ background: `${C.textMuted}12`, color: C.textMuted, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.employmentType}</span>
                       {job.experienceLevel && <span style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.experienceLevel}</span>}
+                      {isNewJob(job) && <span style={{ background: C.green, color: "#fff", borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>New</span>}
+                      {dupeSet.has(job.id) && <span style={{ background: `${C.yellow}25`, color: C.yellow, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>Dup</span>}
                       <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
                     </div>
                     {/* Title */}
@@ -5853,6 +6051,8 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                         {job.remote && <Badge color={C.green}>{t("jobSearch.remoteBadge")}</Badge>}
                         <Badge color={C.textMuted}>{job.employmentType}</Badge>
                         {job.experienceLevel && <Badge color={C.purple}>{job.experienceLevel}</Badge>}
+                        {isNewJob(job) && <Badge color={C.green}>New</Badge>}
+                        {dupeSet.has(job.id) && <Badge color={C.yellow}>Dup</Badge>}
                         <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
