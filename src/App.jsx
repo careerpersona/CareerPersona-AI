@@ -2247,6 +2247,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef();
   const chatScrollEnabledRef = useRef(false);
+  const aiResponseStartRef = useRef(null);
 
   const { messages: savedChatMessages, loading: chatHistoryLoading, loadedFor: chatLoadedFor, addMessage: addChatMessage, newConversation: newChatConversation, clearConversation: clearChatConversation } = useAssistantChat(profile?.id);
   const chatAppliedForRef = useRef(undefined);
@@ -2427,7 +2428,15 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     } finally { setChatLoading(false); }
   };
 
-  useEffect(() => { if (!chatScrollEnabledRef.current || chatMessages.length === 0) return; chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+  useEffect(() => {
+    if (!chatScrollEnabledRef.current || chatMessages.length === 0) return;
+    const lastMsg = chatMessages[chatMessages.length - 1];
+    if (lastMsg?.role === "ai" && aiResponseStartRef.current) {
+      aiResponseStartRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
 
   const handleNewConversation = async () => {
     try { await newChatConversation(); } catch {}
@@ -2850,7 +2859,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           )}
           {chatMessages.map((m, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+            <div key={i} ref={m.role === "ai" && i === chatMessages.length - 1 ? aiResponseStartRef : null} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
               <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: 12, background: m.role === "user" ? C.purple : "#fff", color: m.role === "user" ? "#fff" : C.text, fontSize: 14, lineHeight: 1.6, boxShadow: m.role === "ai" ? "0 1px 4px rgba(0,0,0,0.06)" : "none" }}>
                 {m.role === "ai" ? <MarkdownText text={m.text} /> : m.text}
               </div>
