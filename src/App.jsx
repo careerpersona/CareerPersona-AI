@@ -14,6 +14,7 @@ import { useActivityLog } from "./data/activityLog";
 import { useNotifications, insertNotification } from "./data/notifications";
 import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
+import { useCareerProgressAnalysis } from "./data/careerProgress";
 import { useUserContext } from "./data/userContext";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
@@ -2165,6 +2166,27 @@ async function buildPlanPayload(ctx) {
   };
 }
 
+// ─── CAREER PROGRESS PAYLOAD BUILDER ─────────────────────────────────────────
+async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
+  const goalLine = careerGoal ? `Career Goal: ${careerGoal}.${careerTimeline ? ` Target Timeline: ${careerTimeline}.` : ""}` : "No career goal set yet.";
+  const raw = await askClaude(`You are CareerPersona AI. Assess this user's career progress against their stated goal. Be honest, specific, and actionable. Return ONLY valid JSON, no markdown:\n{"v":1,"progressPercent":<integer 0-100 based on how far they are toward their career goal given their current data>,"careerHealth":"excellent|good|fair|needs_attention","assessment":"<2-3 sentences: where they are today relative to their goal, what's working>","blockers":[{"issue":"<specific blocker>","priority":"high|medium|low","detail":"<1 sentence on how to address it>"}],"nextMilestone":"<the single most impactful next step they should take>","recommendations":["<actionable tip 1>","<actionable tip 2>","<actionable tip 3>"]}\nUser data: ${ctx}\n${goalLine}`, 900);
+  let result;
+  try {
+    const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+    const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+    result = parsed?.v === 1 ? { ...parsed, generatedAt: new Date().toISOString() } : null;
+  } catch { result = null; }
+  return result || {
+    v: 1, generatedAt: new Date().toISOString(),
+    progressPercent: 10,
+    careerHealth: "fair",
+    assessment: "Set your career goal in your profile to unlock a personalized AI progress assessment. The more data you add, the more accurate your progress tracking becomes.",
+    blockers: [{ issue: "Career goal not defined", priority: "high", detail: "Set your target role, goal, and timeline in your profile to enable AI progress tracking." }],
+    nextMilestone: "Complete your career profile with a specific goal and target timeline.",
+    recommendations: ["Define your career goal with a specific target role and timeline.", "Complete your profile to 100% for personalized recommendations.", "Add job applications to let AI track your pipeline health."]
+  };
+}
+
 // ─── MARKDOWN TEXT RENDERER ──────────────────────────────────
 function MarkdownText({ text }) {
   if (!text) return null;
@@ -2291,6 +2313,22 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
     } else if (profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
   }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id]);
+
+  // ── Career Progress — load cached analysis for Dashboard summary card ──
+  const { analysis: savedCpAnalysis, loading: cpAnalysisLoading, loadedFor: cpLoadedFor } = useCareerProgressAnalysis(profile?.id);
+  const [cpAnalysis, setCpAnalysis] = useState(() => {
+    try { const c = sessionStorage.getItem("cp_progress_analysis"); if (!c) return null; const p = JSON.parse(c); return p?.v === 1 ? p : null; } catch { return null; }
+  });
+  const cpAppliedRef = useRef(undefined);
+  useEffect(() => {
+    if (cpAnalysisLoading || cpLoadedFor !== profile?.id) return;
+    if (cpAppliedRef.current === profile?.id) return;
+    cpAppliedRef.current = profile?.id;
+    if (savedCpAnalysis?.v === 1) {
+      setCpAnalysis(savedCpAnalysis);
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedCpAnalysis)); } catch {}
+    }
+  }, [savedCpAnalysis, cpAnalysisLoading, cpLoadedFor, profile?.id]);
 
   const networkContacts = networkContactsProp || [];
   const apps = applications || [];
@@ -2786,25 +2824,58 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
         {/* Career Progress */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 10 }}>{t("dashboard.progressTitle")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {[
-              [t("dashboard.progressProfile"), `${profileComplete}%`, profileComplete, C.purple],
-              ["Tracked Jobs",        totalApps,               Math.min(totalApps * 10, 100),               C.blue],
-              [t("dashboard.progressApplications"), totalApps, Math.min(totalApps * 10, 100),               C.green],
-              [t("dashboard.progressInterviews"), interviews,  Math.min(interviews * 20, 100),              "#EA580C"],
-              [t("dashboard.progressOffers"),     offers,      Math.min(offers * 50, 100),                  "#CA8A04"],
-              ["Network Contacts",    networkContacts.length,  Math.min(networkContacts.length * 10, 100),  "#0891B2"],
-              ["Smart Apply",         saApplied,               Math.min(saApplied * 20, 100),               C.purple],
-            ].map(([label, value, pct, color]) => (
-              <div key={label}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                  <span style={{ color: C.textMid }}>{label}</span>
-                  <span style={{ fontWeight: 700, color }}>{value}</span>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>CAREER PROGRESS</div>
+          {cpAnalysisLoading && !cpAnalysis ? (
+            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>Loading…</div>
+          ) : cpAnalysis ? (() => {
+            const cp = cpAnalysis;
+            const hm = { excellent: { label: "Excellent", color: C.green }, good: { label: "Good", color: C.blue }, fair: { label: "Fair", color: C.yellow }, needs_attention: { label: "Needs Attention", color: C.red } }[cp.careerHealth] || { label: "Fair", color: C.yellow };
+            const topBlocker = cp.blockers?.find(b => b.priority === "high") || cp.blockers?.[0];
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Career Goal */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>Career Goal</span>
+                  <span style={{ fontSize: 12, color: C.text, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{profile?.career_goal || <span style={{ color: C.textMuted, fontWeight: 400 }}>Not set</span>}</span>
                 </div>
-                <PBar val={pct} color={color} />
+                {/* AI Progress Score */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: C.textMid, fontWeight: 600 }}>AI Progress Score</span>
+                    <span style={{ fontWeight: 800, color: C.purple }}>{cp.progressPercent}%</span>
+                  </div>
+                  <PBar val={cp.progressPercent} color={C.purple} />
+                </div>
+                {/* Current Blocker */}
+                {topBlocker && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>Current Blocker</span>
+                    <span style={{ fontSize: 12, color: C.red, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{topBlocker.issue}</span>
+                  </div>
+                )}
+                {/* Next Milestone */}
+                {cp.nextMilestone && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>Next Milestone</span>
+                    <span style={{ fontSize: 12, color: C.text, textAlign: "right", maxWidth: "60%", lineHeight: 1.4 }}>{cp.nextMilestone}</span>
+                  </div>
+                )}
+                {/* Career Health */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>Career Health</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: hm.color, background: `${hm.color}18`, borderRadius: 20, padding: "2px 10px" }}>{hm.label}</span>
+                </div>
               </div>
-            ))}
+            );
+          })() : (
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 4 }}>
+              {profile?.career_goal ? "View Career Progress to generate your AI assessment." : "Set your career goal to unlock AI progress tracking."}
+            </div>
+          )}
+          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
+            <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("progress")}>
+              View Career Progress →
+            </button>
           </div>
         </Card>
 
@@ -3277,6 +3348,271 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CAREER PROGRESS PAGE ────────────────────────────────────────────────────
+function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile }) {
+  const { session: interviewSession } = useInterviewSession(profile?.id);
+  const { data: salaryData } = useSalaryResearch(profile?.id);
+  const [networkContacts] = useNetworkingContacts(profile?.id);
+  const { logActivity } = useActivityLog(profile?.id);
+
+  const { analysis: savedAnalysis, loading: analysisLoading, loadedFor, save: saveAnalysis } = useCareerProgressAnalysis(profile?.id);
+
+  const [analysis, setAnalysis] = useState(() => {
+    try { const c = sessionStorage.getItem("cp_progress_analysis"); if (!c) return null; const p = JSON.parse(c); return p?.v === 1 ? p : null; } catch { return null; }
+  });
+  const [genLoading, setGenLoading] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalDraft, setGoalDraft] = useState(profile?.career_goal || "");
+  const [timelineDraft, setTimelineDraft] = useState(profile?.career_timeline || "");
+  const [goalSaving, setGoalSaving] = useState(false);
+
+  const userContext = useUserContext({ profile, applications, savedJobs, interviewSession, salaryData, networkContacts });
+  const appliedRef = useRef(undefined);
+
+  useEffect(() => {
+    if (analysisLoading || loadedFor !== profile?.id) return;
+    if (appliedRef.current === profile?.id) return;
+    appliedRef.current = profile?.id;
+    if (savedAnalysis?.v === 1) {
+      setAnalysis(savedAnalysis);
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedAnalysis)); } catch {}
+    }
+  }, [savedAnalysis, analysisLoading, loadedFor, profile?.id]);
+
+  const generate = async () => {
+    setGenLoading(true);
+    try {
+      const ctx = userContext.getContextString();
+      const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline);
+      setAnalysis(result);
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch {}
+      saveAnalysis(result).catch(err => console.error("career progress save failed", err));
+      logActivity("Career progress assessment generated");
+    } catch {}
+    finally { setGenLoading(false); }
+  };
+
+  // Auto-generate when Supabase load completes and there is no analysis yet
+  const autoGenRef = useRef(false);
+  useEffect(() => {
+    if (analysisLoading || loadedFor !== profile?.id) return;
+    if (analysis || genLoading || autoGenRef.current) return;
+    autoGenRef.current = true;
+    generate();
+  }, [analysisLoading, loadedFor, analysis]);
+
+  const saveGoal = async () => {
+    setGoalSaving(true);
+    try { await updateProfile({ career_goal: goalDraft.trim(), career_timeline: timelineDraft.trim() }); setEditingGoal(false); } catch {}
+    finally { setGoalSaving(false); }
+  };
+
+  const isLoading = (analysisLoading && !analysis) || (genLoading && !analysis);
+  const a = analysis;
+
+  const healthMeta = {
+    excellent: { label: "Excellent", color: C.green, bg: C.greenLight },
+    good: { label: "Good", color: C.blue, bg: C.blueLight },
+    fair: { label: "Fair", color: C.yellow, bg: C.yellowLight },
+    needs_attention: { label: "Needs Attention", color: C.red, bg: C.redLight },
+  };
+  const hm = healthMeta[a?.careerHealth] || healthMeta.fair;
+
+  const priorityMeta = { high: { color: C.red, bg: C.redLight, label: "High" }, medium: { color: C.yellow, bg: C.yellowLight, label: "Medium" }, low: { color: C.green, bg: C.greenLight, label: "Low" } };
+
+  // Real computed career metrics
+  const apps = applications ?? [];
+  const totalApps = apps.length;
+  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
+  const offers = apps.filter(a => a.status === "Offer").length;
+  const atsScores = apps.map(a => Number(a.atsScore) || 0).filter(n => n > 0);
+  const bestAts = atsScores.length ? Math.max(...atsScores) : null;
+  const profileComplete = profile ? Math.round((["full_name","email_address","phone","location","job_title","years_experience","preferred_job_title","work_type"].filter(f => profile[f]).length / 8) * 100) : 0;
+
+  return (
+    <div>
+      <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        ← Back to Dashboard
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.purple}40` }}>
+            <span style={{ fontSize: 22 }}>📈</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>Career Progress Intelligence</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 3 }}>AI-powered progress tracking toward your career goal</div>
+          </div>
+        </div>
+        <button onClick={generate} disabled={genLoading} style={{ border: `1px solid ${C.border}`, background: "#fff", color: C.purple, fontSize: 13, fontWeight: 600, cursor: genLoading ? "not-allowed" : "pointer", padding: "8px 16px", borderRadius: 8, fontFamily: "inherit", opacity: genLoading ? 0.6 : 1 }}>
+          {genLoading ? "Analyzing…" : "↻ Regenerate"}
+        </button>
+      </div>
+
+      {/* Career Goal */}
+      <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: editingGoal ? 14 : (profile?.career_goal ? 10 : 0) }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText }}>CAREER GOAL</div>
+          {!editingGoal && (
+            <button onClick={() => { setGoalDraft(profile?.career_goal || ""); setTimelineDraft(profile?.career_timeline || ""); setEditingGoal(true); }} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+              {profile?.career_goal ? "Edit" : "+ Set Goal"}
+            </button>
+          )}
+        </div>
+
+        {editingGoal ? (
+          <div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>What is your career goal?</div>
+              <textarea value={goalDraft} onChange={e => setGoalDraft(e.target.value)} placeholder="e.g. Become a Senior Product Manager at a Series B startup" rows={3} style={{ width: "100%", borderRadius: 8, border: `1px solid ${C.border}`, padding: "10px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", outline: "none" }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>Target timeline</div>
+              <select value={timelineDraft} onChange={e => setTimelineDraft(e.target.value)} style={{ borderRadius: 8, border: `1px solid ${C.border}`, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", background: "#fff", width: "100%" }}>
+                <option value="">Select timeline…</option>
+                <option value="3 months">3 months</option>
+                <option value="6 months">6 months</option>
+                <option value="1 year">1 year</option>
+                <option value="18 months">18 months</option>
+                <option value="2 years">2 years</option>
+                <option value="3+ years">3+ years</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={saveGoal} disabled={goalSaving || !goalDraft.trim()} style={{ background: C.purple, color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 600, cursor: goalSaving || !goalDraft.trim() ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: goalSaving || !goalDraft.trim() ? 0.6 : 1 }}>
+                {goalSaving ? "Saving…" : "Save Goal"}
+              </button>
+              <button onClick={() => setEditingGoal(false)} style={{ background: "none", color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            </div>
+          </div>
+        ) : profile?.career_goal ? (
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.4, marginBottom: profile?.career_timeline ? 6 : 0 }}>{profile.career_goal}</div>
+            {profile?.career_timeline && <div style={{ fontSize: 13, color: C.textMuted }}>Target: {profile.career_timeline}</div>}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No career goal set yet. Set a goal so AI can track your progress and give targeted recommendations.</div>
+        )}
+      </Card>
+
+      {isLoading ? (
+        <Card style={{ padding: "36px 24px", textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 24, marginBottom: 12 }}>📊</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 6 }}>Analyzing your career progress…</div>
+          <div style={{ fontSize: 13, color: C.textMuted }}>AI is assessing your data and generating a personalized report.</div>
+        </Card>
+      ) : a ? (
+        <>
+          {/* Progress Assessment */}
+          <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>AI PROGRESS ASSESSMENT</div>
+            <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+              {/* Progress ring */}
+              <div style={{ position: "relative", width: 80, height: 80, flexShrink: 0 }}>
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="32" fill="none" stroke={C.border} strokeWidth="8" />
+                  <circle cx="40" cy="40" r="32" fill="none" stroke={C.purple} strokeWidth="8"
+                    strokeDasharray={`${(a.progressPercent / 100) * 201} 201`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 40 40)" />
+                </svg>
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: C.purple, lineHeight: 1 }}>{a.progressPercent}%</div>
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Career Health</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: hm.color, background: hm.bg, borderRadius: 20, padding: "2px 10px" }}>{hm.label}</span>
+                </div>
+                <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.6 }}>{a.assessment}</div>
+              </div>
+            </div>
+            {a.generatedAt && <div style={{ fontSize: 11, color: C.textMuted }}>Generated {new Date(a.generatedAt).toLocaleDateString()}</div>}
+          </Card>
+
+          {/* Current Blockers */}
+          {a.blockers?.length > 0 && (
+            <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>CURRENT BLOCKERS</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {a.blockers.map((b, i) => {
+                  const pm = priorityMeta[b.priority] || priorityMeta.medium;
+                  return (
+                    <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: pm.color, background: pm.bg, borderRadius: 20, padding: "2px 9px", flexShrink: 0, marginTop: 1 }}>{pm.label}</span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>{b.issue}</div>
+                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{b.detail}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Next Milestone */}
+          {a.nextMilestone && (
+            <Card style={{ padding: "18px 20px", marginBottom: 16, background: C.purpleLight, border: `1px solid ${C.purple}30` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 8 }}>NEXT MILESTONE</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text, lineHeight: 1.6 }}>{a.nextMilestone}</div>
+            </Card>
+          )}
+
+          {/* Career Metrics */}
+          <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14 }}>CAREER METRICS</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              {[
+                { label: "Profile", value: `${profileComplete}%`, color: C.purple },
+                { label: "Applications", value: totalApps, color: C.blue },
+                { label: "Interviews", value: interviews, color: C.orange },
+                { label: "Offers", value: offers, color: C.green },
+                { label: "Best ATS", value: bestAts != null ? `${bestAts}%` : "—", color: C.purple },
+                { label: "Network", value: networkContacts.length, color: "#0891B2" },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background: `${color}0F`, borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, marginTop: 4 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Recommendations */}
+          {a.recommendations?.length > 0 && (
+            <Card style={{ padding: "18px 20px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>AI RECOMMENDATIONS</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {a.recommendations.map((rec, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      <span style={{ color: "#fff", fontSize: 10, fontWeight: 800 }}>{i + 1}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{rec}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      ) : (
+        <Card style={{ padding: "28px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
+            {profile?.career_goal ? "Click Regenerate to generate your AI career progress assessment." : "Set your career goal above to enable AI progress tracking."}
+          </div>
+        </Card>
+      )}
+
+      <div style={{ textAlign: "center", paddingTop: 8, paddingBottom: 8 }}>
+        <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Back to Dashboard</button>
+      </div>
     </div>
   );
 }
@@ -8610,7 +8946,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  const validPages = new Set(["dashboard","briefing","plan","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -8667,7 +9003,7 @@ export default function App() {
     await logout();
     setProfile(null);
     // Session state — scoped to current tab, always cleared on logout
-    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash","cp_progress_analysis"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
     // User-specific localStorage — cleared so a subsequent login (same or different account)
     // starts from Supabase, not from the previous user's stale cached data
     ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch {} });
@@ -8897,6 +9233,7 @@ export default function App() {
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}

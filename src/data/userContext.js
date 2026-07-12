@@ -58,6 +58,8 @@ export function buildUserContext({
     targetRole: profile?.preferred_job_title ?? null,
     yearsExperience: profile?.years_experience ?? null,
     workType: profile?.work_type ?? null,
+    careerGoal: profile?.career_goal || null,
+    careerTimeline: profile?.career_timeline || null,
   };
 
   // ── Profile completeness ──────────────────────────────────────────────────
@@ -159,7 +161,9 @@ export function buildUserContext({
         `Role: ${identity.currentRole || "not set"}. ` +
         `Target: ${identity.targetRole || "not set"}. ` +
         `Location: ${identity.location || "not specified"}. ` +
-        `Experience: ${identity.yearsExperience || "?"}yrs.`
+        `Experience: ${identity.yearsExperience || "?"}yrs.` +
+        (identity.careerGoal ? ` Career Goal: ${identity.careerGoal}.` : "") +
+        (identity.careerTimeline ? ` Target Timeline: ${identity.careerTimeline}.` : "")
       );
     }
 
@@ -218,6 +222,8 @@ export function buildUserContext({
 
   return {
     identity,
+    careerGoal: identity.careerGoal,
+    careerTimeline: identity.careerTimeline,
     profileComplete,
     apps,
     appStats,
