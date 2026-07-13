@@ -263,6 +263,7 @@ function rowToEntry(r) {
   return {
     id: r.id,
     date: r.created_at,
+    resumeId: r.resume_id || null,
     resumeName: r.resume_name || "",
     atsScore: r.ats_score,
     potentialAtsScore: r.potential_ats_score,

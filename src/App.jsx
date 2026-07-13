@@ -1344,11 +1344,11 @@ const NAV_PILL_WIDTH = {
   interview: 98, tracker: 88, salary: 79, network: 95, pricing: 84,
 };
 
-function NavPills({ nav, page, setPage }) {
+function NavPills({ nav, page, setPage, navigateToResume }) {
   return (
     <nav className="nav-pills" style={{ display: "flex", gap: 4, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
       {nav.map(n => (
-        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setPage(n.id)}>
+        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => n.id === "resume" && navigateToResume ? navigateToResume() : setPage(n.id)}>
           <span style={{ fontSize: 13, flexShrink: 0 }}>{n.icon}</span><span className="nav-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
         </button>
       ))}
@@ -2254,7 +2254,7 @@ function MarkdownText({ text }) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume }) {
   const { t } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -2742,7 +2742,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? "Analyze a resume on the Resume page to see insights here." : t("dashboard.resumeIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("resume")}>{t("dashboard.goToResume")}</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
@@ -3120,7 +3120,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage }) {
 }
 
 // ─── FULL ACTION PLAN PAGE ───────────────────────────────────
-function PlanPage({ profile, applications, savedJobs, setPage }) {
+function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume }) {
   const { t } = useI18n();
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
@@ -3307,7 +3307,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
                       </div>
                       <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: goPage ? 10 : 0, textDecoration: done ? "line-through" : "none" }}>{item.task}</div>
                       {goPage && (
-                        <button onClick={() => setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                        <button onClick={() => goPage === "resume" && onNavigateResume ? onNavigateResume() : setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
                           Go to {item.category} →
                         </button>
                       )}
@@ -3329,7 +3329,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: done ? C.textMuted : C.text, marginBottom: 6, textDecoration: done ? "line-through" : "none" }}>{label}</div>
                       <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: 10, textDecoration: done ? "line-through" : "none" }}>{text}</div>
-                      <button onClick={() => setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                      <button onClick={() => goPage === "resume" && onNavigateResume ? onNavigateResume() : setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
                         Go to {label.split(" ")[0]} →
                       </button>
                     </div>
@@ -3434,20 +3434,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
   const bestResume = resumeList.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
   const resumeAts = bestResume?.ats_score ?? null;
 
-  // Navigation state machine: compute which Resume Intelligence step to route to.
-  // State 1 — no analyzed resume  → "upload" (start of workflow)
-  // State 2 — keywords pending    → "keywords" (Missing Keywords section)
-  // State 3 — keywords done, not yet saved as Optimized → "insights" (Insights tab)
-  // State 4 — Optimized history entry exists → "maintenance" (Maintenance Mode)
-  const resumeNavTarget = (() => {
-    if (!bestResume) return "upload";
-    if ((bestResume.keywords_missing?.length ?? 0) > 0) return "keywords";
-    const isFullyOptimized = (analysisHistory ?? []).some(
-      e => e.resumeId === bestResume.id && e.resumeStatus === "Optimized"
-    );
-    return isFullyOptimized ? "maintenance" : "insights";
-  })();
-  const goToResume = () => onNavigateResume ? onNavigateResume(resumeNavTarget) : setPage("resume");
+  const goToResume = () => onNavigateResume ? onNavigateResume() : setPage("resume");
 
   // Salary Growth — live data from existing Market Intelligence module
   const salaryRange = salaryData?.results?.salaryRange || salaryData?.results?.marketRange || null;
@@ -9168,8 +9155,21 @@ export default function App() {
   const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel } = useResumes(profile?.id);
   const [activeResumeId, setActiveResumeId] = useState(null);
   const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
-  // Resume Intelligence navigation state: Career Progress → Resume routes to the correct workflow step.
+  // Resume Intelligence navigation state machine — computed once at root so every
+  // entry point (nav bar, Dashboard, Action Plan, Career Progress) routes to the
+  // correct workflow step based on the user's current resume progress.
   const [resumeEntryTarget, setResumeEntryTarget] = useState(null);
+  const resumeNavTarget = useMemo(() => {
+    const best = resumes.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
+    if (!best) return "upload";
+    if ((best.keywords_missing?.length ?? 0) > 0) return "keywords";
+    const isFullyOptimized = (analysisHistory ?? []).some(e => e.resumeId === best.id && e.resumeStatus === "Optimized");
+    return isFullyOptimized ? "maintenance" : "insights";
+  }, [resumes, analysisHistory]);
+  const navigateToResume = useCallback((overrideTarget) => {
+    setResumeEntryTarget(overrideTarget ?? resumeNavTarget);
+    setPage("resume");
+  }, [resumeNavTarget]);
 
   // Confirmed Tracker delete — awaits Supabase before updating local state.
   // Prevents the "deleted items return on refresh" ghost caused by syncListDiff's
@@ -9330,7 +9330,7 @@ export default function App() {
         </div>
         {/* Row 2: Nav + Utility */}
         <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
-          <NavPills nav={nav} page={page} setPage={setPage} />
+          <NavPills nav={nav} page={page} setPage={setPage} navigateToResume={navigateToResume} />
           <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
             <LanguageMenu variant="icon" />
             <NotificationsMenu variant="icon" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} />
@@ -9361,10 +9361,10 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={(target) => { setResumeEntryTarget(target); setPage("resume"); }} />}
+        {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
+        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
