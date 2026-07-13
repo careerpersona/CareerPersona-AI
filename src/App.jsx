@@ -3832,6 +3832,10 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [insightsDone, setInsightsDone] = useState(false);
   const fileRef = useRef();
   const userContext = useUserContext({ profile, applications, savedJobs });
+  // Capture the entry target at mount time so auto-load (which may fire later,
+  // after onConsumeEntryTarget has set the prop to null) can still read it.
+  const initialEntryRef = useRef(entryTarget);
+  const entryScrolledRef = useRef(false);
 
   // Close the library Actions dropdown when clicking anywhere outside it.
   useEffect(() => {
@@ -3841,17 +3845,26 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     return () => document.removeEventListener("click", handler);
   }, [openDropdownId]);
 
-  // Consume navigation intent from CareerProgressPage and route to the correct section.
+  // Consume navigation intent and set the correct tab on mount.
   useEffect(() => {
-    if (!entryTarget) return;
-    if (entryTarget === "insights") setTab("insights");
-    else if (entryTarget === "keywords") {
-      setTab("resume");
-      setTimeout(() => document.getElementById("missing-keywords-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 600);
-    }
+    const target = initialEntryRef.current;
+    if (!target) return;
+    if (target === "insights") setTab("insights");
+    else if (target === "keywords") setTab("resume");
     // "upload" needs no special routing — default workspace is correct
     onConsumeEntryTarget?.();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once results are available, scroll to the correct section for the entry target.
+  // Uses a 350ms delay so it fires after the root page-change force-scroll-to-top (300ms).
+  useEffect(() => {
+    if (!results || entryScrolledRef.current) return;
+    const target = initialEntryRef.current;
+    if (!target || target === "upload") return;
+    entryScrolledRef.current = true;
+    const id = target === "keywords" ? "missing-keywords-section" : "resume-analysis-section";
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 350);
+  }, [results]);
 
   // Auto-load the most recently saved resume when the workspace is empty.
   // Guards: skip if user deliberately cleared (New Analysis), if workspace already has content,
@@ -3879,7 +3892,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
         company: "",
       });
       setMasterMissingKws(r.keywords_missing || []);
-      if (!entryTarget) setTab("resume");
+      if (!initialEntryRef.current) setTab("resume");
     }
   }, [resumes, resumesLoading, manualReset]); // eslint-disable-line react-hooks/exhaustive-deps
 
