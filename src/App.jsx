@@ -2113,7 +2113,7 @@ const isToday = (iso) => !!iso && iso.slice(0, 10) === new Date().toISOString().
 
 // ─── BRIEFING PAYLOAD BUILDER (shared by DashboardPage + BriefingPage) ──────
 async function buildBriefingPayload(ctx) {
-  const raw = await askClaude(`You are CareerPersona AI. Generate a personalized daily briefing based on this user's career data. Be specific, actionable, and encouraging. Return ONLY valid JSON, no markdown:\n{"v":2,"summary":"1-2 personalized sentences about career status today","newMatchingJobs":"1 sentence about job opportunities in their target role","highestPayingJobs":"1 sentence about highest-paying opportunities for their skills","jobsClosingSoon":"1 sentence about application urgency or follow-up timing","priorityRecommendation":"1 specific actionable task for today based on their data","companiesHiringNow":"1 sentence about active hiring in their target sector","newOpportunities":"1 sentence about emerging roles or adjacent opportunities","resumeUpdates":"1 sentence about resume strength or ATS improvement tips","atsScoreChanges":"1 sentence about ATS optimization and score improvements","interviewInvitations":"1 sentence about interview prep or pipeline status","recruiterActivity":"1 sentence about recruiter visibility and profile tips","applicationUpdates":"1 sentence about application pipeline and follow-up strategy","salaryChanges":"1 sentence about salary trends for their role and location","marketUpdates":"1 sentence about job market conditions in their field","careerInsights":"1 strategic career insight specific to their situation","dailyHighlights":["short actionable highlight 1","short actionable highlight 2","short actionable highlight 3"]}\nUser data: ${ctx}`, 1600);
+  const raw = await askClaude(`You are CareerPersona AI. Generate a personalized daily briefing based on this user's career data. Be specific, actionable, and encouraging. Return ONLY valid JSON, no markdown:\n{"v":2,"summary":"1-2 personalized sentences about career status today","newMatchingJobs":"1 sentence about job opportunities in their target role","highestPayingJobs":"1 sentence about highest-paying opportunities for their skills","jobsClosingSoon":"1 sentence about application urgency or follow-up timing","priorityRecommendation":"1 specific actionable task for today based on their data","companiesHiringNow":"1 sentence about active hiring in their target sector","newOpportunities":"1 sentence about emerging roles or adjacent opportunities","resumeUpdates":"1 sentence about resume strength or ATS improvement tips","atsScoreChanges":"1 sentence about resume strength and optimization progress","interviewInvitations":"1 sentence about interview prep or pipeline status","recruiterActivity":"1 sentence about recruiter visibility and profile tips","applicationUpdates":"1 sentence about application pipeline and follow-up strategy","salaryChanges":"1 sentence about salary trends for their role and location","marketUpdates":"1 sentence about job market conditions in their field","careerInsights":"1 strategic career insight specific to their situation","dailyHighlights":["short actionable highlight 1","short actionable highlight 2","short actionable highlight 3"]}\nUser data: ${ctx}`, 1600);
   let result;
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
@@ -3654,7 +3654,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
                 {resumePotential > resumeAts && (
                   <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
                     AI estimates you can reach <strong style={{ color: C.purple }}>{resumePotential}%</strong> with targeted improvements.{" "}
-                    {resumeAts < 60 ? "Focus on adding missing keywords and quantifying achievements." : resumeAts < 80 ? "Add role-specific keywords and strengthen your summary." : "Minor keyword tuning can push you above 90%."}
+                    {resumeAts < 60 ? "Add the missing keywords below to reach your target score." : resumeAts < 80 ? "Add the missing role-specific keywords below to reach your target score." : "Minor keyword additions can push you above 90%."}
                   </div>
                 )}
                 <button onClick={goToResume} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
@@ -3849,8 +3849,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [pendingAutoAnalyze, setPendingAutoAnalyze] = useState(false);
   const [applyingAllFixes, setApplyingAllFixes] = useState(false);
   const [insightsDone, setInsightsDone] = useState(false);
-  const [isRecalculating, setIsRecalculating] = useState(false);
-  const [recalcError, setRecalcError] = useState("");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const fileRef = useRef();
   const userContext = useUserContext({ profile, applications, savedJobs });
@@ -4138,7 +4136,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       const capturedResume = resume;
       const capturedJobDesc = jobDesc;
       askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
-{"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and ATS score>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
+{"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
 RESUME:${capturedResume}
 JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
         try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
@@ -4488,68 +4486,6 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     }
   };
 
-  const handleRecalculate = async () => {
-    console.log("[Recalculate] CLICKED — jobDesc.length:", jobDesc.length, "| results:", !!results, "| resume.length:", resume.length);
-    if (!jobDesc.trim()) { setRecalcError("Add a job description above before recalculating."); return; }
-    if (!results) return;
-    setIsRecalculating(true); setRecalcError("");
-    const oldAts = results.atsScore ?? null;
-    const oldBreakdown = results.scoreBreakdown ?? null;
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const prompt = `${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Score this resume against the job description. Return ONLY a JSON object — no markdown, no explanation.
-{"atsScore":<0-100>,"potentialAtsScore":<estimated score with further improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>}}
-RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`;
-      // DEBUG — remove before shipping
-      console.group("[Recalculate] Debug");
-      console.log("resume length:", resume.length, "| first 200 chars:", resume.slice(0, 200));
-      console.log("jobDesc:", jobDesc.slice(0, 200));
-      console.log("full prompt:", prompt);
-      console.groupEnd();
-      const raw = await askClaude(prompt, 600);
-      // DEBUG — remove before shipping
-      console.group("[Recalculate] Response");
-      console.log("raw response:", raw);
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (parseErr) {
-        console.error("JSON.parse failed:", parseErr, "| raw was:", raw);
-        throw parseErr;
-      }
-      console.log("parsed JSON:", parsed);
-      console.log("atsScore:", parsed.atsScore, "| potentialAtsScore:", parsed.potentialAtsScore, "| keywordsFound:", parsed.keywordsFound, "| keywordsMissing:", parsed.keywordsMissing);
-      console.groupEnd();
-      if (oldAts != null) setAnimatedAts(oldAts);
-      if (oldBreakdown) setAnimatedBreakdown(oldBreakdown);
-      setResults(prev => ({ ...prev, atsScore: parsed.atsScore, potentialAtsScore: parsed.potentialAtsScore, scoreBreakdown: parsed.scoreBreakdown }));
-      if (improveStats) setImproveStats(prev => ({ ...prev, newAts: parsed.atsScore }));
-      setTimeout(() => {
-        if (oldAts != null) {
-          const from = oldAts; const to = parsed.atsScore;
-          const start = Date.now();
-          const tick = () => {
-            const t2 = Math.min((Date.now() - start) / 1000, 1);
-            const eased = 1 - Math.pow(1 - t2, 3);
-            setAnimatedAts(Math.round(from + (to - from) * eased));
-            if (t2 < 1) setTimeout(tick, 16); else { setAnimatedAts(to); setTimeout(() => setAnimatedAts(null), 200); }
-          };
-          tick();
-        }
-        if (oldBreakdown && parsed.scoreBreakdown) {
-          setTimeout(() => setAnimatedBreakdown(parsed.scoreBreakdown), 100);
-          setTimeout(() => setAnimatedBreakdown(null), 2000);
-        }
-      }, 150);
-    } catch (e) {
-      console.error("[Recalculate]", e);
-      setRecalcError("Could not recalculate score. Please try again.");
-    } finally {
-      setIsRecalculating(false);
-    }
-  };
-
   const handleDeleteResume = async (r) => {
     setDeletingId(r.id);
     try { await deleteResume(r); } catch { setResumeError(t("resume.deleteResumeFailed")); }
@@ -4622,7 +4558,7 @@ JOB DESCRIPTION:${jobDesc}`;
     setLinkedinProfile(""); setActiveCoverVersion("professional");
     setActiveToolPanel(null); setEditingCoverLetter(false); setEditedCoverText("");
     setTailoredApplied(false); setPendingAutoAnalyze(false); setApplyingAllFixes(false); setInsightsDone(false);
-    setIsRecalculating(false); setRecalcError(""); setMaintenanceMode(false);
+    setMaintenanceMode(false);
     setManualReset(true);
   };
 
@@ -4951,19 +4887,6 @@ JOB DESCRIPTION:${jobDesc}`;
             </div>
           )}
 
-          {isOptimized && !librarySaved && (
-            <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>Applied deep analysis fixes?</div>
-                <div style={{ fontSize: 12, color: C.textMid, marginTop: 1 }}>Recalculate your ATS score to reflect the latest changes to your resume.</div>
-                {recalcError && <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>{recalcError}</div>}
-              </div>
-              <Btn onClick={handleRecalculate} disabled={isRecalculating} loading={isRecalculating} style={{ fontSize: 12, flexShrink: 0 }}>
-                {isRecalculating ? "Recalculating…" : "🔄 Recalculate ATS Score"}
-              </Btn>
-            </div>
-          )}
-
           {/* ATS Score Section */}
           <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
@@ -5049,8 +4972,8 @@ JOB DESCRIPTION:${jobDesc}`;
 
           {isOptimized && improveStats && !improving && (
             <div style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, borderRadius: 10, padding: "10px 18px", marginBottom: 16, textAlign: "center", boxShadow: `0 4px 16px ${C.purple}40`, animation: "summaryEntrance 0.3s ease-out" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Resume Optimization Complete!</div>
-              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Click the &ldquo;Insights&rdquo; tab below to review additional AI recommendations before saving your optimized resume.</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Keywords Successfully Applied!</div>
+              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Visit the &ldquo;Insights&rdquo; tab to further strengthen your resume writing quality, then save your optimized resume.</div>
             </div>
           )}
           {/* Tabs */}
@@ -5211,7 +5134,7 @@ JOB DESCRIPTION:${jobDesc}`;
                     {improvements.length > 0 && (
                       <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}30`, borderRadius: 12, padding: 16 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: C.yellow, marginBottom: 4 }}>💡 Growth Opportunities</div>
-                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Addressing these areas can meaningfully boost your ATS score and recruiter interest:</div>
+                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Addressing these areas will strengthen your resume and improve recruiter interest:</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                           {(insightsSectionExpanded.improvements ? improvements : improvements.slice(0, 2)).map((w, i) => {
                             const tier = PRIORITY_TIERS[Math.min(i, 2)];
