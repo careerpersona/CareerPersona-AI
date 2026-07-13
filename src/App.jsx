@@ -3255,7 +3255,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
     { id: "certifications", label: "Certification Recommendations", text: p.certifications, page: "resume" },
   ] : [];
 
-  const categoryPageMap = { priorities: null, applications: "jobs", resume: "resume", interview: "interview" };
+  const categoryPageMap = { priorities: null, applications: "saved", resume: "resume", interview: "interview" };
 
   const StatusCircle = ({ id, filled }) => (
     <div onClick={() => toggleComplete(id)} style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${filled ? C.green : C.purple}`, background: filled ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}>
@@ -3348,7 +3348,11 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
                       </div>
                       <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: goPage ? 10 : 0, textDecoration: done ? "line-through" : "none" }}>{item.task}</div>
                       {goPage && (
-                        <button onClick={() => goPage === "resume" && onNavigateResume ? onNavigateResume() : setPage(goPage)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                        <button onClick={() => {
+                          if (goPage === "resume" && onNavigateResume) { onNavigateResume(); }
+                          else if (goPage === "saved") { setPage("saved"); setTimeout(() => document.getElementById("smart-apply-queue")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }
+                          else { setPage(goPage); }
+                        }} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
                           Go to {item.category} →
                         </button>
                       )}
@@ -8197,7 +8201,7 @@ Company: ${item.company}`, 8000);
 
       {/* ── Section 2: Smart Apply Queue ───────────────────────── */}
       {(visibleQueue.length > 0 || queueLoading) && (
-        <div>
+        <div id="smart-apply-queue">
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("savedJobs.smartApplyQueue")}</div>
           {queueLoading && visibleQueue.length === 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
