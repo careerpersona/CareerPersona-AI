@@ -216,7 +216,7 @@ function _devMockRoute(prompt) {
 
   // ── Action Plan ────────────────────────────────────────────────────────────
   if (p.includes("action plan") || p.includes("productivityscore")) {
-    return JSON.stringify({ v: 2, productivityScore: 72, categories: [{ id: "priorities", category: "Today's Priorities", task: "Follow up on your Stripe application — it's been 6 days since submission.", time: "10 min", status: "pending" }, { id: "applications", category: "Recommended Applications", task: "Apply to the Staff Engineer role at Notion — it's a strong match for your background.", time: "30 min", status: "pending" }, { id: "resume", category: "Resume Improvements", task: "Add Docker and Kubernetes to your skills section — they appear in 80% of your target job descriptions.", time: "15 min", status: "pending" }, { id: "interview", category: "Interview Practice", task: "Practice STAR method for 'Tell me about a time you handled a production incident.'", time: "20 min", status: "pending" }], followUps: "Send a brief check-in email to the recruiter at Amazon who reached out last week.", networking: "Connect with 2 engineers at Notion on LinkedIn and mention your shared interest in developer tools.", skills: "Spend 30 minutes on a Docker tutorial — it appears in 68% of your target job descriptions.", certifications: "AWS Solutions Architect certification would strengthen 40% of your target roles.", careerGoals: "You're on track for a Senior→Staff promotion path if you land a role with system design scope." });
+    return JSON.stringify({ v: 2, productivityScore: 72, categories: [{ id: "priorities", category: "Today's Priorities", task: "Follow up on your Stripe application — it's been 6 days since submission.", time: "10 min", status: "pending" }, { id: "applications", category: "Recommended Applications", task: "Apply to the Staff Engineer role at Notion — it's a strong match for your background.", time: "30 min", status: "pending" }, { id: "resume", category: "Resume Improvements", task: "Add Docker and Kubernetes to your skills section — they appear in 80% of your target job descriptions.", time: "15 min", status: "pending" }, { id: "interview", category: "Interview Practice", task: "Practice STAR method for 'Tell me about a time you handled a production incident.'", time: "20 min", status: "pending" }], followUps: "Send a brief check-in email to the recruiter at Amazon who reached out last week.", networking: "Connect with 2 engineers at Notion on LinkedIn and mention your shared interest in developer tools.", skills: "Spend 30 minutes on a Docker tutorial — it appears in 68% of your target job descriptions.", certifications: "AWS Solutions Architect certification is highly valued for Senior Engineer roles — visit aws.amazon.com/certification today to review the exam guide and schedule a study session." });
   }
 
   // ── AI Career Chat ─────────────────────────────────────────────────────────
@@ -2143,7 +2143,7 @@ async function buildBriefingPayload(ctx) {
 
 // ─── PLAN PAYLOAD BUILDER (shared by DashboardPage + PlanPage) ───────────────
 async function buildPlanPayload(ctx) {
-  const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","skills":"<1 sentence about specific skill to develop>","certifications":"<1 sentence about specific certification recommendation>","careerGoals":"<1 sentence about progress toward career goals>"}\nUser data: ${ctx}`, 900);
+  const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","certifications":"<1 sentence recommending a specific certification relevant to the user's target role and industry — be concrete (e.g. AWS Solutions Architect, PMP, Security+, ISTQB, Google Cloud, Azure, Scrum, CPA) and suggest how to take the first step today>"}\nUser data: ${ctx}`, 900);
   let result;
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
@@ -2160,9 +2160,7 @@ async function buildPlanPayload(ctx) {
     ],
     followUps: "Check your application tracker and send follow-up emails to any applications older than 5 business days.",
     networking: "Connect with 1 professional in your target industry and send a personalized introduction message.",
-    skills: "Identify the top 3 in-demand skills listed in your target job descriptions and create a focused learning plan.",
-    certifications: "Research certifications relevant to your target role that could increase your earning potential by 15–20%.",
-    careerGoals: "Set your target role, salary, and timeline in your profile so AI can track and optimize your progress."
+    certifications: "Research an in-demand certification for your target role — visit the official site today to review the requirements and exam format."
   };
 }
 
@@ -3213,9 +3211,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
   const additionalSections = p ? [
     { id: "followups", label: "Follow-up Reminders", text: p.followUps, page: "tracker" },
     { id: "networking", label: "Networking Tasks", text: p.networking, page: "network" },
-    { id: "skills", label: "Skill Recommendations", text: p.skills, page: "resume" },
     { id: "certifications", label: "Certification Recommendations", text: p.certifications, page: "resume" },
-    { id: "goals", label: "Career Goals", text: p.careerGoals, page: "profile" },
   ] : [];
 
   const categoryPageMap = { priorities: null, applications: "jobs", resume: "resume", interview: "interview" };
