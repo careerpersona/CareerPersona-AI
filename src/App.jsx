@@ -3433,7 +3433,6 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
   const resumeList = resumes ?? [];
   const bestResume = resumeList.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
   const resumeAts = bestResume?.ats_score ?? null;
-  const resumePotential = bestResume?.potential_ats_score ?? (resumeAts != null ? Math.min(resumeAts + 20, 98) : null);
 
   // Navigation state machine: compute which Resume Intelligence step to route to.
   // State 1 — no analyzed resume  → "upload" (start of workflow)
