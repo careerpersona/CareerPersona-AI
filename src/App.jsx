@@ -4489,6 +4489,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
   };
 
   const handleRecalculate = async () => {
+    console.log("[Recalculate] CLICKED — jobDesc.length:", jobDesc.length, "| results:", !!results, "| resume.length:", resume.length);
     if (!jobDesc.trim()) { setRecalcError("Add a job description above before recalculating."); return; }
     if (!results) return;
     setIsRecalculating(true); setRecalcError("");
