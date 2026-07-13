@@ -3830,7 +3830,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [pendingAutoAnalyze, setPendingAutoAnalyze] = useState(false);
   const [applyingAllFixes, setApplyingAllFixes] = useState(false);
   const [insightsDone, setInsightsDone] = useState(false);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const fileRef = useRef();
   const userContext = useUserContext({ profile, applications, savedJobs });
 
@@ -3848,8 +3847,8 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     if (entryTarget === "insights") setTab("insights");
     else if (entryTarget === "keywords") {
       setTab("resume");
-      setTimeout(() => document.getElementById("missing-keywords-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
-    } else if (entryTarget === "maintenance") setMaintenanceMode(true);
+      setTimeout(() => document.getElementById("missing-keywords-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 600);
+    }
     // "upload" needs no special routing — default workspace is correct
     onConsumeEntryTarget?.();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3898,7 +3897,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     if (tab === "insights" && results && !deepInsights && !deepInsightsLoading && resume.trim()) {
       runDeepInsights();
     }
-  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, results]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tool 4: auto-generate cover letter versions when user opens the Cover tab (once per session until reset).
   // Also fires when coverVersionsLoading transitions to false so a finished background call
@@ -4539,7 +4538,6 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     setLinkedinProfile(""); setActiveCoverVersion("professional");
     setActiveToolPanel(null); setEditingCoverLetter(false); setEditedCoverText("");
     setTailoredApplied(false); setPendingAutoAnalyze(false); setApplyingAllFixes(false); setInsightsDone(false);
-    setMaintenanceMode(false);
     setManualReset(true);
   };
 
@@ -4753,26 +4751,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
           {/* SECTION 2 — Resume Workspace */}
           <div id="resume-workspace">
-            {maintenanceMode && !results && !loading && (
-              <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1.5px solid ${C.purple}30` }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                  <span style={{ fontSize: 28, flexShrink: 0 }}>✅</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: C.purple, marginBottom: 4 }}>Resume Fully Optimized</div>
-                    <div style={{ fontSize: 13, color: C.textMid, marginBottom: 12, lineHeight: 1.5 }}>
-                      Your resume has completed the full optimization cycle — keywords incorporated, deep insights applied, and saved to your library. No active improvements are needed right now.
-                    </div>
-                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
-                      Start a new analysis to tailor your resume for a different role, or to re-optimize after updating your experience.
-                    </div>
-                    <Btn onClick={newAnalysisReset} style={{ fontSize: 13 }}>
-                      ✨ Start New Analysis
-                    </Btn>
-                  </div>
-                </div>
-              </Card>
-            )}
-            {!results && !loading && !maintenanceMode && workspaceInputsJSX}
+            {!results && !loading && workspaceInputsJSX}
             {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
           </div>
           {/* SECTION 3 — Resume Analysis */}
@@ -9163,9 +9142,8 @@ export default function App() {
     const best = resumes.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
     if (!best) return "upload";
     if ((best.keywords_missing?.length ?? 0) > 0) return "keywords";
-    const isFullyOptimized = (analysisHistory ?? []).some(e => e.resumeId === best.id && e.resumeStatus === "Optimized");
-    return isFullyOptimized ? "maintenance" : "insights";
-  }, [resumes, analysisHistory]);
+    return "insights";
+  }, [resumes]);
   const navigateToResume = useCallback((overrideTarget) => {
     setResumeEntryTarget(overrideTarget ?? resumeNavTarget);
     setPage("resume");
