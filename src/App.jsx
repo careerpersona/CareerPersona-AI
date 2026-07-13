@@ -3862,7 +3862,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     const target = initialEntryRef.current;
     if (!target || target === "upload") return;
     entryScrolledRef.current = true;
-    const id = target === "keywords" ? "missing-keywords-section" : "resume-analysis-section";
+    const id = target === "keywords" ? "missing-keywords-section" : "resume-tabs";
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 350);
   }, [results]);
 
@@ -4942,7 +4942,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             </div>
           )}
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 16 }}>
+          <div id="resume-tabs" style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 16 }}>
             {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")],["insights", "Insights"]].map(([id, lbl]) => (
               <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.purple : C.textMuted, fontSize: 13, fontWeight: tab === id ? 700 : 500, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
