@@ -3879,7 +3879,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
         company: "",
       });
       setMasterMissingKws(r.keywords_missing || []);
-      setTab("resume");
+      if (!entryTarget) setTab("resume");
     }
   }, [resumes, resumesLoading, manualReset]); // eslint-disable-line react-hooks/exhaustive-deps
 
