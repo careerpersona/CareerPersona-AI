@@ -3647,10 +3647,9 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
                 <div style={{ height: 6, borderRadius: 3, background: C.border, overflow: "hidden", marginBottom: 8 }}>
                   <div style={{ height: "100%", width: `${resumeAts}%`, background: resumeAts >= 80 ? C.green : resumeAts >= 60 ? C.yellow : C.red, borderRadius: 3 }} />
                 </div>
-                {resumePotential > resumeAts && (
+                {resumeAts < 95 && (
                   <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
-                    Your resume can reach <strong style={{ color: C.purple }}>{resumePotential}%</strong> by adding the missing keywords below.{" "}
-                    {resumeAts < 60 ? "Run Resume Intelligence to identify and add the keywords this role requires." : resumeAts < 80 ? "Add the role-specific keywords identified in Resume Intelligence to close the gap." : "A few targeted keyword additions can push you above 90%."}
+                    {resumeAts < 60 ? "Run Resume Intelligence to identify and add the keywords this role requires." : resumeAts < 80 ? "Add the role-specific keywords identified in Resume Intelligence to close the keyword gap." : "A few targeted keyword additions can strengthen your ATS keyword match even further."}
                   </div>
                 )}
                 <button onClick={goToResume} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
