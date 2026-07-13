@@ -2300,6 +2300,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
   const planAppliedForRef = useRef(undefined);
   const prevActiveResumeIdRef = useRef(undefined);
+  const careerFingerprintRef = useRef(null);
+  const regenTimerRef = useRef(null);
 
   // ── Load the most recent action plan once the Supabase fetch resolves ──
   useEffect(() => {
@@ -2494,12 +2496,51 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     setDailyPlan(null);
     briefingAppliedForRef.current = undefined;
     planAppliedForRef.current = undefined;
+    careerFingerprintRef.current = null; // reset so fingerprint re-baselines after regen
     generateBriefing();
     generatePlan();
   }, [activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const briefingReady = briefing && !Array.isArray(briefing) && briefing.v === 2;
   const planReady = dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories);
+
+  // ── Event-driven briefing regeneration ───────────────────────────────────────
+  // Once the initial briefing is ready, fingerprints key career metrics.
+  // A 2s stabilisation delay absorbs concurrent initial data loads.
+  // Any subsequent change schedules a debounced regen (3s) so rapid changes
+  // (e.g. SA package + application submitted together) collapse into one call.
+  useEffect(() => {
+    if (!briefingReady) return;
+
+    const best = (resumes || [])
+      .filter(r => r.ats_score != null)
+      .sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
+
+    const fp = [
+      (resumes || []).length,                                               // resume uploaded
+      best?.ats_score ?? 0,                                                 // ATS score changed
+      best?.keywords_missing?.length ?? 0,                                  // optimization completed
+      (applications || []).length,                                          // new application submitted
+      (smartApplyQueue || []).filter(q => q.status === "ready").length,     // SA package generated
+      (savedJobs || []).filter(j => (j.matchScore ?? 0) >= 80).length,     // high-match job discovered
+      (interviewSession?.answers || []).length,                             // interview / mock completed
+      salaryData?.results ? 1 : 0,                                         // salary research completed
+      (networkContacts || []).length,                                       // new networking contact
+    ].join("|");
+
+    if (careerFingerprintRef.current === null) {
+      // No baseline yet — wait 2 s for all data hooks to settle before capturing it.
+      const t = setTimeout(() => { careerFingerprintRef.current = fp; }, 2000);
+      return () => clearTimeout(t);
+    }
+
+    if (fp === careerFingerprintRef.current) return;
+
+    // Meaningful career event detected — update baseline and schedule regen.
+    careerFingerprintRef.current = fp;
+    clearTimeout(regenTimerRef.current);
+    regenTimerRef.current = setTimeout(generateBriefing, 3000);
+  }, [briefingReady, resumes, applications, smartApplyQueue, savedJobs, interviewSession, salaryData, networkContacts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const priorityColor = { high: C.red, medium: C.yellow, low: C.green };
   const hlBriefing = (text) => {
