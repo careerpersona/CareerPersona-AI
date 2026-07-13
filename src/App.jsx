@@ -4890,20 +4890,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {/* ATS Score Section */}
           <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
-              <div style={{ textAlign: "center" }}>
-                <ScoreRing score={animatedAts ?? results.atsScore} size={90} />
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
+              <div style={{ textAlign: "center", flexShrink: 0 }}>
+                <ScoreRing score={animatedAts ?? results.atsScore} size={120} />
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
                 {!improveStats && analysisHistory?.length >= 2 && analysisHistory[1]?.atsScore != null && (
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>prev. {analysisHistory[1].atsScore}%</div>
                 )}
-              </div>
-              <div style={{ fontSize: 28, color: C.textMuted }}>→</div>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ width: 90, height: 90, border: `7px solid ${C.green}`, borderRadius: "50%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{results.potentialAtsScore || Math.min(results.atsScore + 20, 98)}+</span>
-                  <span style={{ fontSize: 11, color: C.textMuted }}>/100</span>
-                </div>
-                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontWeight: 600 }}>{t("resume.potentialAtsScore")}</div>
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
                 {[[t("resume.keywordMatch"), (animatedBreakdown ?? results.scoreBreakdown)?.keywordMatch], [t("resume.formatting"), (animatedBreakdown ?? results.scoreBreakdown)?.formatting], [t("resume.relevance"), (animatedBreakdown ?? results.scoreBreakdown)?.relevance]].map(([l, v]) => (
