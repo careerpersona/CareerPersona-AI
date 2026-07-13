@@ -2256,7 +2256,7 @@ function MarkdownText({ text }) {
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
 function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume }) {
   const { t } = useI18n();
-  const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
+  const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState(null);
   const [dailyPlan, setDailyPlan] = useState(() => { try { const c = sessionStorage.getItem("cp_plan_dash"); if (!c) return null; const p = JSON.parse(c); if (p?.v === 2 && Array.isArray(p?.categories) && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_plan_dash"); return null; } catch { return null; } });
@@ -2291,10 +2291,10 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     if (briefingHistoryLoading || briefingLoadedFor !== profile?.id) return;
     if (briefingAppliedForRef.current === profile?.id) return;
     briefingAppliedForRef.current = profile?.id;
-    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) {
+    if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2 && isToday(savedBriefing.generatedAt)) {
       setBriefing(savedBriefing);
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
-    } else if (profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2)) generateBriefing();
+    } else if (profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2 && isToday(briefing.generatedAt))) generateBriefing();
   }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id]);
 
   const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
@@ -2951,7 +2951,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
 
 // ─── BRIEFING PAGE ──────────────────────────────────────────
-function BriefingPage({ profile, applications, savedJobs, setPage }) {
+function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, companyWatchlist }) {
   const { t } = useI18n();
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
@@ -2961,7 +2961,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage }) {
   const [genLoading, setGenLoading] = useState(false);
   const { briefing: savedBriefing, loading: briefingLoading, loadedFor, save: saveBriefing } = useAiBriefing(profile?.id);
   const { logActivity } = useActivityLog(profile?.id);
-  const userContext = useUserContext({ profile, applications, savedJobs, interviewSession, salaryData, networkContacts });
+  const userContext = useUserContext({ profile, applications, savedJobs, resumes: resumes ?? [], smartApplyQueue: smartApplyQueue ?? [], interviewSession, salaryData, networkContacts, networkingSession, companyWatchlist: companyWatchlist ?? [] });
   const appliedRef = useRef(undefined);
 
   useEffect(() => {
@@ -9353,7 +9353,7 @@ export default function App() {
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} />}
-        {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
