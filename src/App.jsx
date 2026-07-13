@@ -3353,7 +3353,7 @@ function PlanPage({ profile, applications, savedJobs, setPage }) {
 }
 
 // ─── CAREER PROGRESS PAGE ────────────────────────────────────────────────────
-function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile, resumes }) {
+function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile, resumes, analysisHistory, onNavigateResume }) {
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
@@ -3438,6 +3438,21 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
   const bestResume = resumeList.filter(r => r.ats_score != null).sort((a, b) => (b.ats_score ?? 0) - (a.ats_score ?? 0))[0] ?? null;
   const resumeAts = bestResume?.ats_score ?? null;
   const resumePotential = bestResume?.potential_ats_score ?? (resumeAts != null ? Math.min(resumeAts + 20, 98) : null);
+
+  // Navigation state machine: compute which Resume Intelligence step to route to.
+  // State 1 — no analyzed resume  → "upload" (start of workflow)
+  // State 2 — keywords pending    → "keywords" (Missing Keywords section)
+  // State 3 — keywords done, not yet saved as Optimized → "insights" (Insights tab)
+  // State 4 — Optimized history entry exists → "maintenance" (Maintenance Mode)
+  const resumeNavTarget = (() => {
+    if (!bestResume) return "upload";
+    if ((bestResume.keywords_missing?.length ?? 0) > 0) return "keywords";
+    const isFullyOptimized = (analysisHistory ?? []).some(
+      e => e.resumeId === bestResume.id && e.resumeStatus === "Optimized"
+    );
+    return isFullyOptimized ? "maintenance" : "insights";
+  })();
+  const goToResume = () => onNavigateResume ? onNavigateResume(resumeNavTarget) : setPage("resume");
 
   // Salary Growth — live data from existing Market Intelligence module
   const salaryRange = salaryData?.results?.salaryRange || salaryData?.results?.marketRange || null;
@@ -3642,19 +3657,19 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
                     {resumeAts < 60 ? "Focus on adding missing keywords and quantifying achievements." : resumeAts < 80 ? "Add role-specific keywords and strengthen your summary." : "Minor keyword tuning can push you above 90%."}
                   </div>
                 )}
-                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                <button onClick={goToResume} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
                   Go to Resume Intelligence →
                 </button>
               </div>
             ) : resumeList.length > 0 ? (
               <div>
                 <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{resumeList.length} resume{resumeList.length !== 1 ? "s" : ""} uploaded. Run ATS analysis to get improvement recommendations.</div>
-                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
+                <button onClick={goToResume} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
               </div>
             ) : (
               <div>
                 <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 10 }}>Upload your resume to get AI-powered ATS analysis and targeted improvement recommendations.</div>
-                <button onClick={() => setPage("resume")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
+                <button onClick={goToResume} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Go to Resume Intelligence →</button>
               </div>
             )}
           </Card>
@@ -3749,7 +3764,7 @@ Location: Remote-first`;
 
 const RESUME_STEPS = ["Reading your resume…", "Extracting skills & keywords…", "Calculating ATS score…", "Generating AI analysis…", "Building recommendations…"];
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb, onResumeLoad }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb, onResumeLoad, entryTarget, onConsumeEntryTarget }) {
   const { t } = useI18n();
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
@@ -3834,6 +3849,9 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [pendingAutoAnalyze, setPendingAutoAnalyze] = useState(false);
   const [applyingAllFixes, setApplyingAllFixes] = useState(false);
   const [insightsDone, setInsightsDone] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalcError, setRecalcError] = useState("");
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const fileRef = useRef();
   const userContext = useUserContext({ profile, applications, savedJobs });
 
@@ -3844,6 +3862,18 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [openDropdownId]);
+
+  // Consume navigation intent from CareerProgressPage and route to the correct section.
+  useEffect(() => {
+    if (!entryTarget) return;
+    if (entryTarget === "insights") setTab("insights");
+    else if (entryTarget === "keywords") {
+      setTab("resume");
+      setTimeout(() => document.getElementById("missing-keywords-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
+    } else if (entryTarget === "maintenance") setMaintenanceMode(true);
+    // "upload" needs no special routing — default workspace is correct
+    onConsumeEntryTarget?.();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load the most recently saved resume when the workspace is empty.
   // Guards: skip if user deliberately cleared (New Analysis), if workspace already has content,
@@ -4458,6 +4488,48 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     }
   };
 
+  const handleRecalculate = async () => {
+    if (!jobDesc.trim()) { setRecalcError("Add a job description above before recalculating."); return; }
+    if (!results) return;
+    setIsRecalculating(true); setRecalcError("");
+    const oldAts = results.atsScore ?? null;
+    const oldBreakdown = results.scoreBreakdown ?? null;
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Score this resume against the job description. Return ONLY a JSON object — no markdown, no explanation.
+{"atsScore":<0-100>,"potentialAtsScore":<estimated score with further improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>}}
+RESUME:${resume}
+JOB DESCRIPTION:${jobDesc}`, 600);
+      const parsed = JSON.parse(raw);
+      if (oldAts != null) setAnimatedAts(oldAts);
+      if (oldBreakdown) setAnimatedBreakdown(oldBreakdown);
+      setResults(prev => ({ ...prev, atsScore: parsed.atsScore, potentialAtsScore: parsed.potentialAtsScore, scoreBreakdown: parsed.scoreBreakdown }));
+      if (improveStats) setImproveStats(prev => ({ ...prev, newAts: parsed.atsScore }));
+      setTimeout(() => {
+        if (oldAts != null) {
+          const from = oldAts; const to = parsed.atsScore;
+          const start = Date.now();
+          const tick = () => {
+            const t2 = Math.min((Date.now() - start) / 1000, 1);
+            const eased = 1 - Math.pow(1 - t2, 3);
+            setAnimatedAts(Math.round(from + (to - from) * eased));
+            if (t2 < 1) setTimeout(tick, 16); else { setAnimatedAts(to); setTimeout(() => setAnimatedAts(null), 200); }
+          };
+          tick();
+        }
+        if (oldBreakdown && parsed.scoreBreakdown) {
+          setTimeout(() => setAnimatedBreakdown(parsed.scoreBreakdown), 100);
+          setTimeout(() => setAnimatedBreakdown(null), 2000);
+        }
+      }, 150);
+    } catch (e) {
+      console.error("[Recalculate]", e);
+      setRecalcError("Could not recalculate score. Please try again.");
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   const handleDeleteResume = async (r) => {
     setDeletingId(r.id);
     try { await deleteResume(r); } catch { setResumeError(t("resume.deleteResumeFailed")); }
@@ -4530,6 +4602,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     setLinkedinProfile(""); setActiveCoverVersion("professional");
     setActiveToolPanel(null); setEditingCoverLetter(false); setEditedCoverText("");
     setTailoredApplied(false); setPendingAutoAnalyze(false); setApplyingAllFixes(false); setInsightsDone(false);
+    setIsRecalculating(false); setRecalcError(""); setMaintenanceMode(false);
     setManualReset(true);
   };
 
@@ -4743,7 +4816,26 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
           {/* SECTION 2 — Resume Workspace */}
           <div id="resume-workspace">
-            {!results && !loading && workspaceInputsJSX}
+            {maintenanceMode && !results && !loading && (
+              <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1.5px solid ${C.purple}30` }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <span style={{ fontSize: 28, flexShrink: 0 }}>✅</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: C.purple, marginBottom: 4 }}>Resume Fully Optimized</div>
+                    <div style={{ fontSize: 13, color: C.textMid, marginBottom: 12, lineHeight: 1.5 }}>
+                      Your resume has completed the full optimization cycle — keywords incorporated, deep insights applied, and saved to your library. No active improvements are needed right now.
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
+                      Start a new analysis to tailor your resume for a different role, or to re-optimize after updating your experience.
+                    </div>
+                    <Btn onClick={newAnalysisReset} style={{ fontSize: 13 }}>
+                      ✨ Start New Analysis
+                    </Btn>
+                  </div>
+                </div>
+              </Card>
+            )}
+            {!results && !loading && !maintenanceMode && workspaceInputsJSX}
             {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
           </div>
           {/* SECTION 3 — Resume Analysis */}
@@ -4839,6 +4931,19 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             </div>
           )}
 
+          {isOptimized && !librarySaved && (
+            <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>Applied deep analysis fixes?</div>
+                <div style={{ fontSize: 12, color: C.textMid, marginTop: 1 }}>Recalculate your ATS score to reflect the latest changes to your resume.</div>
+                {recalcError && <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>{recalcError}</div>}
+              </div>
+              <Btn onClick={handleRecalculate} disabled={isRecalculating} loading={isRecalculating} style={{ fontSize: 12, flexShrink: 0 }}>
+                {isRecalculating ? "Recalculating…" : "🔄 Recalculate ATS Score"}
+              </Btn>
+            </div>
+          )}
+
           {/* ATS Score Section */}
           <Card style={{ marginBottom: 14, background: `linear-gradient(135deg, ${C.purpleLight}, #fff)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
@@ -4869,7 +4974,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           </Card>
 
           {/* Keywords */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }} className="two-col">
+          <div id="missing-keywords-section" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }} className="two-col">
             <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
               <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("resume.keywordsFound")}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{results.keywordsFound?.map(k => <Badge key={k} color={C.green}>{k}</Badge>)}</div>
@@ -9134,6 +9239,8 @@ export default function App() {
   const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel } = useResumes(profile?.id);
   const [activeResumeId, setActiveResumeId] = useState(null);
   const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
+  // Resume Intelligence navigation state: Career Progress → Resume routes to the correct workflow step.
+  const [resumeEntryTarget, setResumeEntryTarget] = useState(null);
 
   // Confirmed Tracker delete — awaits Supabase before updating local state.
   // Prevents the "deleted items return on refresh" ghost caused by syncListDiff's
@@ -9328,8 +9435,8 @@ export default function App() {
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} />}
+        {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={(target) => { setResumeEntryTarget(target); setPage("resume"); }} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
