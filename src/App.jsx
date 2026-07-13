@@ -4496,11 +4496,30 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
     const oldBreakdown = results.scoreBreakdown ?? null;
     try {
       const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Score this resume against the job description. Return ONLY a JSON object — no markdown, no explanation.
+      const prompt = `${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Score this resume against the job description. Return ONLY a JSON object — no markdown, no explanation.
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score with further improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>}}
 RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`, 600);
-      const parsed = JSON.parse(raw);
+JOB DESCRIPTION:${jobDesc}`;
+      // DEBUG — remove before shipping
+      console.group("[Recalculate] Debug");
+      console.log("resume length:", resume.length, "| first 200 chars:", resume.slice(0, 200));
+      console.log("jobDesc:", jobDesc.slice(0, 200));
+      console.log("full prompt:", prompt);
+      console.groupEnd();
+      const raw = await askClaude(prompt, 600);
+      // DEBUG — remove before shipping
+      console.group("[Recalculate] Response");
+      console.log("raw response:", raw);
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseErr) {
+        console.error("JSON.parse failed:", parseErr, "| raw was:", raw);
+        throw parseErr;
+      }
+      console.log("parsed JSON:", parsed);
+      console.log("atsScore:", parsed.atsScore, "| potentialAtsScore:", parsed.potentialAtsScore, "| keywordsFound:", parsed.keywordsFound, "| keywordsMissing:", parsed.keywordsMissing);
+      console.groupEnd();
       if (oldAts != null) setAnimatedAts(oldAts);
       if (oldBreakdown) setAnimatedBreakdown(oldBreakdown);
       setResults(prev => ({ ...prev, atsScore: parsed.atsScore, potentialAtsScore: parsed.potentialAtsScore, scoreBreakdown: parsed.scoreBreakdown }));
