@@ -8266,6 +8266,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                             <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, color: C.red }} onClick={() => deleteContact(c.id)}>✕</Btn>
                           </div>
                         </div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>{t("networking.replyReminderText")}</div>
 
                         {/* Generated follow-up for this contact */}
                         {fuContact?.id === c.id && (
