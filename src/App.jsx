@@ -7337,7 +7337,11 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     const scores = Object.values(answersMap).map(a => a.feedback?.score).filter(n => typeof n === "number");
     const avg = scores.length ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10 : 0;
     const answeredCount = Object.keys(answersMap).length;
-    setMockSummary({ answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null });
+    const baseSummary = { answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null };
+    setMockSummary(baseSummary);
+    // Persist immediately (don't rely on the 600ms debounce) so the dashboard
+    // always sees the score even if the user navigates away right after finishing.
+    saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers: answersMap, mockSummary: baseSummary, mode: "mock", mockIdx, mockAnswerDraft: "", activeQ, showReview: false }).catch(() => {});
     if (answeredCount > 0) {
       try {
         const details = mockQuestions.filter(q => answersMap[q.id]).map(q => `${q.category} (${answersMap[q.id].feedback?.score ?? "?"}/10): strengths: ${(answersMap[q.id].feedback?.strengths || []).join("; ")} | improvements: ${(answersMap[q.id].feedback?.improvements || []).join("; ")}`).join("\n");
@@ -9820,11 +9824,18 @@ export default function App() {
   const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, skip: rootSkip, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
   // Lifted to App root so Dashboard always sees current values without remounting.
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
-  const { session: rootInterviewSession } = useInterviewSession(profile?.id);
+  const { session: rootInterviewSession, refresh: refreshRootInterviewSession } = useInterviewSession(profile?.id);
   const { data: rootSalaryData } = useSalaryResearch(profile?.id);
   const [rootNetworkContacts] = useNetworkingContacts(profile?.id);
   const networkingSessionCtx = useNetworkingSession(profile?.id);
   const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = useCompanyWatchlist(profile?.id);
+
+  // Re-sync root interview session whenever user navigates to the dashboard.
+  // InterviewPage writes via its own hook instance; this ensures DashboardPage
+  // always reads the latest persisted data rather than the stale initial fetch.
+  useEffect(() => {
+    if (page === "dashboard") refreshRootInterviewSession();
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;
   // Show a branded loading screen while Supabase exchanges the auth callback

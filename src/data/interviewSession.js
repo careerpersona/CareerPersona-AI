@@ -92,5 +92,20 @@ export function useInterviewSession(userId) {
     setSession(null);
   }, []);
 
-  return { session, loading, loadedFor, save, clear };
+  // Re-fetches the latest row from Supabase and updates local state. Call this
+  // whenever a different hook instance may have written to the same row (e.g.
+  // when the user navigates from InterviewPage back to DashboardPage).
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.from(TABLE).select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1);
+    if (error) return;
+    if (data && data.length) {
+      rowIdRef.current = data[0].id;
+      setSession(fromRow(data[0]));
+    } else {
+      setSession(null);
+    }
+  }, [userId]);
+
+  return { session, loading, loadedFor, save, clear, refresh };
 }
