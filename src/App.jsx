@@ -15,6 +15,7 @@ import { useNotifications, insertNotification } from "./data/notifications";
 import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
 import { useCareerProgressAnalysis } from "./data/careerProgress";
+import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
 import { useUserContext } from "./data/userContext";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
@@ -358,6 +359,11 @@ function _devMockRoute(prompt) {
         "Ask your manager for a gap analysis against the Staff Engineer level rubric before your next review cycle starts.",
       ],
     });
+  }
+
+  // ── Job Intelligence Landscape Analysis ───────────────────────────────────
+  if (p.includes("job intelligence landscape") || p.includes("job search landscape")) {
+    return JSON.stringify({ v: 1, generatedAt: new Date().toISOString(), marketPatterns: { status: "Strong", summary: "Your job search is concentrated in the mid-to-senior software engineering space, with a clear preference for product-driven tech companies over enterprise environments. The remote-first skew in your saved jobs aligns with a shift toward distributed team culture in your target market.", evidence: ["78% of saved jobs are at Series A–C companies, signaling a preference for high-growth environments", "Senior Engineer roles dominate at 65%, with a visible secondary cluster of Staff/Lead roles at 20%", "Remote or hybrid roles account for 82% of your saved landscape"], trends: "Hiring activity in your target sectors remains strong, with a noticeable uptick in full-stack and platform-adjacent roles over the past 30 days." }, employerDemand: { status: "Consistent", summary: "Employers in your search landscape are consistently requesting cloud-native engineering skills alongside product intuition. Python and React appear in the majority of roles, but infrastructure and observability tooling is increasingly expected at the senior level.", topSkills: ["Python", "AWS / Cloud", "React / TypeScript", "System Design", "Docker / Kubernetes"], qualifications: ["4–7 years of backend or full-stack engineering experience", "Experience shipping production systems at meaningful scale"], insight: "Container orchestration and CI/CD appear in 72% of your saved job descriptions — closing this gap would meaningfully broaden your competitive reach." }, marketFit: { status: "Good", narrative: "Your profile aligns well with the core requirements of your target market. Your Python and AWS depth positions you competitively for most senior backend roles in your saved landscape. The gap between your current profile and your target roles is narrow — primarily around infrastructure tooling and system design documentation, not core engineering competency. You are not disadvantaged in this market; you are one or two deliberate additions away from being a strong fit for the top quartile of your saved roles.", strengths: ["Strong Python/AWS foundation matching 70%+ of employer requirements", "Demonstrated impact at scale — measurable achievements that stand out in competitive pools"], gaps: ["Container orchestration (Docker, Kubernetes) expected but not visible in profile", "System design and architecture leadership experience less prominent than top candidates"], positioning: "You are positioned in the 60th–70th percentile of candidates for your target roles; targeted resume optimization could move you to the 80th percentile." }, searchStrategy: { status: "Focused", summary: "Your search is well-targeted by role level and technology stack, but geographic distribution is narrow. The concentration in San Francisco and New York limits your available opportunity set when remote roles would broaden this significantly.", alignment: "Your saved jobs align closely with your stated target role and experience level — the strategy is directionally correct.", recommendation: "Expand your saved job pool to include more remote-first companies to unlock a larger opportunity set without changing your role targeting." }, searchPerformance: { status: "Improving", summary: "Your response rate has improved as your applications have become more targeted. The shift from broad volume applications to selective, tailored ones is producing better outcomes. Early-stage applications to smaller companies are converting at a higher rate than large enterprise applications.", patterns: ["Tailored applications to Series B companies show 2× the response rate of volume applications", "Response times are shorter at companies where you have a mutual connection or warm referral"], insight: "Your data shows that quality over quantity is working — maintaining selective, tailored applications rather than increasing volume will continue to improve outcomes." } });
   }
 
   // ── Fallback ───────────────────────────────────────────────────────────────
@@ -2185,6 +2191,58 @@ async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
   };
 }
 
+// ─── JOB INTELLIGENCE PAYLOAD BUILDER ────────────────────────────────────────
+async function buildJobIntelligencePayload(ctx, savedJobs, applications) {
+  const saved = savedJobs ?? [];
+  const apps = applications ?? [];
+
+  // Build a rich job landscape summary for the prompt
+  const titles = [...new Set(saved.map(j => j.title).filter(Boolean))].slice(0, 15).join(", ");
+  const companies = [...new Set(saved.map(j => j.company).filter(Boolean))].slice(0, 10).join(", ");
+  const remoteCount = saved.filter(j => j.remote).length;
+  const salaryMins = saved.filter(j => j.salaryMin).map(j => j.salaryMin);
+  const salaryMaxs = saved.filter(j => j.salaryMax).map(j => j.salaryMax);
+  const salaryRange = salaryMins.length > 0 ? `$${Math.round(Math.min(...salaryMins) / 1000)}K–$${Math.round(Math.max(...salaryMaxs) / 1000)}K` : "not specified";
+  const matchScores = saved.filter(j => j.matchScore).map(j => j.matchScore);
+  const avgMatch = matchScores.length ? Math.round(matchScores.reduce((a, b) => a + b, 0) / matchScores.length) : null;
+
+  const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
+  const offers = apps.filter(a => a.status === "Offer").length;
+  const rejections = apps.filter(a => a.status === "Rejected").length;
+  const responseRate = apps.length > 0 ? Math.round(((interviews + offers) / apps.length) * 100) : 0;
+
+  const landscapeSummary = [
+    `Saved Jobs: ${saved.length} total.`,
+    titles ? `Job Titles Saved: ${titles}.` : "",
+    companies ? `Companies: ${companies}.` : "",
+    `Work Model: ${remoteCount} remote, ${saved.length - remoteCount} on-site/hybrid.`,
+    `Salary Range Across Saved Jobs: ${salaryRange}.`,
+    avgMatch != null ? `Average Match Score: ${avgMatch}%.` : "",
+    `Applications: ${apps.length} total. Interviews: ${interviews}. Offers: ${offers}. Rejections: ${rejections}. Response rate: ${responseRate}%.`,
+  ].filter(Boolean).join(" ");
+
+  const raw = await askClaude(
+    `You are CareerPersona AI — Job Intelligence Analyst. Analyze this user's complete job search landscape and generate strategic AI intelligence. Analyze patterns ACROSS ALL JOBS collectively — this is NOT per-job analysis. Do NOT give individual job recommendations, resume advice, or today's action items. Return ONLY valid JSON, no markdown:\n{"v":1,"marketPatterns":{"status":"<Excellent|Strong|Good|Fair|Limited — one or two words>","summary":"<2-3 sentences about patterns in the user's job search landscape: dominant industries, seniority trends, work model mix, geographic focus>","evidence":["<specific observed pattern 1>","<specific observed pattern 2>","<specific observed pattern 3>"],"trends":"<1 sentence about direction or momentum in their search landscape>"},"employerDemand":{"status":"<Excellent|Strong|Consistent|Good|Moderate|Limited — one or two words>","summary":"<2-3 sentences about what employers in this landscape consistently request across many job descriptions>","topSkills":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>"],"qualifications":["<common qualification 1>","<common qualification 2>"],"insight":"<1 sentence key takeaway about the demand pattern>"},"marketFit":{"status":"<Excellent|Strong|Good|Fair|Developing — one or two words>","narrative":"<3-4 honest sentences comparing the user's overall profile against the aggregate landscape requirements — NOT ATS scoring, NOT resume suggestions>","strengths":["<fit strength 1>","<fit strength 2>"],"gaps":["<fit gap 1>","<fit gap 2>"],"positioning":"<1 sentence on how they are positioned relative to the market>"},"searchStrategy":{"status":"<Excellent|Focused|Aligned|Broad|Scattered|Needs Focus — one or two words>","summary":"<2-3 sentences on whether search behavior aligns with long-term career goals — do NOT recommend today's tasks or individual applications>","alignment":"<1 sentence on goal alignment>","recommendation":"<1 strategic long-term recommendation about targeting, positioning, or market focus>"},"searchPerformance":{"status":"<Excellent|Strong|Improving|Stable|Fair|Needs Review — one or two words>","summary":"<2-3 sentences of retrospective data-driven analysis of application outcomes and patterns — NOT a task list>","patterns":["<observed performance pattern 1>","<observed performance pattern 2>"],"insight":"<1 analytical conclusion about what the data shows is or is not working>"}}\nUser data: ${ctx}\nJob Search Landscape: ${landscapeSummary}`,
+    1200
+  );
+
+  let result;
+  try {
+    const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+    const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+    result = parsed?.v === 1 ? { ...parsed, generatedAt: new Date().toISOString() } : null;
+  } catch { result = null; }
+
+  return result || {
+    v: 1, generatedAt: new Date().toISOString(),
+    marketPatterns: { status: "Building", summary: "Save jobs and search in your target market to build a landscape for AI pattern analysis. The more you search and save, the more accurate the patterns become.", evidence: ["Search for roles in your target field to begin building your landscape"], trends: "Start your job search to generate market pattern data." },
+    employerDemand: { status: "Building", summary: "Search and save jobs in your target market to reveal what employers consistently ask for across many job descriptions.", topSkills: [], qualifications: [], insight: "Save at least 5 jobs to unlock employer demand analysis." },
+    marketFit: { status: "Building", narrative: "Complete your profile and save some target jobs to unlock a market fit assessment. This analysis compares your full profile against the aggregate requirements of your target market — not a single job description.", strengths: [], gaps: [], positioning: "Add your target role and experience to your profile to begin market fit analysis." },
+    searchStrategy: { status: "Building", summary: "Set your career goal in your profile and begin saving jobs to enable search strategy alignment analysis.", alignment: "No career goal set — add a target role and timeline to your profile.", recommendation: "Define your target role, preferred location, and career goal to enable strategic alignment analysis." },
+    searchPerformance: { status: "Building", summary: "Apply to positions and track outcomes in the Tracker to enable search performance analysis. Response rate data builds over time.", patterns: [], insight: "Track at least 5 applications to begin performance analysis." },
+  };
+}
+
 // ─── MARKDOWN TEXT RENDERER ──────────────────────────────────
 function MarkdownText({ text }) {
   if (!text) return null;
@@ -2329,6 +2387,22 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedCpAnalysis)); } catch {}
     }
   }, [savedCpAnalysis, cpAnalysisLoading, cpLoadedFor, profile?.id]);
+
+  // ── Job Intelligence — load cached landscape analysis for Dashboard summary card ──
+  const { analysis: savedJiAnalysis, loading: jiAnalysisLoading, loadedFor: jiLoadedFor } = useJobIntelligenceAnalysis(profile?.id);
+  const [jiAnalysis, setJiAnalysis] = useState(() => {
+    try { const c = sessionStorage.getItem("cp_job_intel_analysis"); if (!c) return null; const p = JSON.parse(c); return p?.v === 1 ? p : null; } catch { return null; }
+  });
+  const jiAppliedRef = useRef(undefined);
+  useEffect(() => {
+    if (jiAnalysisLoading || jiLoadedFor !== profile?.id) return;
+    if (jiAppliedRef.current === profile?.id) return;
+    jiAppliedRef.current = profile?.id;
+    if (savedJiAnalysis?.v === 1) {
+      setJiAnalysis(savedJiAnalysis);
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedJiAnalysis)); } catch {}
+    }
+  }, [savedJiAnalysis, jiAnalysisLoading, jiLoadedFor, profile?.id]);
 
   const networkContacts = networkContactsProp || [];
   const apps = applications || [];
@@ -2788,27 +2862,43 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
         {/* Job Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.jobIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Saved jobs and application pipeline summary.</div>
-          {saved.length > 0 || totalApps > 0 ? (
-            <div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                {[["Saved", saved.length, C.blue], ["Applied", totalApps, C.purple], ["Response", `${responseRate}%`, C.green]].map(([label, val, color]) => (
-                  <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
-                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>JOB INTELLIGENCE</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>AI analysis of your complete job search landscape.</div>
+          {jiAnalysisLoading && !jiAnalysis ? (
+            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>Loading…</div>
+          ) : jiAnalysis ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {[
+                ["Market Patterns", jiAnalysis.marketPatterns?.status],
+                ["Employer Demand", jiAnalysis.employerDemand?.status],
+                ["Market Fit", jiAnalysis.marketFit?.status],
+                ["Search Strategy", jiAnalysis.searchStrategy?.status],
+                ["Search Performance", jiAnalysis.searchPerformance?.status],
+              ].map(([label, status]) => {
+                const s = (status || "").toLowerCase();
+                const color = ["excellent", "strong", "consistent"].includes(s) ? C.green
+                  : ["good", "focused", "aligned", "improving", "solid"].includes(s) ? C.blue
+                  : ["fair", "stable", "broad", "moderate"].includes(s) ? C.yellow
+                  : ["limited", "scattered", "needs focus", "needs review"].includes(s) ? C.red
+                  : C.textMuted;
+                return (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: C.textMid }}>{label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color }}>{status || "—"}</span>
                   </div>
-                ))}
-              </div>
-              {saved.slice(0, 3).map((j, i) => (
-                <div key={j.job_id || i} style={{ fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>{j.title || j.jobTitle} — {j.company}</div>
-              ))}
-              {saved.length > 3 && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{t("dashboard.moreCount").replace("{n}", saved.length - 3)}</div>}
+                );
+              })}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.jobIntelEmpty")}</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
+              {saved.length > 0 ? "Open Job Intelligence to generate your landscape analysis." : "Save jobs to unlock AI landscape analysis."}
+            </div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>{t("dashboard.goToJobSearch")}</Btn>
+          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
+            <button style={{ border: "none", background: "none", color: C.blue, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("jobintel")}>
+              View Full Analysis →
+            </button>
+          </div>
         </Card>
 
         {/* Interview Intelligence */}
@@ -3787,6 +3877,332 @@ Requirements:
 
 Salary: $140,000–$180,000 + equity + benefits
 Location: Remote-first`;
+
+// ─── JOB INTELLIGENCE PAGE ───────────────────────────────────────────────────
+function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
+  const { analysis: savedAnalysis, loading: analysisLoading, loadedFor, save: saveAnalysis } = useJobIntelligenceAnalysis(profile?.id);
+  const userContext = useUserContext({ profile, applications, savedJobs });
+  const { logActivity } = useActivityLog(profile?.id);
+
+  const [analysis, setAnalysis] = useState(() => {
+    try { const c = sessionStorage.getItem("cp_job_intel_analysis"); if (!c) return null; const p = JSON.parse(c); return p?.v === 1 ? p : null; } catch { return null; }
+  });
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const appliedRef = useRef(undefined);
+
+  useEffect(() => {
+    if (analysisLoading || loadedFor !== profile?.id) return;
+    if (appliedRef.current === profile?.id) return;
+    appliedRef.current = profile?.id;
+    if (savedAnalysis?.v === 1) {
+      setAnalysis(savedAnalysis);
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedAnalysis)); } catch {}
+    }
+  }, [savedAnalysis, analysisLoading, loadedFor, profile?.id]);
+
+  const generate = async () => {
+    setGenLoading(true);
+    setGenError(null);
+    try {
+      const ctx = userContext.getContextString();
+      const result = await buildJobIntelligencePayload(ctx, savedJobs, applications);
+      setAnalysis(result);
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch {}
+      saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
+      logActivity("Job Intelligence landscape analysis generated");
+    } catch (e) {
+      setGenError("Analysis failed. Tap Regenerate to try again.");
+    } finally { setGenLoading(false); }
+  };
+
+  const autoGenRef = useRef(false);
+  useEffect(() => {
+    if (analysisLoading || loadedFor !== profile?.id) return;
+    if (analysis || genLoading || autoGenRef.current) return;
+    autoGenRef.current = true;
+    generate();
+  }, [analysisLoading, loadedFor, analysis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const statusColor = (status) => {
+    const s = (status || "").toLowerCase();
+    if (["excellent", "strong", "consistent"].includes(s)) return C.green;
+    if (["good", "focused", "aligned", "improving", "solid"].includes(s)) return C.blue;
+    if (["fair", "stable", "broad", "moderate"].includes(s)) return C.yellow;
+    if (["limited", "scattered", "needs focus", "needs review"].includes(s)) return C.red;
+    return C.textMuted;
+  };
+
+  const statusBg = (status) => {
+    const color = statusColor(status);
+    return `${color}14`;
+  };
+
+  const isLoading = (analysisLoading && !analysis) || (genLoading && !analysis);
+  const a = analysis;
+
+  const sections = [
+    {
+      key: "marketPatterns",
+      title: "Market Patterns",
+      subtitle: "Patterns across your saved jobs, searches, and target market",
+      data: a?.marketPatterns,
+      renderDetail: (d) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65 }}>{d.summary}</div>
+          {d.evidence?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Observed Patterns</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {d.evidence.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ color: C.blue, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>→</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{e}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.trends && (
+            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>TREND</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.trends}</div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "employerDemand",
+      title: "Employer Demand",
+      subtitle: "What employers consistently request across your target job descriptions",
+      data: a?.employerDemand,
+      renderDetail: (d) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65 }}>{d.summary}</div>
+          {d.topSkills?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Most Requested Skills</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {d.topSkills.map((skill, i) => (
+                  <span key={i} style={{ fontSize: 12, fontWeight: 600, background: C.purpleLight, color: C.purple, borderRadius: 20, padding: "4px 12px" }}>{skill}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.qualifications?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Common Qualifications</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {d.qualifications.map((q, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ color: C.purple, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>·</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{q}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.insight && (
+            <div style={{ background: C.purpleLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.purple}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 3 }}>KEY INSIGHT</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.insight}</div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "marketFit",
+      title: "Market Fit",
+      subtitle: "How your overall profile aligns with the target market landscape",
+      data: a?.marketFit,
+      renderDetail: (d) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65 }}>{d.narrative}</div>
+          {(d.strengths?.length > 0 || d.gaps?.length > 0) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {d.strengths?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Strengths</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {d.strengths.map((s, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ color: C.green, fontSize: 11, flexShrink: 0, marginTop: 2 }}>✓</span>
+                        <span style={{ fontSize: 12, color: C.textMid, lineHeight: 1.4 }}>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {d.gaps?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.yellow, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Gaps</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {d.gaps.map((g, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ color: C.yellow, fontSize: 11, flexShrink: 0, marginTop: 2 }}>△</span>
+                        <span style={{ fontSize: 12, color: C.textMid, lineHeight: 1.4 }}>{g}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {d.positioning && (
+            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>MARKET POSITIONING</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.positioning}</div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "searchStrategy",
+      title: "Search Strategy",
+      subtitle: "Whether your search behavior aligns with your long-term career goals",
+      data: a?.searchStrategy,
+      renderDetail: (d) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65 }}>{d.summary}</div>
+          {d.alignment && (
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ color: C.blue, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>Goal Alignment</span>
+              <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.alignment}</span>
+            </div>
+          )}
+          {d.recommendation && (
+            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>STRATEGIC RECOMMENDATION</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.recommendation}</div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "searchPerformance",
+      title: "Search Performance",
+      subtitle: "Retrospective analysis of your application outcomes and patterns",
+      data: a?.searchPerformance,
+      renderDetail: (d) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65 }}>{d.summary}</div>
+          {d.patterns?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Performance Patterns</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {d.patterns.map((p, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ color: C.green, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>↗</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.insight && (
+            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>ANALYTICAL CONCLUSION</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.insight}</div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        ← Back to Dashboard
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.blue, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.blue}40` }}>
+            <span style={{ fontSize: 22 }}>🧠</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>Job Intelligence</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 3 }}>AI analysis of your complete job search landscape</div>
+          </div>
+        </div>
+        <button onClick={generate} disabled={genLoading} style={{ border: `1px solid ${C.border}`, background: "#fff", color: C.blue, fontSize: 13, fontWeight: 600, cursor: genLoading ? "not-allowed" : "pointer", padding: "8px 16px", borderRadius: 8, fontFamily: "inherit", opacity: genLoading ? 0.6 : 1 }}>
+          {genLoading ? "Analyzing…" : "↻ Regenerate"}
+        </button>
+      </div>
+
+      {genError && (
+        <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.red }}>{genError}</div>
+      )}
+
+      {isLoading ? (
+        <Card style={{ padding: "40px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 14, color: C.textMuted }}>Analyzing your job search landscape…</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>This takes a few seconds</div>
+        </Card>
+      ) : !a ? (
+        <Card style={{ padding: "40px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 16 }}>
+            {(savedJobs?.length ?? 0) === 0
+              ? "Save jobs from the Job Search page to unlock AI landscape analysis."
+              : "Click Regenerate to generate your Job Intelligence analysis."}
+          </div>
+          <Btn onClick={generate} disabled={genLoading}>{genLoading ? "Analyzing…" : "Generate Analysis"}</Btn>
+        </Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Summary strip */}
+          <Card style={{ padding: "16px 20px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Landscape Overview</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }} className="five-col">
+              {sections.map(({ title, key }) => {
+                const status = a?.[key]?.status;
+                return (
+                  <div key={key} style={{ background: statusBg(status), borderRadius: 8, padding: "10px 8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: statusColor(status), marginBottom: 2 }}>{status || "—"}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.3 }}>{title}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Five analysis sections */}
+          {sections.map(({ key, title, subtitle, data, renderDetail }) => (
+            <Card key={key} style={{ padding: "20px 22px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 3 }}>{title}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.4 }}>{subtitle}</div>
+                </div>
+                {data?.status && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: statusColor(data.status), background: statusBg(data.status), borderRadius: 20, padding: "4px 12px", flexShrink: 0, marginLeft: 12 }}>
+                    {data.status}
+                  </span>
+                )}
+              </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+                {data ? renderDetail(data) : (
+                  <div style={{ fontSize: 13, color: C.textMuted }}>No data available. Click Regenerate to analyze your landscape.</div>
+                )}
+              </div>
+            </Card>
+          ))}
+
+          {a.generatedAt && (
+            <div style={{ fontSize: 11, color: C.textMuted, textAlign: "center", paddingBottom: 8 }}>
+              Analysis generated {new Date(a.generatedAt).toLocaleDateString()} — click Regenerate to refresh
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const RESUME_STEPS = ["Reading your resume…", "Extracting skills & keywords…", "Calculating ATS score…", "Generating AI analysis…", "Building recommendations…"];
 
@@ -9099,7 +9515,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity","jobintel"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -9156,7 +9572,7 @@ export default function App() {
     await logout();
     setProfile(null);
     // Session state — scoped to current tab, always cleared on logout
-    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash","cp_progress_analysis"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash","cp_progress_analysis","cp_job_intel_analysis"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
     // User-specific localStorage — cleared so a subsequent login (same or different account)
     // starts from Supabase, not from the previous user's stale cached data
     ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch {} });
@@ -9410,6 +9826,7 @@ export default function App() {
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "pricing" && <PricingPage profile={profile} />}
         {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
+        {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
