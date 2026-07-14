@@ -1436,7 +1436,7 @@ function LanguageMenu({ variant = "icon" }) {
 // data/handlers passed down from the single useNotifications() call in App()
 // so there is only ever one fetch/poll source regardless of how many trigger
 // affordances (desktop icon vs. mobile row) are mounted.
-const MODULE_LABEL = { briefing: "Daily Briefing", action_plan: "Action Plan", smart_apply: "Smart Apply", opportunity: "Opportunity", resume: "Resume", job_intel: "Jobs", interview: "Interview", salary: "Salary", career_progress: "Career Progress", networking: "Networking" };
+const MODULE_LABEL = { briefing: "Daily Briefing", action_plan: "Action Plan", smart_apply: "Smart Apply", opportunity: "Opportunity", resume: "Resume", job_intel: "Jobs", interview: "Interview", salary: "Salary", career_progress: "Career Progress", networking: "Networking", ai_recommendation: "Daily Briefing" };
 function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRead, unreadCount = 0 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -1445,7 +1445,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
     setOpen(next);
     if (next) { await refresh(); markAllRead(); }
   };
-  const pill = (n) => MODULE_LABEL[n.type] || "AI";
+  const pill = (n) => MODULE_LABEL[n.type] || (n.type ? n.type.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") : "Notification");
   return (
     <div style={{ position: "relative" }}>
       {variant === "row" ? (
