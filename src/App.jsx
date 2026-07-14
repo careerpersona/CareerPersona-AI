@@ -300,6 +300,11 @@ function _devMockRoute(prompt) {
     return JSON.stringify({ matchScore: 74, explanation: "Strong Python/AWS match; missing container orchestration skills." });
   }
 
+  // ── Interview AI Performance Summary ──────────────────────────────────────
+  if (p.includes("interview performance summary") || (p.includes("interview coach") && p.includes("per-question performance"))) {
+    return JSON.stringify({ technicalPerformance: "Strong", behavioralPerformance: "Excellent", communication: "Good", confidence: "Strong", biggestStrength: "Clear structure and quantifiable outcomes make your answers compelling and memorable.", biggestImprovement: "Work on being more concise — trim setup details to reach the action and result faster." });
+  }
+
   // ── Interview Questions ────────────────────────────────────────────────────
   if ((p.includes("interview questions") || p.includes("interview coach")) && p.includes("behavioral")) {
     return JSON.stringify([{ question: "Tell me about a time you led a complex technical project from design to delivery.", category: "Behavioral", difficulty: "Medium", tipToAnswer: "Use the STAR method: Situation (project scope and stakes), Task (your role), Action (key decisions you made and why), Result (measurable outcome — timeline, performance, business value).", starGuidance: { situation: "Describe the project context and why it was complex", task: "Explain your specific responsibilities", action: "Walk through 2–3 key decisions and the reasoning behind each", result: "Quantify the outcome: timeline, performance, team impact, business value" } }, { question: "How do you approach debugging a production incident with no runbook and customers impacted?", category: "Technical", difficulty: "Hard", tipToAnswer: "Walk through your mental model: triage by impact, isolate the failure domain, form hypotheses, test carefully. Show you can stay calm, communicate status, and learn from post-mortems.", starGuidance: null }, { question: "Describe a system you designed that needed to scale significantly. What tradeoffs did you navigate?", category: "Technical", difficulty: "Hard", tipToAnswer: "Pick a concrete example. Name the scale target, bottlenecks identified, architectural options considered, and what you chose — and why. Acknowledge tradeoffs honestly.", starGuidance: null }, { question: "Tell me about a time you disagreed with a technical decision your team made. How did you handle it?", category: "Behavioral", difficulty: "Medium", tipToAnswer: "Use STAR. Show you can advocate constructively with data and reasoning, not just opinion.", starGuidance: { situation: "Describe the decision and its context", task: "Explain your concern and why it mattered", action: "Describe how you raised it — data, framing, the conversation", result: "Outcome and what you learned about technical advocacy" } }, { question: "How do you prioritize technical debt against product feature delivery?", category: "Situational", difficulty: "Medium", tipToAnswer: "Show you think in tradeoffs, not absolutes. Name a framework (risk-based, velocity-based). Give an example.", starGuidance: null }, { question: "Tell me about your experience with cloud infrastructure and cost optimization.", category: "Technical", difficulty: "Easy", tipToAnswer: "Be specific: which services, at what scale, and what you optimized. Quantify savings if possible.", starGuidance: null }, { question: "How do you ensure code quality across a team with varying experience levels?", category: "Culture Fit", difficulty: "Medium", tipToAnswer: "Talk about systems, not just standards: code review culture, pair programming, automated testing, documentation. Show you think about enablement, not enforcement.", starGuidance: null }, { question: "Where do you see your engineering career in 3–5 years?", category: "Culture Fit", difficulty: "Easy", tipToAnswer: "Be genuine but frame it around growth in the domain they care about. Show ambition balanced with commitment to this role.", starGuidance: null }]);
@@ -307,7 +312,7 @@ function _devMockRoute(prompt) {
 
   // ── Interview Answer Rating ────────────────────────────────────────────────
   if (p.includes("rate this practice answer") || (p.includes("interview coach") && p.includes("score"))) {
-    return JSON.stringify({ score: 7.8, scoreLabel: "Strong", strengths: ["Clear structure with specific details", "Good use of quantifiable outcome", "Confident delivery without hedging"], improvements: ["Could be 15% more concise — trim the setup to get to the action faster", "Add the business impact beyond the technical result"], starFeedback: { situation: "Well set — 8/10", task: "Clear ownership stated — 9/10", action: "Good detail on decisions — 8/10", result: "Solid quantification — add business impact — 7/10" }, revisedAnswer: "At Acme Corp I inherited a system with 800ms API latency causing cart abandonment. I analyzed query patterns, identified N+1 database calls, and implemented Redis caching for the hot path. Latency dropped 40% to 480ms, cart completion improved 12%, and database load fell 30% — saving $1,800/month in RDS costs.", paceWpm: 142, fillerWordCount: 2 });
+    return JSON.stringify({ score: 7.8, strengths: ["Clear structure with specific details", "Good use of quantifiable outcome", "Confident delivery without hedging"], improvements: ["Could be 15% more concise — trim the setup to get to the action faster", "Add the business impact beyond the technical result"], revisedAnswer: "At Acme Corp I inherited a system with 800ms API latency causing cart abandonment. I analyzed query patterns, identified N+1 database calls, and implemented Redis caching for the hot path. Latency dropped 40% to 480ms, cart completion improved 12%, and database load fell 30% — saving $1,800/month in RDS costs.", scoreExplanation: "The answer demonstrated clear structure and quantifiable outcomes, though more concise delivery and explicit business impact would push this score higher." });
   }
 
   // ── Salary Research ────────────────────────────────────────────────────────
@@ -2527,6 +2532,10 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const answeredCount = interviewAnswers.length;
   const scoredAnswers = interviewAnswers.filter(a => a.feedback?.score);
   const avgFeedbackScore = scoredAnswers.length ? Math.round(scoredAnswers.reduce((s, a) => s + a.feedback.score, 0) / scoredAnswers.length * 10) / 10 : null;
+  const mockInterviewScore = interviewSession?.mockSummary?.avgScore ?? null;
+  const mockAnswered = interviewSession?.mockSummary?.answered ?? 0;
+  const mockTotal = interviewSession?.mockSummary?.total ?? 0;
+  const mockSkipped = interviewSession?.mockSummary?.skipped ?? 0;
 
   // Networking Intelligence derived stats
   const followUpNeeded = networkContacts.filter(c => c.status === "Waiting for Reply").length;
@@ -2985,25 +2994,30 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         {/* Interview Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Interview Intelligence</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Practice readiness and feedback progress.</div>
-          {questionsCount > 0 ? (
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>AI mock interview performance.</div>
+          {mockInterviewScore != null ? (
             <div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-                <ScoreRing score={Math.round((answeredCount / questionsCount) * 100)} size={60} />
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: (mockInterviewScore >= 8 ? C.green : mockInterviewScore >= 6 ? C.yellow : C.red) + "18", border: `2.5px solid ${mockInterviewScore >= 8 ? C.green : mockInterviewScore >= 6 ? C.yellow : C.red}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: mockInterviewScore >= 8 ? C.green : mockInterviewScore >= 6 ? C.yellow : C.red, lineHeight: 1 }}>{mockInterviewScore}</span>
+                  <span style={{ fontSize: 9, color: C.textMuted, lineHeight: 1.2 }}>/ 10</span>
+                </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, color: C.textMid, marginBottom: 2 }}>{questionsCount} question{questionsCount !== 1 ? "s" : ""} generated</div>
-                  <div style={{ fontSize: 12, color: C.textMid }}>{answeredCount} answered</div>
-                  {avgFeedbackScore != null && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginTop: 2 }}>Avg score: {avgFeedbackScore}/10</div>}
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>AI Interview Score</div>
+                  <div style={{ fontSize: 12, color: C.textMid }}>{mockAnswered} of {mockTotal} answered{mockSkipped > 0 ? ` · ${mockSkipped} skipped` : ""}</div>
                 </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span style={{ color: C.textMid }}>Readiness</span>
-                <span style={{ fontWeight: 700, color: C.purple }}>{Math.round((answeredCount / questionsCount) * 100)}%</span>
-              </div>
-              <PBar val={Math.round((answeredCount / questionsCount) * 100)} color={C.purple} />
+              {(() => { const aiS = interviewSession?.mockSummary?.aiSummary; return aiS ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {[["Technical", aiS.technicalPerformance], ["Behavioral", aiS.behavioralPerformance], ["Communication", aiS.communication], ["Confidence", aiS.confidence]].map(([label, val]) => {
+                    const col = val === "Excellent" || val === "Strong" ? C.green : val === "Good" ? C.blue : val === "Fair" ? C.yellow : C.red;
+                    return <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: C.textMid }}>{label}</span><span style={{ fontWeight: 700, color: col }}>{val}</span></div>;
+                  })}
+                </div>
+              ) : null; })()}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No interview session yet. Generate questions from a job description to start practicing.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No completed mock interview yet. Generate questions and run a mock interview to see your AI score.</div>
           )}
           <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>Go to Interview Prep →</Btn>
         </Card>
@@ -7266,7 +7280,7 @@ ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
     const resumeBlock = resume.trim() ? `\nCANDIDATE BACKGROUND:${resume.slice(0, 600)}` : "";
     const jdBlock = jobDesc.trim() ? `\nJOB CONTEXT:${jobDesc.slice(0, 600)}` : "";
     const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an interview coach. Rate this practice answer for the given question and role. Return ONLY JSON:
-{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<stronger version using STAR if behavioral>"}
+{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<stronger version using STAR if behavioral>","scoreExplanation":"<1 sentence: why this specific score was given>"}
 QUESTION:${question.question}${jdBlock}${resumeBlock}
 CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     const parsed = safeParse(raw);
@@ -7317,12 +7331,22 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     const scores = Object.values(answersMap).map(a => a.feedback?.score).filter(n => typeof n === "number");
     const avg = scores.length ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10 : 0;
     const answeredCount = Object.keys(answersMap).length;
-    setMockSummary({
-      answered: answeredCount,
-      skipped: mockQuestions.length - answeredCount,
-      total: mockQuestions.length,
-      avgScore: avg,
-    });
+    setMockSummary({ answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null });
+    if (answeredCount > 0) {
+      try {
+        const details = mockQuestions.filter(q => answersMap[q.id]).map(q => `${q.category} (${answersMap[q.id].feedback?.score ?? "?"}/10): strengths: ${(answersMap[q.id].feedback?.strengths || []).join("; ")} | improvements: ${(answersMap[q.id].feedback?.improvements || []).join("; ")}`).join("\n");
+        const raw = await askClaude(`You are an interview coach. Return an interview performance summary as JSON only.
+OVERALL SCORE: ${avg}/10
+QUESTIONS ANSWERED: ${answeredCount} of ${mockQuestions.length}
+PER-QUESTION PERFORMANCE:
+${details}
+
+Return ONLY this JSON (no markdown):
+{"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350);
+        const parsed = safeParse(raw);
+        if (parsed) setMockSummary(prev => ({ ...prev, aiSummary: parsed }));
+      } catch {}
+    }
   };
 
   const cats = ["All","Behavioral","Technical","Situational","Culture Fit"];
@@ -7451,16 +7475,50 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
           )}
 
           {mockSummary && !showReview && (
-            <Card style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>{t("interview.mockComplete")}</div>
-              <div style={{ fontSize: 48, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red, marginBottom: 4 }}>{mockSummary.avgScore}/10</div>
-              <div style={{ color: C.textMuted, fontSize: 14, marginBottom: 18 }}>{t("interview.avgScore").replace("{count}", mockSummary.answered)}</div>
-              <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 24 }}>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.green }}>{mockSummary.answered}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.answered")}</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.yellow }}>{mockSummary.skipped}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.skipped")}</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.text }}>{mockSummary.total}</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.total")}</div></div>
-                <div><div style={{ fontSize: 24, fontWeight: 800, color: C.purple }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</div><div style={{ fontSize: 12, color: C.textMuted }}>{t("interview.complete")}</div></div>
+            <Card style={{ padding: 32 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 24, textAlign: "center" }}>{t("interview.mockComplete")}</div>
+
+              {/* Performance + Progress — clearly separated */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 0, background: C.bgSoft, borderRadius: 12, padding: "4px 0", marginBottom: 20, overflow: "hidden" }}>
+                {[
+                  ["Interview Score", <span style={{ fontSize: 18, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red }}>{mockSummary.avgScore} / 10</span>],
+                  ["Questions Answered", <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.answered} / {mockSummary.total}</span>],
+                  ["Questions Skipped", <span style={{ fontSize: 15, fontWeight: 700, color: mockSummary.skipped > 0 ? C.yellow : C.text }}>{mockSummary.skipped}</span>],
+                  ["Completion", <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</span>],
+                ].map(([label, value], i, arr) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <span style={{ fontSize: 14, color: C.textMid }}>{label}</span>
+                    {value}
+                  </div>
+                ))}
               </div>
+
+              {/* AI Performance Summary */}
+              {mockSummary.aiSummary ? (
+                <div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 18, marginBottom: 24 }}>
+                  <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 14, letterSpacing: "0.05em" }}>AI PERFORMANCE SUMMARY</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                    {[["Technical", mockSummary.aiSummary.technicalPerformance], ["Behavioral", mockSummary.aiSummary.behavioralPerformance], ["Communication", mockSummary.aiSummary.communication], ["Confidence", mockSummary.aiSummary.confidence]].map(([label, val]) => {
+                      const col = val === "Excellent" || val === "Strong" ? C.green : val === "Good" ? C.blue : val === "Fair" ? C.yellow : C.red;
+                      return (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
+                          <span style={{ color: C.textMid }}>{label}</span>
+                          <span style={{ fontWeight: 700, color: col }}>{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.text, marginBottom: 8, lineHeight: 1.5 }}>
+                    <span style={{ color: C.green, fontWeight: 700 }}>Biggest Strength — </span>{mockSummary.aiSummary.biggestStrength}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
+                    <span style={{ color: C.yellow, fontWeight: 700 }}>Key Improvement — </span>{mockSummary.aiSummary.biggestImprovement}
+                  </div>
+                </div>
+              ) : mockSummary.answered > 0 && (
+                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 24, color: C.textMuted, fontSize: 13 }}>Generating AI performance summary…</div>
+              )}
+
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                 <Btn onClick={() => setShowReview(true)}>{t("interview.reviewAnswers")}</Btn>
                 <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
@@ -7477,29 +7535,56 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {mockQuestions.map((q, i) => {
                   const ans = mockAnswers[q.id];
+                  const score = ans?.feedback?.score;
+                  const scoreColor = score >= 8 ? C.green : score >= 6 ? C.yellow : C.red;
                   return (
                     <Card key={q.id}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                         <Badge color={C.purple}>{tCat(q.category)}</Badge>
                         <Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>
-                        {ans ? <Badge color={C.green}>✓ Answered {ans.feedback?.score ? `(${ans.feedback.score}/10)` : ""}</Badge> : <Badge color={C.textMuted}>⊘ {t("interview.skippedBadge")}</Badge>}
+                        {ans ? <Badge color={score >= 8 ? C.green : score >= 6 ? C.yellow : C.red}>✓ {score}/10</Badge> : <Badge color={C.textMuted}>⊘ {t("interview.skippedBadge")}</Badge>}
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10, lineHeight: 1.4 }}>Q{i + 1}. {q.question}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 14, lineHeight: 1.4 }}>Q{i + 1}. {q.question}</div>
                       {ans ? (
-                        <div>
-                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>{t("interview.yourAnswerLabel")}</div>
-                          <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginBottom: ans.feedback ? 12 : 0 }}>{ans.answer}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {/* AI Score */}
+                          {score != null && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", background: `${scoreColor}10`, border: `1.5px solid ${scoreColor}30`, borderRadius: 10 }}>
+                              <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}<span style={{ fontSize: 16, color: C.textMuted, fontWeight: 500 }}>/10</span></span>
+                              <div>
+                                <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 2 }}>AI SCORE</div>
+                                {ans.feedback.scoreExplanation && <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{ans.feedback.scoreExplanation}</div>}
+                              </div>
+                            </div>
+                          )}
+                          {/* Your Answer */}
+                          <div>
+                            <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>{t("interview.yourAnswerLabel")}</div>
+                            <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{ans.answer}</div>
+                          </div>
+                          {/* Strengths + Improvements */}
                           {ans.feedback && (
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
                               <div style={{ background: C.greenLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>{t("interview.strengths")}</div>{(ans.feedback.strengths || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
                               <div style={{ background: C.yellowLight, borderRadius: 8, padding: 12 }}><div style={{ fontSize: 11, color: C.yellow, fontWeight: 700, marginBottom: 6 }}>{t("interview.improve")}</div>{(ans.feedback.improvements || []).map((s, j) => <div key={j} style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>• {s}</div>)}</div>
                             </div>
                           )}
+                          {/* AI Recommended Answer */}
+                          {ans.feedback?.revisedAnswer && (
+                            <div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 10, padding: "12px 14px" }}>
+                              <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 6 }}>AI RECOMMENDED ANSWER</div>
+                              <div style={{ fontSize: 13, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{ans.feedback.revisedAnswer}</div>
+                              <div style={{ marginTop: 8 }}><CopyBtn text={ans.feedback.revisedAnswer} label="Copy" /></div>
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic" }}>{t("interview.skippedMsg")}</div>
+                        <div>
+                          <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic", marginBottom: 10 }}>{t("interview.skippedMsg")}</div>
+                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>STRONG ANSWER</div>
+                          <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{q.strongAnswer}</div>
+                        </div>
                       )}
-                      {!ans && <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap", marginTop: 6 }}>{q.strongAnswer}</div>}
                     </Card>
                   );
                 })}
