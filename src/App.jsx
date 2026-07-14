@@ -2857,8 +2857,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("jobs")}>Find Matching Jobs →</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("saved")}>View Queue →</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("jobs")}>Find Matching Jobs →</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("saved")}>View Queue →</Btn>
           </div>
         </Card>
 
@@ -2894,7 +2894,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               </div>
             </div>
           )}
-          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("opportunity")}>View Opportunities →</Btn>
+          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("opportunity")}>View Opportunities →</Btn>
         </Card>
       </div>
 
@@ -2938,7 +2938,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? "Analyze a resume on the Resume page to see insights here." : t("dashboard.resumeIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
@@ -3005,7 +3005,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No interview session yet. Generate questions from a job description to start practicing.</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("interview")}>Go to Interview Prep →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>Go to Interview Prep →</Btn>
         </Card>
       </div>
 
@@ -3029,7 +3029,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.marketIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
         </Card>
 
         {/* Career Progress */}
@@ -3113,7 +3113,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No networking contacts yet. Build your network to track outreach and follow-ups.</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12 }} onClick={() => setPage("network")}>Go to Networking →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("network")}>Go to Networking →</Btn>
         </Card>
       </div>
 
