@@ -4213,20 +4213,26 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
         ← Back to Dashboard
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: C.purple, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 4px 16px ${C.purple}40` }}>
             <span style={{ fontSize: 22 }}>🧠</span>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>Job Intelligence</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 3 }}>AI analysis of your complete job search landscape</div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>Job Intelligence</h1>
+            <p style={{ fontSize: 13, color: C.textMuted }}>AI analysis of your complete job search landscape</p>
           </div>
         </div>
-        <button onClick={generate} disabled={genLoading} style={{ border: `1px solid ${C.border}`, background: "#fff", color: C.blue, fontSize: 13, fontWeight: 600, cursor: genLoading ? "not-allowed" : "pointer", padding: "8px 16px", borderRadius: 8, fontFamily: "inherit", opacity: genLoading ? 0.6 : 1 }}>
+        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={generate} loading={genLoading}>
           {genLoading ? "Analyzing…" : "↻ Regenerate"}
-        </button>
+        </Btn>
       </div>
+
+      {a?.generatedAt && (
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 24 }}>
+          Generated {new Date(a.generatedAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </div>
+      )}
 
       {genError && (
         <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.red }}>{genError}</div>
