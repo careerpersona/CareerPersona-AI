@@ -1359,7 +1359,7 @@ function NavPills({ nav, page, setPage, navigateToResume }) {
   return (
     <nav className="nav-pills" style={{ display: "flex", gap: 4, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
       {nav.map(n => (
-        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => n.id === "resume" && navigateToResume ? navigateToResume() : setPage(n.id)}>
+        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { if (n.id === "resume" && navigateToResume) { window.scrollTo(0, 0); navigateToResume(); } else { setPage(n.id); } }}>
           <span style={{ fontSize: 13, flexShrink: 0 }}>{n.icon}</span><span className="nav-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
         </button>
       ))}
@@ -9826,7 +9826,6 @@ export default function App() {
   const navigateToResume = useCallback((overrideTarget) => {
     setResumeEntryTarget(overrideTarget ?? resumeNavTarget);
     setPage("resume");
-    window.scrollTo(0, 0);
   }, [resumeNavTarget]);
 
   // Confirmed Tracker delete — awaits Supabase before updating local state.
@@ -10010,7 +10009,7 @@ export default function App() {
       {mobileMenuOpen && (
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
           {nav.map(n => (
-            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { n.id === "resume" ? navigateToResume() : setPage(n.id); setMobileMenuOpen(false); }}>
+            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
             </button>
           ))}
