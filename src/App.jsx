@@ -1436,7 +1436,8 @@ function LanguageMenu({ variant = "icon" }) {
 // data/handlers passed down from the single useNotifications() call in App()
 // so there is only ever one fetch/poll source regardless of how many trigger
 // affordances (desktop icon vs. mobile row) are mounted.
-function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRead }) {
+const MODULE_LABEL = { briefing: "Daily Briefing", action_plan: "Action Plan", smart_apply: "Smart Apply", opportunity: "Opportunity", resume: "Resume", job_intel: "Jobs", interview: "Interview", salary: "Salary", career_progress: "Career Progress", networking: "Networking" };
+function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRead, unreadCount = 0 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const toggle = async () => {
@@ -1444,19 +1445,27 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
     setOpen(next);
     if (next) { await refresh(); markAllRead(); }
   };
+  const pill = (n) => MODULE_LABEL[n.type] || "AI";
   return (
     <div style={{ position: "relative" }}>
       {variant === "row" ? (
         <button onClick={toggle} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }}>
-          <span style={{ fontSize: 20 }}>🔔</span>{t("notifications.title")}
+          <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <span style={{ fontSize: 20 }}>🔔</span>
+            {unreadCount > 0 && <span style={{ position: "absolute", top: -6, right: -8, background: "#ef4444", color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
+          </span>
+          {t("notifications.title")}
         </button>
       ) : (
-        <button onClick={toggle} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Notifications">🔔</button>
+        <button onClick={toggle} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer", position: "relative" }} title="Notifications">
+          🔔
+          {unreadCount > 0 && <span style={{ position: "absolute", top: 0, right: 0, background: "#ef4444", color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
+        </button>
       )}
       {open && (
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 320, overflow: "hidden" }}>
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("notifications.title")}</div>
             {notifications.length === 0 ? (
               <div style={{ padding: "32px 16px", textAlign: "center" }}>
@@ -1465,10 +1474,11 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
                 <div style={{ fontSize: 12, color: C.textMuted }}>{t("notifications.emptyBody")}</div>
               </div>
             ) : (
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
+              <div style={{ maxHeight: 400, overflowY: "auto" }}>
                 {notifications.map(n => (
                   <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
+                    <span style={{ display: "inline-block", background: C.purple, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700, marginBottom: 5 }}>{pill(n)}</span>
+                    <div style={{ fontSize: 13, fontWeight: n.read ? 600 : 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
                     {n.body && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>{n.body}</div>}
                     <div style={{ fontSize: 11, color: C.textMuted }}>{n.time}</div>
                   </div>
@@ -2578,7 +2588,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
       saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
       logActivity("Daily briefing generated");
-      insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
+      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
     } catch (e) {
       console.error("[Briefing] Generation failed:", e?.message || e);
       setBriefingError("Generation failed. Tap Retry to try again.");
@@ -2600,7 +2610,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
       savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
       logActivity("Daily plan generated");
-      insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
     } catch (e) {
       console.error("[ActionPlan] Generation failed:", e?.message || e);
       setPlanError("Generation failed. Tap Retry to try again.");
@@ -3209,7 +3219,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
       saveBriefing(result).catch(err => console.error("briefing save failed", err));
       logActivity("Daily briefing regenerated");
-      insertNotification(profile?.id, { type: "ai_recommendation", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
+      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
     } catch { /* keep existing briefing */ }
     finally { setGenLoading(false); }
   };
@@ -3401,7 +3411,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
       savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
       logActivity("Daily plan regenerated");
-      insertNotification(profile?.id, { type: "ai_recommendation", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
     } catch (e) {
       console.error("[PlanPage] Generation failed:", e?.message || e);
       setGenError("Generation failed. Please try again.");
@@ -3615,6 +3625,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
       const ctx = userContext.getContextString();
       const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline);
       setAnalysis(result);
+      insertNotification(profile?.id, { type: "career_progress", title: "Career progress report ready.", body: "Your career progress report has been generated." });
       try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch {}
       saveAnalysis(result).catch(err => console.error("career progress save failed", err));
       logActivity("Career progress assessment generated");
@@ -4001,6 +4012,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
     try {
       const result = await buildJobIntelligencePayload(profile, savedJobs, applications);
       setAnalysis(result);
+      insertNotification(profile?.id, { type: "job_intel", title: "Job Intelligence updated.", body: "Job Intelligence has finished analyzing your opportunities." });
       try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch {}
       saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
       logActivity("Job Intelligence landscape analysis generated");
@@ -4673,6 +4685,7 @@ RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000);
       const parsed = JSON.parse(raw);
       setResults(parsed); setTab("resume");
+      insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: "Your resume has been analyzed. View your ATS score and improvement tips." });
       // Animate score bars from 0 to final (PBar has CSS transition: width 1s ease)
       setAnimatedBreakdown({ keywordMatch: 0, formatting: 0, relevance: 0 });
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -6806,6 +6819,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
       }
     }
     console.log(`[SmartApply] 🏁 AUTO complete: ${succeeded}/${newJobs.length} succeeded`);
+    if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
     // If every job failed, surface a visible error so the user isn't left confused
     if (succeeded === 0 && newJobs.length > 0) {
       setError(t("jobSearch.smartApplyFailed"));
@@ -7339,6 +7353,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     const answeredCount = Object.keys(answersMap).length;
     const baseSummary = { answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null };
     setMockSummary(baseSummary);
+    insertNotification(profile?.id, { type: "interview", title: "Mock interview complete.", body: "AI Score: " + avg + "/10 — your interview feedback is ready." });
     // Persist immediately (don't rely on the 600ms debounce) so the dashboard
     // always sees the score even if the user navigates away right after finishing.
     saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers: answersMap, mockSummary: baseSummary, mode: "mock", mockIdx, mockAnswerDraft: "", activeQ, showReview: false }).catch(() => {});
@@ -7900,6 +7915,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
         setError(t("salary.incompleteData"));
       } else {
         setResults(parsed);
+        insertNotification(profile?.id, { type: "salary", title: "Salary report ready.", body: "Your salary and market report is ready to view." });
         // Save immediately so quick navigation doesn't race the 600ms debounce
         saveSearch(form, parsed).catch(() => {});
       }
@@ -8048,7 +8064,10 @@ function NetworkingPage({ profile, applications, savedJobs }) {
       const ck = c.email ? c.email.toLowerCase() : `${c.name}|${c.company}`.toLowerCase();
       return ck === key;
     });
-    if (!exists) setSavedContacts(p => [contact, ...p]);
+    if (!exists) {
+      setSavedContacts(p => [contact, ...p]);
+      insertNotification(profile?.id, { type: "networking", title: "Contact saved.", body: contact.name + (contact.company ? " at " + contact.company : "") + " added to your Saved Outreach." });
+    }
     setShowSavePrompt(false);
   };
 
@@ -9016,6 +9035,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       const result = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
       if (!result?.careerPivotOpportunities) throw new Error("invalid");
       setAnalysis({ ...result, generatedAt: new Date().toISOString() });
+      insertNotification(profile?.id, { type: "opportunity", title: "Opportunity analysis ready.", body: "A new career opportunity analysis is available." });
     } catch {
       setAnalysisError("Analysis failed. Please try again.");
     } finally {
@@ -9777,6 +9797,7 @@ export default function App() {
   ];
   const planName = (profile?.plan || "free").toUpperCase();
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   // Data lifted to App level so UserContext can aggregate them as the single
   // source of truth. Page-level hook instances keep their full mutation APIs.
@@ -9971,7 +9992,7 @@ export default function App() {
           <NavPills nav={nav} page={page} setPage={setPage} navigateToResume={navigateToResume} />
           <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
             <LanguageMenu variant="icon" />
-            <NotificationsMenu variant="icon" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} />
+            <NotificationsMenu variant="icon" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} unreadCount={unreadCount} />
             <UserMenu profile={profile} page={page} setPage={setPage} onLogout={handleLogout} />
           </div>
         </div>
@@ -9985,7 +10006,7 @@ export default function App() {
           ))}
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
           <LanguageMenu variant="row" />
-          <NotificationsMenu variant="row" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} />
+          <NotificationsMenu variant="row" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} unreadCount={unreadCount} />
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>👤</span>{t("userMenu.profile")}
