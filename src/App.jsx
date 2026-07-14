@@ -362,7 +362,7 @@ function _devMockRoute(prompt) {
   }
 
   // ── Job Intelligence Landscape Analysis ───────────────────────────────────
-  if (p.includes("job intelligence landscape") || p.includes("job search landscape")) {
+  if (p.includes("analysis 1: market patterns") && p.includes("analysis 5: search performance")) {
     return JSON.stringify({ v: 1, generatedAt: new Date().toISOString(), marketPatterns: { status: "Strong", summary: "Your job search is concentrated in the mid-to-senior software engineering space, with a clear preference for product-driven tech companies over enterprise environments. The remote-first skew in your saved jobs aligns with a shift toward distributed team culture in your target market.", evidence: ["78% of saved jobs are at Series A–C companies, signaling a preference for high-growth environments", "Senior Engineer roles dominate at 65%, with a visible secondary cluster of Staff/Lead roles at 20%", "Remote or hybrid roles account for 82% of your saved landscape"], trends: "Hiring activity in your target sectors remains strong, with a noticeable uptick in full-stack and platform-adjacent roles over the past 30 days." }, employerDemand: { status: "Consistent", summary: "Employers in your search landscape are consistently requesting cloud-native engineering skills alongside product intuition. Python and React appear in the majority of roles, but infrastructure and observability tooling is increasingly expected at the senior level.", topSkills: ["Python", "AWS / Cloud", "React / TypeScript", "System Design", "Docker / Kubernetes"], qualifications: ["4–7 years of backend or full-stack engineering experience", "Experience shipping production systems at meaningful scale"], insight: "Container orchestration and CI/CD appear in 72% of your saved job descriptions — closing this gap would meaningfully broaden your competitive reach." }, marketFit: { status: "Good", narrative: "Your profile aligns well with the core requirements of your target market. Your Python and AWS depth positions you competitively for most senior backend roles in your saved landscape. The gap between your current profile and your target roles is narrow — primarily around infrastructure tooling and system design documentation, not core engineering competency. You are not disadvantaged in this market; you are one or two deliberate additions away from being a strong fit for the top quartile of your saved roles.", strengths: ["Strong Python/AWS foundation matching 70%+ of employer requirements", "Demonstrated impact at scale — measurable achievements that stand out in competitive pools"], gaps: ["Container orchestration (Docker, Kubernetes) expected but not visible in profile", "System design and architecture leadership experience less prominent than top candidates"], positioning: "You are positioned in the 60th–70th percentile of candidates for your target roles; targeted resume optimization could move you to the 80th percentile." }, searchStrategy: { status: "Focused", summary: "Your search is well-targeted by role level and technology stack, but geographic distribution is narrow. The concentration in San Francisco and New York limits your available opportunity set when remote roles would broaden this significantly.", alignment: "Your saved jobs align closely with your stated target role and experience level — the strategy is directionally correct.", recommendation: "Expand your saved job pool to include more remote-first companies to unlock a larger opportunity set without changing your role targeting." }, searchPerformance: { status: "Improving", summary: "Your response rate has improved as your applications have become more targeted. The shift from broad volume applications to selective, tailored ones is producing better outcomes. Early-stage applications to smaller companies are converting at a higher rate than large enterprise applications.", patterns: ["Tailored applications to Series B companies show 2× the response rate of volume applications", "Response times are shorter at companies where you have a mutual connection or warm referral"], insight: "Your data shows that quality over quantity is working — maintaining selective, tailored applications rather than increasing volume will continue to improve outcomes." } });
   }
 
@@ -2192,38 +2192,119 @@ async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
 }
 
 // ─── JOB INTELLIGENCE PAYLOAD BUILDER ────────────────────────────────────────
-async function buildJobIntelligencePayload(ctx, savedJobs, applications) {
+async function buildJobIntelligencePayload(profile, savedJobs, applications) {
   const saved = savedJobs ?? [];
   const apps = applications ?? [];
 
-  // Build a rich job landscape summary for the prompt
-  const titles = [...new Set(saved.map(j => j.title).filter(Boolean))].slice(0, 15).join(", ");
-  const companies = [...new Set(saved.map(j => j.company).filter(Boolean))].slice(0, 10).join(", ");
+  // ── Pre-compute five isolated data summaries (one per analysis) ───────────
+  // Each summary contains ONLY the inputs relevant to that specific analysis.
+  // This prevents Claude from cross-referencing sections during generation.
+
+  // Analysis 1 — Market Patterns: saved job search behavior only
+  const titles = [...new Set(saved.map(j => j.title).filter(Boolean))].slice(0, 15);
+  const companies = [...new Set(saved.map(j => j.company).filter(Boolean))].slice(0, 12);
+  const locations = [...new Set(saved.map(j => j.location).filter(Boolean))].slice(0, 8);
   const remoteCount = saved.filter(j => j.remote).length;
+  const empTypes = [...new Set(saved.map(j => j.employmentType).filter(Boolean))];
   const salaryMins = saved.filter(j => j.salaryMin).map(j => j.salaryMin);
   const salaryMaxs = saved.filter(j => j.salaryMax).map(j => j.salaryMax);
-  const salaryRange = salaryMins.length > 0 ? `$${Math.round(Math.min(...salaryMins) / 1000)}K–$${Math.round(Math.max(...salaryMaxs) / 1000)}K` : "not specified";
-  const matchScores = saved.filter(j => j.matchScore).map(j => j.matchScore);
-  const avgMatch = matchScores.length ? Math.round(matchScores.reduce((a, b) => a + b, 0) / matchScores.length) : null;
+  const salaryRange = salaryMins.length ? `$${Math.round(Math.min(...salaryMins) / 1000)}K–$${Math.round(Math.max(...salaryMaxs) / 1000)}K` : "not specified";
+  const d1 = [
+    `Saved jobs: ${saved.length}.`,
+    titles.length ? `Role types saved: ${titles.join(", ")}.` : "No roles saved.",
+    companies.length ? `Companies: ${companies.join(", ")}.` : "",
+    locations.length ? `Locations: ${locations.join(", ")}.` : "",
+    `Work model: ${remoteCount} remote, ${saved.length - remoteCount} on-site/hybrid.`,
+    empTypes.length ? `Employment types: ${empTypes.join(", ")}.` : "",
+    `Salary range observed: ${salaryRange}.`,
+  ].filter(Boolean).join(" ");
 
+  // Analysis 2 — Employer Demand: skill signals from job description text only
+  const SKILL_TOKENS = ["python","javascript","typescript","react","node.js","vue","angular","next.js","aws","azure","gcp","docker","kubernetes","terraform","sql","postgresql","mongodb","redis","graphql","rest api","microservices","ci/cd","git","java","go","rust","c#","swift","kotlin","machine learning","data analysis","product management","agile","scrum","figma","ux design","salesforce","excel","tableau","power bi","llm","ai","html","css","django","spring","fastapi","system design","leadership","communication"];
+  const descCorpus = saved.map(j => (j.description || "").toLowerCase()).join(" ");
+  const skillHits = descCorpus.length > 100
+    ? SKILL_TOKENS.map(s => ({ s, n: descCorpus.split(s).length - 1 })).filter(x => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 10).map(x => `${x.s} (×${x.n})`).join(", ")
+    : "";
+  const descCount = saved.filter(j => (j.description || "").length > 50).length;
+  const d2 = [
+    `Job descriptions available: ${descCount} of ${saved.length} saved jobs.`,
+    skillHits ? `Skill frequency across descriptions: ${skillHits}.` : "Insufficient description text — save more jobs with descriptions.",
+    titles.length ? `Role titles in landscape: ${titles.slice(0, 8).join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+
+  // Analysis 3 — Market Fit: user profile vs aggregate requirements, no outcomes
+  const matchScores = saved.filter(j => j.matchScore != null).map(j => j.matchScore);
+  const avgMatch = matchScores.length ? Math.round(matchScores.reduce((a, b) => a + b, 0) / matchScores.length) : null;
+  const d3 = [
+    `Current role: ${profile?.job_title || "not set"}.`,
+    `Target role: ${profile?.preferred_job_title || "not set"}.`,
+    `Years of experience: ${profile?.years_experience || "not specified"}.`,
+    `Location: ${profile?.location || "not specified"}.`,
+    `Work type preference: ${profile?.work_type || "not specified"}.`,
+    avgMatch != null ? `Average match score against saved jobs: ${avgMatch}%.` : "",
+    saved.length ? `Roles in target landscape: ${saved.length}.` : "",
+    titles.length ? `Target roles: ${titles.slice(0, 6).join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+
+  // Analysis 4 — Search Strategy: career goal vs search behavior only, no outcomes
+  const d4 = [
+    `Career goal: ${profile?.career_goal || "not set"}.`,
+    `Target timeline: ${profile?.career_timeline || "not set"}.`,
+    `Target role: ${profile?.preferred_job_title || "not set"}.`,
+    `Current role: ${profile?.job_title || "not set"}.`,
+    `Total saved jobs: ${saved.length}.`,
+    titles.length ? `Roles being saved: ${[...new Set(titles)].slice(0, 8).join(", ")}.` : "",
+    companies.length ? `Companies targeted: ${companies.slice(0, 8).join(", ")}.` : "",
+    `Work model focus: ${remoteCount} remote, ${saved.length - remoteCount} on-site (${saved.length > 0 ? Math.round(remoteCount / saved.length * 100) : 0}% remote).`,
+    locations.length ? `Geographic targeting: ${locations.join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+
+  // Analysis 5 — Search Performance: application outcomes only, no jobs or profile
   const interviews = apps.filter(a => ["Interview", "Final Interview", "Phone Screen"].includes(a.status)).length;
   const offers = apps.filter(a => a.status === "Offer").length;
   const rejections = apps.filter(a => a.status === "Rejected").length;
+  const pending = apps.filter(a => !["Offer", "Rejected", "Withdrawn"].includes(a.status)).length;
   const responseRate = apps.length > 0 ? Math.round(((interviews + offers) / apps.length) * 100) : 0;
-
-  const landscapeSummary = [
-    `Saved Jobs: ${saved.length} total.`,
-    titles ? `Job Titles Saved: ${titles}.` : "",
-    companies ? `Companies: ${companies}.` : "",
-    `Work Model: ${remoteCount} remote, ${saved.length - remoteCount} on-site/hybrid.`,
-    `Salary Range Across Saved Jobs: ${salaryRange}.`,
-    avgMatch != null ? `Average Match Score: ${avgMatch}%.` : "",
-    `Applications: ${apps.length} total. Interviews: ${interviews}. Offers: ${offers}. Rejections: ${rejections}. Response rate: ${responseRate}%.`,
+  const statusMap = apps.reduce((acc, a) => { acc[a.status] = (acc[a.status] || 0) + 1; return acc; }, {});
+  const statusBreakdown = Object.entries(statusMap).map(([s, c]) => `${s}: ${c}`).join(", ");
+  const companiesApplied = [...new Set(apps.map(a => a.company).filter(Boolean))].slice(0, 10).join(", ");
+  const d5 = [
+    `Total applications submitted: ${apps.length}.`,
+    statusBreakdown ? `Status breakdown: ${statusBreakdown}.` : "",
+    `Interviews reached: ${interviews}. Offers: ${offers}. Rejections: ${rejections}. Pending: ${pending}.`,
+    `Overall response rate: ${responseRate}%.`,
+    companiesApplied ? `Companies applied to: ${companiesApplied}.` : "",
   ].filter(Boolean).join(" ");
 
+  // ── Single Claude call with five isolated labeled sections ─────────────────
   const raw = await askClaude(
-    `You are CareerPersona AI — Job Intelligence Analyst. Analyze this user's complete job search landscape and generate strategic AI intelligence. Analyze patterns ACROSS ALL JOBS collectively — this is NOT per-job analysis. Do NOT give individual job recommendations, resume advice, or today's action items. Return ONLY valid JSON, no markdown:\n{"v":1,"marketPatterns":{"status":"<Excellent|Strong|Good|Fair|Limited — one or two words>","summary":"<2-3 sentences about patterns in the user's job search landscape: dominant industries, seniority trends, work model mix, geographic focus>","evidence":["<specific observed pattern 1>","<specific observed pattern 2>","<specific observed pattern 3>"],"trends":"<1 sentence about direction or momentum in their search landscape>"},"employerDemand":{"status":"<Excellent|Strong|Consistent|Good|Moderate|Limited — one or two words>","summary":"<2-3 sentences about what employers in this landscape consistently request across many job descriptions>","topSkills":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>"],"qualifications":["<common qualification 1>","<common qualification 2>"],"insight":"<1 sentence key takeaway about the demand pattern>"},"marketFit":{"status":"<Excellent|Strong|Good|Fair|Developing — one or two words>","narrative":"<3-4 honest sentences comparing the user's overall profile against the aggregate landscape requirements — NOT ATS scoring, NOT resume suggestions>","strengths":["<fit strength 1>","<fit strength 2>"],"gaps":["<fit gap 1>","<fit gap 2>"],"positioning":"<1 sentence on how they are positioned relative to the market>"},"searchStrategy":{"status":"<Excellent|Focused|Aligned|Broad|Scattered|Needs Focus — one or two words>","summary":"<2-3 sentences on whether search behavior aligns with long-term career goals — do NOT recommend today's tasks or individual applications>","alignment":"<1 sentence on goal alignment>","recommendation":"<1 strategic long-term recommendation about targeting, positioning, or market focus>"},"searchPerformance":{"status":"<Excellent|Strong|Improving|Stable|Fair|Needs Review — one or two words>","summary":"<2-3 sentences of retrospective data-driven analysis of application outcomes and patterns — NOT a task list>","patterns":["<observed performance pattern 1>","<observed performance pattern 2>"],"insight":"<1 analytical conclusion about what the data shows is or is not working>"}}\nUser data: ${ctx}\nJob Search Landscape: ${landscapeSummary}`,
-    1200
+    `You are CareerPersona AI — Job Intelligence Analyst. Generate 5 independent AI analyses of a user's job search landscape.
+
+CRITICAL RULE: Each analysis must derive exclusively from its own DATA block. Do NOT cross-reference, echo, or summarize content from any other section. Every section must stand alone.
+
+=== ANALYSIS 1: MARKET PATTERNS ===
+DATA: ${d1}
+Task: Identify patterns in the saved job search landscape — role concentration, seniority signals, work model distribution, geographic focus, salary tier. Use ONLY the DATA above.
+
+=== ANALYSIS 2: EMPLOYER DEMAND ===
+DATA: ${d2}
+Task: Identify what employers consistently request across job descriptions — most in-demand skills, recurring qualifications, technology patterns. Use ONLY the DATA above.
+
+=== ANALYSIS 3: MARKET FIT ===
+DATA: ${d3}
+Task: Assess how the user's profile aligns with the aggregate target market. This is a profile-vs-market comparison — not ATS scoring, not resume advice. Use ONLY the DATA above.
+
+=== ANALYSIS 4: SEARCH STRATEGY ===
+DATA: ${d4}
+Task: Evaluate whether search behavior aligns with stated career goals — role targeting consistency, geographic focus, goal alignment. Do NOT recommend today's action items. Use ONLY the DATA above.
+
+=== ANALYSIS 5: SEARCH PERFORMANCE ===
+DATA: ${d5}
+Task: Analyze historical application outcomes — response rates, what patterns emerge from the results. Retrospective analytics only, not a task list. Use ONLY the DATA above.
+
+Return ONLY this JSON, no markdown:
+{"v":1,"marketPatterns":{"status":"<Excellent|Strong|Good|Fair|Limited>","summary":"<2-3 sentences>","evidence":["<pattern 1>","<pattern 2>","<pattern 3>"],"trends":"<1 sentence>"},"employerDemand":{"status":"<Excellent|Strong|Consistent|Good|Moderate|Limited>","summary":"<2-3 sentences>","topSkills":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>"],"qualifications":["<qualification 1>","<qualification 2>"],"insight":"<1 sentence>"},"marketFit":{"status":"<Excellent|Strong|Good|Fair|Developing>","narrative":"<3-4 sentences>","strengths":["<strength 1>","<strength 2>"],"gaps":["<gap 1>","<gap 2>"],"positioning":"<1 sentence>"},"searchStrategy":{"status":"<Excellent|Focused|Aligned|Broad|Scattered|Needs Focus>","summary":"<2-3 sentences>","alignment":"<1 sentence>","recommendation":"<1 strategic sentence>"},"searchPerformance":{"status":"<Excellent|Strong|Improving|Stable|Fair|Needs Review>","summary":"<2-3 sentences>","patterns":["<pattern 1>","<pattern 2>"],"insight":"<1 sentence>"}}`,
+    1400
   );
 
   let result;
@@ -3881,7 +3962,6 @@ Location: Remote-first`;
 // ─── JOB INTELLIGENCE PAGE ───────────────────────────────────────────────────
 function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
   const { analysis: savedAnalysis, loading: analysisLoading, loadedFor, save: saveAnalysis } = useJobIntelligenceAnalysis(profile?.id);
-  const userContext = useUserContext({ profile, applications, savedJobs });
   const { logActivity } = useActivityLog(profile?.id);
 
   const [analysis, setAnalysis] = useState(() => {
@@ -3905,8 +3985,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
     setGenLoading(true);
     setGenError(null);
     try {
-      const ctx = userContext.getContextString();
-      const result = await buildJobIntelligencePayload(ctx, savedJobs, applications);
+      const result = await buildJobIntelligencePayload(profile, savedJobs, applications);
       setAnalysis(result);
       try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch {}
       saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
