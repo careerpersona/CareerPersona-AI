@@ -522,7 +522,7 @@
     sentBtn: "✔ Gesendet",
     emailDisclaimer: "Öffnet Ihre E-Mail-App mit Ihren Bearbeitungen vorausgefüllt. Sie überprüfen und senden selbst.",
     savePromptTitle: "📬 Diesen Kontakt speichern?",
-    savePromptBody: "Kontakt speichern. Sie können ihn später im Reiter „Follow-up" verwalten.",
+    savePromptBody: "Kontakt speichern. Sie können ihn später im Reiter Follow-up verwalten.",
     saveContactBtn: "✅ Kontakt speichern",
     notNowBtn: "❌ Nicht jetzt",
     savedContactsLabel: "📬 GESPEICHERTE KONTAKTE ({count})",
