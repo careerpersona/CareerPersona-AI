@@ -1476,11 +1476,13 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
             ) : (
               <div style={{ maxHeight: 400, overflowY: "auto" }}>
                 {notifications.map(n => (
-                  <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
-                    <span style={{ display: "inline-block", background: C.purple, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700, marginBottom: 5 }}>{pill(n)}</span>
-                    <div style={{ fontSize: 13, fontWeight: n.read ? 600 : 700, color: C.text, marginBottom: 3 }}>{n.title}</div>
-                    {n.body && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>{n.body}</div>}
-                    <div style={{ fontSize: 11, color: C.textMuted }}>{n.time}</div>
+                  <div key={n.id} style={{ padding: "9px 14px", borderBottom: `1px solid ${C.border}`, background: n.read ? "#fff" : C.purpleLight }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.purple, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: n.read ? 500 : 600, color: C.text, flex: 1 }}>{pill(n)}</span>
+                      <span style={{ fontSize: 11, color: C.textMuted, whiteSpace: "nowrap" }}>{n.time}</span>
+                    </div>
+                    {(n.body || n.title) && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, paddingLeft: 14 }}>{n.body || n.title}</div>}
                   </div>
                 ))}
               </div>
