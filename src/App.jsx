@@ -9826,6 +9826,7 @@ export default function App() {
   const navigateToResume = useCallback((overrideTarget) => {
     setResumeEntryTarget(overrideTarget ?? resumeNavTarget);
     setPage("resume");
+    window.scrollTo(0, 0);
   }, [resumeNavTarget]);
 
   // Confirmed Tracker delete — awaits Supabase before updating local state.
@@ -10009,7 +10010,7 @@ export default function App() {
       {mobileMenuOpen && (
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
           {nav.map(n => (
-            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
+            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { n.id === "resume" ? navigateToResume() : setPage(n.id); setMobileMenuOpen(false); }}>
               <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
             </button>
           ))}
