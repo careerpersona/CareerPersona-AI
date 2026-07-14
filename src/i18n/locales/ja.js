@@ -522,7 +522,7 @@
     sentBtn: "✔ 送信済み",
     emailDisclaimer: "編集内容が事前入力された状態でメールアプリを開きます。ご自身で確認して送信してください。",
     savePromptTitle: "📬 この連絡先を保存しますか？",
-    savePromptBody: "フォローアップのためにこの連絡先を保存しますか？",
+    savePromptBody: "この連絡先を保存します。後でフォローアップタブで管理できます。",
     saveContactBtn: "✅ 連絡先を保存",
     notNowBtn: "❌ 今は不要",
     savedContactsLabel: "📬 保存済み連絡先（{count}）",

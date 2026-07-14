@@ -18,6 +18,9 @@ const toRow = (c, userId) => ({
     originalMessage: c.originalMessage || "",
     linkedinMessage: c.linkedinMessage || "",
     linkedinNote: c.linkedinNote || "",
+    lastFollowUpAt: c.lastFollowUpAt || null,
+    followUpHistory: c.followUpHistory || [],
+    followUpsSent: c.followUpsSent || 0,
   },
 });
 
@@ -34,8 +37,12 @@ const fromRow = (r) => ({
   linkedinNote: r.generated_messages?.linkedinNote || "",
   dateSaved: r.date_saved || "",
   status: r.status || "Waiting for Reply",
+  lastFollowUpAt: r.generated_messages?.lastFollowUpAt || null,
+  followUpHistory: r.generated_messages?.followUpHistory || [],
+  followUpsSent: r.generated_messages?.followUpsSent || 0,
 });
 
 export function useNetworkingContacts(userId) {
-  return useSyncedList(TABLE, LOCAL_KEY, userId, toRow, fromRow, "id");
+  const [val, setValue, refresh] = useSyncedList(TABLE, LOCAL_KEY, userId, toRow, fromRow, "id");
+  return [val, setValue, refresh];
 }

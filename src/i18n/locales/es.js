@@ -522,7 +522,7 @@
     sentBtn: "✔ Enviado",
     emailDisclaimer: "Abre tu app de correo con tus ediciones prellenadas. Tú lo revisas y envías.",
     savePromptTitle: "📬 ¿Guardar este Contacto?",
-    savePromptBody: "¿Guardar este contacto para hacer seguimiento fácilmente?",
+    savePromptBody: "Guarda este contacto. Puedes gestionarlo más tarde en la pestaña de Seguimiento.",
     saveContactBtn: "✅ Guardar Contacto",
     notNowBtn: "❌ Ahora No",
     savedContactsLabel: "📬 CONTACTOS GUARDADOS ({count})",

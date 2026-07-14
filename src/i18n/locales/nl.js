@@ -522,7 +522,7 @@
     sentBtn: "✔ Verzonden",
     emailDisclaimer: "Opent je e-mailapp met jouw bewerkingen vooringevuld. Jij controleert en verstuurt zelf.",
     savePromptTitle: "📬 Dit Contact Opslaan?",
-    savePromptBody: "Dit contact opslaan voor gemakkelijke follow-up?",
+    savePromptBody: "Sla dit contact op. Je kunt het later beheren in het tabblad Follow-up.",
     saveContactBtn: "✅ Contact opslaan",
     notNowBtn: "❌ Niet Nu",
     savedContactsLabel: "📬 OPGESLAGEN CONTACTEN ({count})",

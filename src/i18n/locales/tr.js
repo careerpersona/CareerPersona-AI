@@ -522,7 +522,7 @@
     sentBtn: "✔ Gönderildi",
     emailDisclaimer: "Düzenlemeleriniz önceden doldurulmuş şekilde e-posta uygulamanızı açar. Siz gözden geçirip gönderirsiniz.",
     savePromptTitle: "📬 Bu Kişiyi Kaydet?",
-    savePromptBody: "Bu kişiyi kolay takip için kaydet?",
+    savePromptBody: "Bu kişiyi kaydedin. Daha sonra Takip sekmesinde yönetebilirsiniz.",
     saveContactBtn: "✅ Kişiyi Kaydet",
     notNowBtn: "❌ Şimdi Değil",
     savedContactsLabel: "📬 KAYDEDİLEN KİŞİLER ({count})",

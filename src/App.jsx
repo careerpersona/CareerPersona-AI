@@ -8203,7 +8203,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                 <a href={`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(draft.emailSubject || "")}&body=${encodeURIComponent(draft.emailBody || "")}`} style={{ textDecoration: "none" }} onClick={() => { handleSendEmail(); setEmailSent(true); }}>
                   <Btn variant="primary">{emailSent ? t("networking.sentBtn") : t("networking.sendEmailBtn")}</Btn>
                 </a>
-                <span style={{ fontSize: 12, color: C.textMuted }}>{t("networking.emailDisclaimer")}</span>
+                {!emailSent && <span style={{ fontSize: 12, color: C.textMuted }}>{t("networking.emailDisclaimer")}</span>}
               </div>
 
               {/* Save Outreach Popup */}
@@ -8275,7 +8275,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                               <div>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.followupMessageLabel")}</Label><CopyBtn text={fuDraft} label={t("networking.copyBtn")} /></div>
                                 <textarea value={fuDraft} onChange={e => setFuDraft(e.target.value)} style={{ width: "100%", minHeight: 120, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                                {c.email && <div style={{ marginTop: 10 }}><a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}&body=${encodeURIComponent(fuDraft)}`} style={{ textDecoration: "none" }}><Btn variant="primary" style={{ fontSize: 13 }}>{t("networking.sendFollowupBtn")}</Btn></a></div>}
+                                {c.email && <div style={{ marginTop: 10 }}><a href={`mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || "")}&body=${encodeURIComponent(fuDraft)}`} style={{ textDecoration: "none" }} onClick={() => { const now = new Date().toISOString(); setSavedContacts(p => p.map(x => x.id === c.id ? { ...x, lastFollowUpAt: now, followUpsSent: (x.followUpsSent || 0) + 1, followUpHistory: [...(x.followUpHistory || []), { sentAt: now, message: fuDraft }] } : x)); }}><Btn variant="primary" style={{ fontSize: 13 }}>{t("networking.sendFollowupBtn")}</Btn></a></div>}
                               </div>
                             )}
                           </div>
@@ -9826,15 +9826,19 @@ export default function App() {
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
   const { session: rootInterviewSession, refresh: refreshRootInterviewSession } = useInterviewSession(profile?.id);
   const { data: rootSalaryData } = useSalaryResearch(profile?.id);
-  const [rootNetworkContacts] = useNetworkingContacts(profile?.id);
+  const [rootNetworkContacts, , refreshRootNetworkContacts] = useNetworkingContacts(profile?.id);
   const networkingSessionCtx = useNetworkingSession(profile?.id);
   const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = useCompanyWatchlist(profile?.id);
 
-  // Re-sync root interview session whenever user navigates to the dashboard.
-  // InterviewPage writes via its own hook instance; this ensures DashboardPage
-  // always reads the latest persisted data rather than the stale initial fetch.
+  // Re-sync root hook instances whenever user navigates to the dashboard.
+  // Page components (InterviewPage, NetworkingPage) write via their own hook
+  // instances; this ensures DashboardPage always reads the latest persisted
+  // data rather than the stale initial fetch.
   useEffect(() => {
-    if (page === "dashboard") refreshRootInterviewSession();
+    if (page === "dashboard") {
+      refreshRootInterviewSession();
+      refreshRootNetworkContacts();
+    }
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;

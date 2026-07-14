@@ -522,7 +522,7 @@
     sentBtn: "✔ 발송됨",
     emailDisclaimer: "편집 내용이 미리 채워진 상태로 이메일 앱을 엽니다. 직접 검토 후 보내세요.",
     savePromptTitle: "📬 이 연락처를 저장하시겠습니까?",
-    savePromptBody: "쉬운 팔로업을 위해 이 연락처를 저장하시겠습니까?",
+    savePromptBody: "이 연락처를 저장하세요. 나중에 팔로업 탭에서 관리할 수 있습니다.",
     saveContactBtn: "✅ 연락처 저장",
     notNowBtn: "❌ 나중에",
     savedContactsLabel: "📬 저장된 연락처 ({count})",

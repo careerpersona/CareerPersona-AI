@@ -103,5 +103,18 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     setVal(prev => (typeof v === "function" ? v(prev) : v));
   }, []);
 
-  return [val, setValue];
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.from(table).select("*").eq("user_id", userId).order("created_at", { ascending: false });
+    if (error) { console.error(`useSyncedList(${table}) refresh error`, error); return; }
+    if (data) {
+      const mapped = data.map(fromRow);
+      skipNextSync.current = true;
+      prevRef.current = mapped;
+      setVal(mapped);
+      localStorage.setItem(localKey, JSON.stringify(mapped));
+    }
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return [val, setValue, refresh];
 }

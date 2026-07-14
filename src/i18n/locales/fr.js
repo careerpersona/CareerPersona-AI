@@ -522,7 +522,7 @@
     sentBtn: "✔ Envoyé",
     emailDisclaimer: "Ouvre votre application e-mail avec vos modifications préremplies. Vous le relisez et l'envoyez.",
     savePromptTitle: "📬 Sauvegarder ce Contact ?",
-    savePromptBody: "Sauvegarder ce contact pour un suivi facile ?",
+    savePromptBody: "Enregistrez ce contact. Vous pourrez le gérer plus tard dans l'onglet Suivi.",
     saveContactBtn: "✅ Sauvegarder le Contact",
     notNowBtn: "❌ Pas Maintenant",
     savedContactsLabel: "📬 CONTACTS SAUVEGARDÉS ({count})",

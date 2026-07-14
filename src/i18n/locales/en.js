@@ -527,7 +527,7 @@ export default {
     sentBtn: "✔ Sent",
     emailDisclaimer: "Opens your email app with your edits prefilled. You review and send it yourself.",
     savePromptTitle: "📬 Save This Outreach?",
-    savePromptBody: "Save this contact for easy follow-up later?",
+    savePromptBody: "Save this contact. You can manage it later in the Follow-up tab.",
     saveContactBtn: "✅ Save Contact",
     notNowBtn: "❌ Not Now",
     savedContactsLabel: "📬 Saved Contacts ({count})",

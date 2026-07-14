@@ -522,7 +522,7 @@
     sentBtn: "✔ 已发送",
     emailDisclaimer: "将在您的邮件应用中预填您的编辑内容，您自行审阅并发送。",
     savePromptTitle: "📬 保存此联系人？",
-    savePromptBody: "保存此联系人以便后续跟进？",
+    savePromptBody: "保存此联系人。您可以稍后在跟进标签中管理它。",
     saveContactBtn: "✅ 保存联系人",
     notNowBtn: "❌ 暂不",
     savedContactsLabel: "📬 已保存联系人（{count}）",
