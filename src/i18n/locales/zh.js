@@ -9,6 +9,7 @@
     salary: "薪资",
     network: "人脉",
     pricing: "价格",
+    upgrade: "升级",
   },
   userMenu: {
     profile: "个人资料",
@@ -20,6 +21,19 @@
     title: "通知",
     emptyTitle: "暂无通知",
     emptyBody: "职位提醒、面试提醒和 AI 推荐将显示在这里。",
+    modules: {
+      briefing: "每日简报",
+      actionPlan: "行动计划",
+      smartApply: "智能申请",
+      opportunity: "机会",
+      resume: "简历",
+      jobs: "职位",
+      interview: "面试",
+      salary: "薪资",
+      careerProgress: "职业进展",
+      networking: "人脉拓展",
+      fallback: "通知",
+    },
   },
   language: {
     title: "语言",

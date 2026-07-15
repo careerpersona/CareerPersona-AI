@@ -9,6 +9,7 @@
     salary: "Зарплата",
     network: "Нетворкинг",
     pricing: "Тарифы",
+    upgrade: "Улучшить",
   },
   userMenu: {
     profile: "Профиль",
@@ -20,6 +21,19 @@
     title: "Уведомления",
     emptyTitle: "Уведомлений пока нет",
     emptyBody: "Здесь будут появляться уведомления о вакансиях, напоминания о собеседованиях и рекомендации ИИ.",
+    modules: {
+      briefing: "Ежедневный брифинг",
+      actionPlan: "План действий",
+      smartApply: "Smart Apply",
+      opportunity: "Возможность",
+      resume: "Резюме",
+      jobs: "Вакансии",
+      interview: "Собеседование",
+      salary: "Зарплата",
+      careerProgress: "Карьерный прогресс",
+      networking: "Нетворкинг",
+      fallback: "Уведомление",
+    },
   },
   language: {
     title: "Язык",

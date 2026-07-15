@@ -9,6 +9,7 @@
     salary: "연봉",
     network: "네트워크",
     pricing: "요금제",
+    upgrade: "업그레이드",
   },
   userMenu: {
     profile: "프로필",
@@ -20,6 +21,19 @@
     title: "알림",
     emptyTitle: "아직 알림이 없습니다",
     emptyBody: "채용 알림, 면접 리마인더, AI 추천이 여기에 표시됩니다.",
+    modules: {
+      briefing: "일일 브리핑",
+      actionPlan: "행동 계획",
+      smartApply: "스마트 지원",
+      opportunity: "기회",
+      resume: "이력서",
+      jobs: "채용",
+      interview: "인터뷰",
+      salary: "급여",
+      careerProgress: "커리어 진행",
+      networking: "네트워킹",
+      fallback: "알림",
+    },
   },
   language: {
     title: "언어",

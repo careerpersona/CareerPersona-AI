@@ -9,6 +9,7 @@
     salary: "वेतन",
     network: "नेटवर्क",
     pricing: "मूल्य निर्धारण",
+    upgrade: "अपग्रेड करें",
   },
   userMenu: {
     profile: "प्रोफ़ाइल",
@@ -20,6 +21,19 @@
     title: "सूचनाएं",
     emptyTitle: "अभी तक कोई सूचना नहीं",
     emptyBody: "नौकरी अलर्ट, इंटरव्यू रिमाइंडर और AI सिफारिशें यहां दिखाई देंगी।",
+    modules: {
+      briefing: "दैनिक ब्रीफिंग",
+      actionPlan: "कार्य योजना",
+      smartApply: "Smart Apply",
+      opportunity: "अवसर",
+      resume: "रेज़्युमे",
+      jobs: "नौकरियाँ",
+      interview: "साक्षात्कार",
+      salary: "वेतन",
+      careerProgress: "करियर प्रगति",
+      networking: "नेटवर्किंग",
+      fallback: "सूचना",
+    },
   },
   language: {
     title: "भाषा",

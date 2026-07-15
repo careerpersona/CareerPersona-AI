@@ -9,6 +9,7 @@
     salary: "Stipendio",
     network: "Rete",
     pricing: "Prezzi",
+    upgrade: "Migliora",
   },
   userMenu: {
     profile: "Profilo",
@@ -20,6 +21,19 @@
     title: "Notifiche",
     emptyTitle: "Nessuna notifica per ora",
     emptyBody: "Gli avvisi di lavoro, i promemoria dei colloqui e i consigli dell'IA appariranno qui.",
+    modules: {
+      briefing: "Briefing Quotidiano",
+      actionPlan: "Piano d'Azione",
+      smartApply: "Smart Apply",
+      opportunity: "Opportunità",
+      resume: "CV",
+      jobs: "Lavori",
+      interview: "Colloquio",
+      salary: "Stipendio",
+      careerProgress: "Progresso di Carriera",
+      networking: "Networking",
+      fallback: "Notifica",
+    },
   },
   language: {
     title: "Lingua",

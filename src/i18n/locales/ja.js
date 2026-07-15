@@ -9,6 +9,7 @@
     salary: "給与",
     network: "ネットワーク",
     pricing: "料金",
+    upgrade: "アップグレード",
   },
   userMenu: {
     profile: "プロフィール",
@@ -20,6 +21,19 @@
     title: "通知",
     emptyTitle: "まだ通知はありません",
     emptyBody: "求人アラート、面接リマインダー、AIのおすすめがここに表示されます。",
+    modules: {
+      briefing: "デイリーブリーフィング",
+      actionPlan: "アクションプラン",
+      smartApply: "スマート応募",
+      opportunity: "機会",
+      resume: "履歴書",
+      jobs: "求人",
+      interview: "面接",
+      salary: "給与",
+      careerProgress: "キャリア進捗",
+      networking: "ネットワーキング",
+      fallback: "通知",
+    },
   },
   language: {
     title: "言語",

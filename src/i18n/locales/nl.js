@@ -9,6 +9,7 @@
     salary: "Salaris",
     network: "Netwerk",
     pricing: "Prijzen",
+    upgrade: "Upgraden",
   },
   userMenu: {
     profile: "Profiel",
@@ -20,6 +21,19 @@
     title: "Meldingen",
     emptyTitle: "Nog geen meldingen",
     emptyBody: "Vacaturemeldingen, sollicitatieherinneringen en AI-aanbevelingen verschijnen hier.",
+    modules: {
+      briefing: "Dagelijkse Briefing",
+      actionPlan: "Actieplan",
+      smartApply: "Smart Apply",
+      opportunity: "Kans",
+      resume: "CV",
+      jobs: "Vacatures",
+      interview: "Sollicitatiegesprek",
+      salary: "Salaris",
+      careerProgress: "Loopbaanvoortgang",
+      networking: "Netwerken",
+      fallback: "Melding",
+    },
   },
   language: {
     title: "Taal",

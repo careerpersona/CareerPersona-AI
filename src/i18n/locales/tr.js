@@ -9,6 +9,7 @@
     salary: "Maaş",
     network: "Ağ",
     pricing: "Fiyatlandırma",
+    upgrade: "Yükselt",
   },
   userMenu: {
     profile: "Profil",
@@ -20,6 +21,19 @@
     title: "Bildirimler",
     emptyTitle: "Henüz bildirim yok",
     emptyBody: "İş uyarıları, mülakat hatırlatıcıları ve yapay zekâ önerileri burada görünecek.",
+    modules: {
+      briefing: "Günlük Brifing",
+      actionPlan: "Eylem Planı",
+      smartApply: "Smart Apply",
+      opportunity: "Fırsat",
+      resume: "Özgeçmiş",
+      jobs: "İşler",
+      interview: "Mülakat",
+      salary: "Maaş",
+      careerProgress: "Kariyer İlerlemesi",
+      networking: "Ağ Kurma",
+      fallback: "Bildirim",
+    },
   },
   language: {
     title: "Dil",

@@ -1409,7 +1409,7 @@ function LanguageMenu({ variant = "icon" }) {
           <span style={{ marginLeft: "auto", color: C.textMuted, fontSize: 12 }}>▼</span>
         </button>
       ) : (
-        <button onClick={() => setOpen(o => !o)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title="Language">🌐</button>
+        <button onClick={() => setOpen(o => !o)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title={t("language.title")}>🌐</button>
       )}
       {open && (
         <div>
@@ -1436,7 +1436,6 @@ function LanguageMenu({ variant = "icon" }) {
 // data/handlers passed down from the single useNotifications() call in App()
 // so there is only ever one fetch/poll source regardless of how many trigger
 // affordances (desktop icon vs. mobile row) are mounted.
-const MODULE_LABEL = { briefing: "Daily Briefing", action_plan: "Action Plan", smart_apply: "Smart Apply", opportunity: "Opportunity", resume: "Resume", job_intel: "Jobs", interview: "Interview", salary: "Salary", career_progress: "Career Progress", networking: "Networking" };
 function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRead, unreadCount = 0 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -1446,12 +1445,13 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
     if (next) { await refresh(); markAllRead(); }
   };
   const pill = (n) => {
-    if (MODULE_LABEL[n.type]) return MODULE_LABEL[n.type];
+    const keys = { briefing: "notifications.modules.briefing", action_plan: "notifications.modules.actionPlan", smart_apply: "notifications.modules.smartApply", opportunity: "notifications.modules.opportunity", resume: "notifications.modules.resume", job_intel: "notifications.modules.jobs", interview: "notifications.modules.interview", salary: "notifications.modules.salary", career_progress: "notifications.modules.careerProgress", networking: "notifications.modules.networking" };
+    if (keys[n.type]) return t(keys[n.type]);
     if (n.type === "ai_recommendation") {
       const title = (n.title || "").toLowerCase();
-      return title.includes("action") || title.includes("plan") ? "Action Plan" : "Daily Briefing";
+      return title.includes("action") || title.includes("plan") ? t("notifications.modules.actionPlan") : t("notifications.modules.briefing");
     }
-    return n.type ? n.type.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") : "Notification";
+    return n.type ? n.type.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") : t("notifications.modules.fallback");
   };
   return (
     <div style={{ position: "relative" }}>
@@ -1464,7 +1464,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
           {t("notifications.title")}
         </button>
       ) : (
-        <button onClick={toggle} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer", position: "relative" }} title="Notifications">
+        <button onClick={toggle} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer", position: "relative" }} title={t("notifications.title")}>
           🔔
           {unreadCount > 0 && <span style={{ position: "absolute", top: 0, right: 0, background: "#ef4444", color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
         </button>
@@ -9991,7 +9991,7 @@ export default function App() {
             </div>
             {planName === "FREE" && (
               <div style={{ display: "flex", justifyContent: "center", marginTop: 1 }}>
-                <span style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", letterSpacing: "normal", whiteSpace: "nowrap" }}>Upgrade</span>
+                <span style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", letterSpacing: "normal", whiteSpace: "nowrap" }}>{t("nav.upgrade")}</span>
               </div>
             )}
           </button>

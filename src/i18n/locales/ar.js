@@ -9,6 +9,7 @@
     salary: "الراتب",
     network: "الشبكة",
     pricing: "الأسعار",
+    upgrade: "ترقية",
   },
   userMenu: {
     profile: "الملف الشخصي",
@@ -20,6 +21,19 @@
     title: "الإشعارات",
     emptyTitle: "لا توجد إشعارات بعد",
     emptyBody: "ستظهر هنا تنبيهات الوظائف وتذكيرات المقابلات وتوصيات الذكاء الاصطناعي.",
+    modules: {
+      briefing: "الملخص اليومي",
+      actionPlan: "خطة العمل",
+      smartApply: "Smart Apply",
+      opportunity: "فرصة",
+      resume: "السيرة الذاتية",
+      jobs: "الوظائف",
+      interview: "مقابلة",
+      salary: "الراتب",
+      careerProgress: "التقدم الوظيفي",
+      networking: "التواصل المهني",
+      fallback: "إشعار",
+    },
   },
   language: {
     title: "اللغة",

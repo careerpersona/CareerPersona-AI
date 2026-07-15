@@ -9,6 +9,7 @@
     salary: "Salaire",
     network: "Réseau",
     pricing: "Tarifs",
+    upgrade: "Améliorer",
   },
   userMenu: {
     profile: "Profil",
@@ -20,6 +21,19 @@
     title: "Notifications",
     emptyTitle: "Aucune notification pour le moment",
     emptyBody: "Les alertes d'emploi, les rappels d'entretien et les recommandations de l'IA apparaîtront ici.",
+    modules: {
+      briefing: "Résumé Quotidien",
+      actionPlan: "Plan d'Action",
+      smartApply: "Smart Apply",
+      opportunity: "Opportunité",
+      resume: "CV",
+      jobs: "Emplois",
+      interview: "Entretien",
+      salary: "Salaire",
+      careerProgress: "Progression de Carrière",
+      networking: "Réseautage",
+      fallback: "Notification",
+    },
   },
   language: {
     title: "Langue",

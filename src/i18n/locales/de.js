@@ -9,6 +9,7 @@
     salary: "Gehalt",
     network: "Netzwerk",
     pricing: "Preise",
+    upgrade: "Upgraden",
   },
   userMenu: {
     profile: "Profil",
@@ -20,6 +21,19 @@
     title: "Benachrichtigungen",
     emptyTitle: "Noch keine Benachrichtigungen",
     emptyBody: "Jobalarme, Interview-Erinnerungen und KI-Empfehlungen werden hier angezeigt.",
+    modules: {
+      briefing: "Tägliches Briefing",
+      actionPlan: "Aktionsplan",
+      smartApply: "Smart Apply",
+      opportunity: "Chance",
+      resume: "Lebenslauf",
+      jobs: "Stellen",
+      interview: "Vorstellungsgespräch",
+      salary: "Gehalt",
+      careerProgress: "Karrierefortschritt",
+      networking: "Netzwerken",
+      fallback: "Benachrichtigung",
+    },
   },
   language: {
     title: "Sprache",
