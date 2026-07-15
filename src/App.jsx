@@ -4324,7 +4324,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
   );
 }
 
-const RESUME_STEPS = ["Reading your resume…", "Extracting skills & keywords…", "Calculating ATS score…", "Generating AI analysis…", "Building recommendations…"];
+// RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
 function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb, onResumeLoad, entryTarget, onConsumeEntryTarget }) {
   const { t } = useI18n();
@@ -4983,8 +4983,8 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
     const oldAts = results?.atsScore ?? null;
     const oldBreakdown = results?.scoreBreakdown ?? null;
     try {
-      setImproveStep("CareerPersona AI is improving your resume…");
-      const stepTimer = setTimeout(() => setImproveStep("Adding selected keywords naturally…"), 7000);
+      setImproveStep(t("resume.improveStepStart"));
+      const stepTimer = setTimeout(() => setImproveStep(t("resume.improveStepKeywords")), 7000);
       const improvePrompt = `You are a professional resume editor. Improve the resume below by naturally incorporating the specified keywords where they genuinely fit the candidate's background.
 
 KEYWORDS TO INCORPORATE: ${kwList}
@@ -5008,14 +5008,14 @@ ${resume}`;
       setResume(improvedText);
       setSelectedKeywords([]);
       if (jobDesc.trim()) {
-        setImproveStep("Recalculating your ATS score…");
+        setImproveStep(t("resume.improveStepRecalculating"));
         const ctx = userContext.getContextString({ identity: true });
         const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation.
 Note: This resume was just improved by naturally incorporating the following keywords: ${kwList}. Score it accurately and fairly based on the current content — the ATS score should reflect the improvement.
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
 RESUME:${improvedText}
 JOB DESCRIPTION:${jobDesc}`, 4000);
-        setImproveStep("Refreshing Resume Intelligence…");
+        setImproveStep(t("resume.improveStepRefreshing"));
         const parsed = JSON.parse(raw);
         // One improvement cycle → always complete. Move added keywords into Found,
         // clear Missing entirely. User must click New Analysis to start over.
@@ -5147,11 +5147,11 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div className="resume-source-selector" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                 <div onClick={() => { setResumeSource("upload"); fileRef.current?.click(); }} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 9, cursor: "pointer", border: `1.5px solid ${resumeSource === "upload" ? C.purple : C.border}`, background: resumeSource === "upload" ? C.purpleLight : "transparent" }}>
                   <span style={{ fontSize: 15 }}>📤</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "upload" ? C.purple : C.textMid }}>{extracting ? t("resume.extracting") : "Upload Resume"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "upload" ? C.purple : C.textMid }}>{extracting ? t("resume.extracting") : t("resume.uploadResume")}</span>
                 </div>
                 <div onClick={() => setResumeSource("ai")} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 9, cursor: "pointer", border: `1.5px solid ${resumeSource === "ai" ? C.purple : C.border}`, background: resumeSource === "ai" ? C.purpleLight : "transparent" }}>
                   <span style={{ fontSize: 15 }}>✨</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "ai" ? C.purple : C.textMid }}>Create with AI</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: resumeSource === "ai" ? C.purple : C.textMid }}>{t("resume.createWithAi")}</span>
                 </div>
               </div>
 
@@ -5169,7 +5169,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               {resumeSource === "ai" && !resume.trim() && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6 }}>Pre-filled from your profile</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6 }}>{t("resume.prefilledFromProfile")}</div>
                     {(profile?.full_name || profile?.email_address || profile?.job_title) ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 11, color: C.textMid }}>
                         {profile?.full_name && <span style={{ whiteSpace: "nowrap" }}>👤 {profile.full_name}</span>}
@@ -5182,31 +5182,31 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         {profile?.work_type && <span style={{ whiteSpace: "nowrap" }}>🏢 {profile.work_type}</span>}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: "#CA8A04" }}>⚠️ Complete your profile for better results. <span style={{ cursor: "pointer", textDecoration: "underline", color: C.purple }} onClick={() => onNavigate?.("profile")}>Go to Profile →</span></div>
+                      <div style={{ fontSize: 11, color: "#CA8A04" }}>⚠️ {t("resume.completeProfilePrompt")} <span style={{ cursor: "pointer", textDecoration: "underline", color: C.purple }} onClick={() => onNavigate?.("profile")}>{t("resume.goToProfile")}</span></div>
                     )}
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Employment History <span style={{ color: C.red }}>*</span></div>
-                    <textarea value={aiForm.employment} onChange={e => setAiForm(f => ({ ...f, employment: e.target.value }))} placeholder={"e.g. Software Engineer at Acme Corp (2021–2024)\n• Led migration to React — reduced load time by 40%\n• Built reporting dashboard used by 50k users"} style={{ width: "100%", minHeight: 90, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>{t("resume.employmentHistory")} <span style={{ color: C.red }}>*</span></div>
+                    <textarea value={aiForm.employment} onChange={e => setAiForm(f => ({ ...f, employment: e.target.value }))} placeholder={t("resume.employmentPlaceholder")} style={{ width: "100%", minHeight: 90, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Education <span style={{ color: C.red }}>*</span></div>
-                    <textarea value={aiForm.education} onChange={e => setAiForm(f => ({ ...f, education: e.target.value }))} placeholder={"e.g. B.S. Computer Science, MIT, 2019"} style={{ width: "100%", minHeight: 55, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>{t("resume.education")} <span style={{ color: C.red }}>*</span></div>
+                    <textarea value={aiForm.education} onChange={e => setAiForm(f => ({ ...f, education: e.target.value }))} placeholder={t("resume.educationPlaceholder")} style={{ width: "100%", minHeight: 55, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, lineHeight: 1.7, padding: "10px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Skills <span style={{ color: C.red }}>*</span></div>
-                    <input value={aiForm.skills} onChange={e => setAiForm(f => ({ ...f, skills: e.target.value }))} placeholder="React, TypeScript, Python, SQL, AWS, Leadership..." style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>{t("resume.skills")} <span style={{ color: C.red }}>*</span></div>
+                    <input value={aiForm.skills} onChange={e => setAiForm(f => ({ ...f, skills: e.target.value }))} placeholder={t("resume.skillsPlaceholder")} style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>Certifications <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted }}>(optional)</span></div>
-                    <input value={aiForm.certifications} onChange={e => setAiForm(f => ({ ...f, certifications: e.target.value }))} placeholder="AWS Solutions Architect, PMP, Google Analytics..." style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 4 }}>{t("resume.certifications")} <span style={{ fontSize: 10, fontWeight: 400, color: C.textMuted }}>({t("resume.optional")})</span></div>
+                    <input value={aiForm.certifications} onChange={e => setAiForm(f => ({ ...f, certifications: e.target.value }))} placeholder={t("resume.certificationPlaceholder")} style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 13, padding: "8px 12px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                   {aiError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{aiError}</div>}
                   <Btn onClick={handleGenerateResume} loading={aiBuilding} disabled={!aiForm.employment.trim() || !aiForm.education.trim() || !aiForm.skills.trim()} style={{ width: "100%", padding: "11px", fontSize: 14 }}>
-                    {aiBuilding ? "Generating your resume…" : "✨ Generate Resume with AI"}
+                    {aiBuilding ? t("resume.generatingResume") : t("resume.generateWithAi")}
                   </Btn>
                   {jobDesc.trim() && !aiBuilding && (
-                    <div style={{ fontSize: 11, color: C.purple, fontWeight: 600, textAlign: "center" }}>⚡ Will auto-analyze against your job description</div>
+                    <div style={{ fontSize: 11, color: C.purple, fontWeight: 600, textAlign: "center" }}>{t("resume.willAutoAnalyze")}</div>
                   )}
                 </div>
               )}
@@ -5214,11 +5214,11 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               {/* AI Builder: generated resume (editable textarea) */}
               {resumeSource === "ai" && resume.trim() && (
                 <>
-                  <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>✓ Resume generated — review and edit as needed</div>
+                  <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>{t("resume.resumeGenerated")}</div>
                   <textarea style={{ flex: 1, width: "100%", minHeight: 200, background: "#fff", border: `1.5px solid ${C.green}40`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.8, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} value={resume} onChange={e => setResume(e.target.value)} />
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <div style={{ fontSize: 11, color: C.textMuted }}>{resume.split(/\s+/).filter(Boolean).length} words</div>
-                    <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => { setResume(""); setAiForm({ employment: "", education: "", skills: "", certifications: "" }); }}>← Rebuild</Btn>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>{t("resume.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length)}</div>
+                    <Btn variant="ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => { setResume(""); setAiForm({ employment: "", education: "", skills: "", certifications: "" }); }}>{t("resume.rebuild")}</Btn>
                   </div>
                 </>
               )}
@@ -5235,7 +5235,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           </div>
           {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <div className="resume-action-bar" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, maxWidth: 600, margin: "0 auto", width: "100%" }}>
-            <Btn variant="secondary" loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{resumeSaved ? "✓ Saved" : savingResume ? t("resume.saving") : "💾 Save Resume"}</Btn>
+            <Btn variant="secondary" loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{resumeSaved ? t("resume.savedShort") : savingResume ? t("resume.saving") : t("resume.saveResume")}</Btn>
             <Btn onClick={analyze} loading={loading} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{loading ? t("resume.analyzing") : t("resume.analyzeAndTailor")}</Btn>
             <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{t("resume.trySample")}</Btn>
           </div>
@@ -5252,7 +5252,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <p style={{ fontSize: 15, color: C.textMuted }}>{t("resume.subtitle")}</p>
           </div>
           {workspaceInputsJSX}
-          {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
+          {loading && <Spinner steps={[t("resume.resumeStep1"),t("resume.resumeStep2"),t("resume.resumeStep3"),t("resume.resumeStep4"),t("resume.resumeStep5")]} currentStep={loadStep} />}
         </>
       )}
 
@@ -5261,15 +5261,15 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         <div>
           {!results && (
             <div style={{ marginBottom: 14 }}>
-              <h1 style={{ fontSize: 24, fontWeight: 800, color: C.text, marginBottom: 4 }}>Resume Hub</h1>
-              <p style={{ fontSize: 14, color: C.textMuted }}>Your resume workspace, history, and AI tools — all in one place.</p>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("resume.hubHeading")}</h1>
+              <p style={{ fontSize: 14, color: C.textMuted }}>{t("resume.hubSubtitle")}</p>
             </div>
           )}
 
           {/* SECTION 1 — Resume Library: always visible when resumes exist */}
           {resumes.length > 0 && (
             <Card style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>📁 Resume Library</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("resume.libraryTitle")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {resumes.slice(0, 6).map(r => {
                   const hl = hubHealthLabel(r.ats_score);
@@ -5297,7 +5297,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                             }
                           }}
                           style={{ width: 22, height: 22, minWidth: 22, borderRadius: "50%", border: `2px solid ${isLoaded ? C.green : C.border}`, padding: 0, cursor: "pointer", flexShrink: 0, background: isLoaded ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", fontFamily: "inherit", WebkitTapHighlightColor: "transparent", transition: "background 0.15s, border-color 0.15s" }}
-                          aria-label={isLoaded ? "Deselect resume" : "Select resume"}
+                          aria-label={isLoaded ? t("resume.deselectResume") : t("resume.selectResume")}
                         >
                           {isLoaded && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1, userSelect: "none" }}>✓</span>}
                         </button>
@@ -5309,14 +5309,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                           <button
                             onClick={(e) => { e.stopPropagation(); setOpenDropdownId(v => v === r.id ? null : r.id); }}
                             style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, color: C.textMid, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 7, cursor: "pointer", fontFamily: "inherit" }}
-                          >Actions ▾</button>
+                          >{t("resume.actionsMenu")}</button>
                           {openDropdownId === r.id && (
                             <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 300, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,0.13)", minWidth: 186, padding: "4px 0", animation: "summaryEntrance 0.12s ease-out" }}>
                               {[
-                                { icon: "📄", label: "Download PDF",  action: () => downloadPDF(r.content, r.name.replace(/\.[^.]+$/, "")) },
-                                { icon: "📝", label: "Download DOCX", action: () => downloadDOCX(r.content, r.name.replace(/\.[^.]+$/, "")) },
-                                { icon: "✏️", label: "Edit Resume",   action: () => handleEditResume(r) },
-                                { icon: "🗑️", label: "Delete Resume", action: () => handleDeleteResume(r), danger: true },
+                                { icon: "📄", label: t("resume.downloadPdfShort"),  action: () => downloadPDF(r.content, r.name.replace(/\.[^.]+$/, "")) },
+                                { icon: "📝", label: t("resume.downloadDocxShort"), action: () => downloadDOCX(r.content, r.name.replace(/\.[^.]+$/, "")) },
+                                { icon: "✏️", label: t("resume.editResume"),        action: () => handleEditResume(r) },
+                                { icon: "🗑️", label: t("resume.deleteResume"),     action: () => handleDeleteResume(r), danger: true },
                               ].map(({ icon, label, action, danger }) => (
                                 <button key={label} onClick={() => { action(); setOpenDropdownId(null); }}
                                   style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: danger ? C.red : C.text, textAlign: "left", fontFamily: "inherit" }}
@@ -5334,8 +5334,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         {r.ats_score != null && <span style={{ fontSize: 11, fontWeight: 700, color: hc, background: `${hc}20`, borderRadius: 6, padding: "2px 7px" }}>ATS {r.ats_score}%</span>}
                         {hl && <span style={{ fontSize: 11, fontWeight: 600, color: hc, background: `${hc}15`, borderRadius: 6, padding: "2px 7px" }}>{hl}</span>}
                         {r.last_analyzed_at && <span style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.last_analyzed_at).toLocaleDateString()}</span>}
-                        {isLoaded && !isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 7px" }}>✓ Loaded</span>}
-                        {isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>✏️ Editing</span>}
+                        {isLoaded && !isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 7px" }}>{t("resume.loaded")}</span>}
+                        {isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>{t("resume.editingBadge")}</span>}
                       </div>
                     </div>
                   );
@@ -5347,7 +5347,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {/* SECTION 2 — Resume Workspace */}
           <div id="resume-workspace">
             {!results && !loading && workspaceInputsJSX}
-            {loading && <Spinner steps={RESUME_STEPS} currentStep={loadStep} />}
+            {loading && <Spinner steps={[t("resume.resumeStep1"),t("resume.resumeStep2"),t("resume.resumeStep3"),t("resume.resumeStep4"),t("resume.resumeStep5")]} currentStep={loadStep} />}
           </div>
           {/* SECTION 3 — Resume Analysis */}
           {results && (
@@ -5361,7 +5361,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <Btn onClick={handleSaveToLibrary} disabled={improving || savingToLibrary || !profile?.id} loading={savingToLibrary} style={{ fontSize: 13 }}>
-                      {librarySaved ? "✓ Saved to Library" : isOptimized ? "💾 Save Optimized Resume" : "💾 Save to Resume Library"}
+                      {librarySaved ? t("resume.savedToLibrary") : isOptimized ? t("resume.saveOptimizedResume") : t("resume.saveToLibrary")}
                     </Btn>
                     <Btn variant="secondary" disabled={improving} onClick={newAnalysisReset} style={{ fontSize: 12 }}>{t("resume.newAnalysis")}</Btn>
                   </div>
@@ -5373,8 +5373,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 20, height: 20, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{improveStep || "Improving your resume…"}</div>
-                <div style={{ fontSize: 11, color: C.textMid, marginTop: 2 }}>Please wait while CareerPersona AI processes your changes</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{improveStep || t("resume.improvingResume")}</div>
+                <div style={{ fontSize: 11, color: C.textMid, marginTop: 2 }}>{t("resume.improvingWait")}</div>
               </div>
             </div>
           )}
@@ -5390,16 +5390,16 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                   <span style={{ fontSize: 18 }}>✅</span>
                   <div>
-                    <span style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{delta >= 0 ? `+${delta}` : delta} ATS Points</span>
-                    <span style={{ fontSize: 12, color: C.textMid, marginLeft: 8 }}>Resume optimized successfully</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{delta >= 0 ? `+${delta}` : delta} {t("resume.atsPoints")}</span>
+                    <span style={{ fontSize: 12, color: C.textMid, marginLeft: 8 }}>{t("resume.optimizedSuccessfully")}</span>
                   </div>
                 </div>
                 <div className="improve-summary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
                   {[
-                    { label: "ATS Score", value: `${improveStats.oldAts} → ${improveStats.newAts}`, sub: `${delta >= 0 ? "+" : ""}${delta} pts`, subColor: delta >= 0 ? C.green : C.red },
-                    { label: "Keywords Added", value: improveStats.addedCount, sub: "incorporated", subColor: C.purple },
-                    { label: "Remaining Improvements", value: remaining, sub: remaining === 1 ? "opportunity" : "opportunities", subColor: remaining > 0 ? C.yellow : C.green },
-                    { label: "Resume Health", value: health || "—", sub: `${improveStats.newAts}% ATS`, subColor: healthColor },
+                    { label: t("resume.atsScoreLabel"), value: `${improveStats.oldAts} → ${improveStats.newAts}`, sub: `${delta >= 0 ? "+" : ""}${delta} pts`, subColor: delta >= 0 ? C.green : C.red },
+                    { label: t("resume.keywordsAddedLabel"), value: improveStats.addedCount, sub: t("resume.incorporated"), subColor: C.purple },
+                    { label: t("resume.remainingImprovements"), value: remaining, sub: remaining === 1 ? t("resume.opportunity") : t("resume.opportunities"), subColor: remaining > 0 ? C.yellow : C.green },
+                    { label: t("resume.resumeHealth"), value: health || "—", sub: `${improveStats.newAts}% ATS`, subColor: healthColor },
                   ].map(({ label, value, sub, subColor }) => (
                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: "12px 8px", textAlign: "center", border: `1px solid ${C.border}` }}>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, lineHeight: 1.15, marginBottom: 2 }}>{value}</div>
@@ -5416,24 +5416,24 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ background: C.greenLight, border: `1.5px solid ${C.green}35`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, animation: "summaryEntrance 0.3s ease-out" }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>✅</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>All selected AI improvements have been applied.</div>
-                <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>Your optimized resume is ready to save. Click <strong>Save Optimized Resume</strong> above to preserve this version.</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{t("resume.allImprovementsApplied")}</div>
+                <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{t("resume.readyToSave")}</div>
               </div>
             </div>
           )}
           {librarySaved && isOptimized && (
             <div style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, borderRadius: 10, padding: "10px 18px", marginBottom: 16, textAlign: "center", boxShadow: `0 4px 16px ${C.purple}40`, animation: "summaryEntrance 0.3s ease-out" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Optimized Resume Saved Successfully!</div>
-              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Your optimized resume has been saved to your Resume Library. Click &ldquo;New Analysis&rdquo; to optimize another resume or tailor your resume for a different job.</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>{t("resume.optimizedSavedTitle")}</div>
+              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>{t("resume.optimizedSavedBody")}</div>
             </div>
           )}
           {librarySaved && !isOptimized && (
             <div style={{ background: C.greenLight, border: `1.5px solid ${C.green}35`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, animation: "summaryEntrance 0.3s ease-out" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 16 }}>✅</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Saved to Resume Library.</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{t("resume.savedToLibraryShort")}</span>
               </div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>Resume Library, Resume Intelligence, and Analysis History updated.</div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{t("resume.libraryUpdated")}</div>
             </div>
           )}
           {librarySaveError && (
@@ -5472,23 +5472,23 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {isOptimized ? (
                 <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-                  <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 10 }}>🎉 Resume Successfully Optimized</div>
+                  <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 10 }}>{t("resume.successfullyOptimized")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
-                    <div style={{ color: C.green }}>✅ ATS score updated</div>
-                    <div style={{ color: C.green }}>✅ Resume tailored for this job</div>
-                    <div style={{ color: C.green }}>✅ Missing keywords successfully added</div>
-                    <div style={{ color: C.green }}>✅ Ready to apply</div>
-                    <div style={{ color: C.textMid }}>✅ Use "New Analysis" to optimize for another job or updated resume</div>
+                    <div style={{ color: C.green }}>{t("resume.atsScoreUpdated")}</div>
+                    <div style={{ color: C.green }}>{t("resume.resumeTailored")}</div>
+                    <div style={{ color: C.green }}>{t("resume.keywordsAddedSuccessfully")}</div>
+                    <div style={{ color: C.green }}>{t("resume.readyToApply")}</div>
+                    <div style={{ color: C.textMid }}>{t("resume.useNewAnalysisHint")}</div>
                   </div>
                 </div>
               ) : (
                 <>
                   <div style={{ background: C.redLight, border: `1px solid ${C.red}25`, borderRadius: 12, padding: 16 }}>
                     <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("resume.keywordsMissing")}</div>
-                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 8, lineHeight: 1.5 }}>⚡ AI pre-selected all {results.keywordsMissing?.length} missing keywords. Deselect any that don't apply to your real experience.</div>
+                    <div style={{ fontSize: 11, color: C.textMid, marginBottom: 8, lineHeight: 1.5 }}>{t("resume.aiPreselectedKeywords").replace("{n}", results.keywordsMissing?.length)}</div>
                     <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      <button onClick={() => setSelectedKeywords(results.keywordsMissing || [])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.purple}`, background: C.purpleLight, color: C.purple, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>Select All</button>
-                      <button onClick={() => setSelectedKeywords([])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#fff", color: C.textMuted, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>Deselect All</button>
+                      <button onClick={() => setSelectedKeywords(results.keywordsMissing || [])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.purple}`, background: C.purpleLight, color: C.purple, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>{t("resume.selectAll")}</button>
+                      <button onClick={() => setSelectedKeywords([])} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#fff", color: C.textMuted, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>{t("resume.deselectAll")}</button>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {results.keywordsMissing?.map(k => {
@@ -5507,9 +5507,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {improveError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{improveError}</div>}
                       <Btn onClick={handleImproveResume} loading={improving} disabled={!selectedKeywords.length || improving || improvedBtnDone} style={{ width: "100%", ...(improvedBtnDone ? { background: C.green } : {}) }}>
-                        {improving ? "Improving your resume…" : improvedBtnDone ? "✅ Resume Improved" : selectedKeywords.length ? `⚡ Improve My Resume (${selectedKeywords.length} keyword${selectedKeywords.length > 1 ? "s" : ""} selected)` : "⚡ Improve My Resume"}
+                        {improving ? t("resume.improvingResume") : improvedBtnDone ? t("resume.resumeImproved") : selectedKeywords.length === 1 ? t("resume.improveMyResumeSingular") : selectedKeywords.length > 1 ? t("resume.improveMyResumePlural").replace("{n}", selectedKeywords.length) : t("resume.improveMyResume")}
                       </Btn>
-                      {!selectedKeywords.length && <div style={{ fontSize: 11, color: C.textMuted }}>Select missing keywords above to enable</div>}
+                      {!selectedKeywords.length && <div style={{ fontSize: 11, color: C.textMuted }}>{t("resume.selectKeywordsHint")}</div>}
                     </div>
                   )}
                 </>
@@ -5519,13 +5519,13 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
           {isOptimized && improveStats && !improving && (
             <div style={{ background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, borderRadius: 10, padding: "10px 18px", marginBottom: 16, textAlign: "center", boxShadow: `0 4px 16px ${C.purple}40`, animation: "summaryEntrance 0.3s ease-out" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>✅ Keywords Successfully Applied!</div>
-              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>Visit the &ldquo;Insights&rdquo; tab to further strengthen your resume writing quality, then save your optimized resume.</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>{t("resume.keywordsAppliedTitle")}</div>
+              <div style={{ fontSize: 13, fontWeight: 400, color: "#fff", lineHeight: 1.5 }}>{t("resume.keywordsAppliedBody")}</div>
             </div>
           )}
           {/* Tabs */}
           <div id="resume-tabs" style={{ display: "flex", gap: 3, background: C.bgSoft, borderRadius: 10, padding: 3, marginBottom: 16 }}>
-            {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")],["insights", "Insights"]].map(([id, lbl]) => (
+            {[["resume", t("resume.tabResume")],["suggestions", t("resume.tabSuggestions")],["cover", t("resume.tabCover")],["insights", t("resume.tabInsights")]].map(([id, lbl]) => (
               <Btn key={id} variant="ghost" style={{ flex: 1, padding: "10px", borderRadius: 7, border: "none", background: tab === id ? "#fff" : "transparent", color: tab === id ? C.purple : C.textMuted, fontSize: 13, fontWeight: tab === id ? 700 : 500, boxShadow: tab === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => setTab(id)}>{lbl}</Btn>
             ))}
           </div>
@@ -5533,7 +5533,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {tab === "resume" && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
-                {isOptimized ? "Your Optimized Resume" : "Optimized Resume Preview"}
+                {isOptimized ? t("resume.yourOptimizedResume") : t("resume.optimizedPreview")}
               </div>
               <div id="resume-editor-preview" className={editorHighlight ? "editor-highlight-active" : ""}>
                 {editingPreview ? (
@@ -5552,12 +5552,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               </div>
               <div className="cp-action-bar">
                 {editingPreview ? (
-                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation", color: C.purple, background: C.purpleLight, border: `1px solid ${C.purple}` }}>👁 Preview</Btn>
+                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation", color: C.purple, background: C.purpleLight, border: `1px solid ${C.purple}` }}>{t("resume.preview")}</Btn>
                 ) : (
-                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation" }}>✏️ Edit</Btn>
+                  <Btn variant="secondary" onClick={() => setEditingPreview(e => !e)} style={{ fontSize: 12, padding: "6px 14px", touchAction: "manipulation" }}>{t("resume.editBtn")}</Btn>
                 )}
-                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>📄 Download PDF</Btn>
-                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>📝 Download DOCX</Btn>
+                <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>{t("resume.downloadDocx")}</Btn>
                 <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} label="📋 Copy" variant="secondary" />
               </div>
             </div>
@@ -5578,7 +5578,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div>
               {/* Version selector + controls */}
               <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {[["professional","Professional","★"],["friendly","Friendly",null],["executive","Executive",null],["ats","ATS Optimized",null]].map(([v, lbl, badge]) => (
+                {[["professional",t("resume.coverStyleProfessional"),"★"],["friendly",t("resume.coverStyleFriendly"),null],["executive",t("resume.coverStyleExecutive"),null],["ats",t("resume.coverStyleAts"),null]].map(([v, lbl, badge]) => (
                   <button key={v} onClick={() => { setActiveCoverVersion(v); setEditingCoverLetter(false); setEditedCoverText(""); }}
                     disabled={!coverVersions}
                     style={{ padding: "5px 12px", borderRadius: 8, border: `1.5px solid ${activeCoverVersion === v && coverVersions ? C.purple : C.border}`, background: activeCoverVersion === v && coverVersions ? C.purpleLight : "#fff", color: activeCoverVersion === v && coverVersions ? C.purple : C.textMuted, fontSize: 11, fontWeight: activeCoverVersion === v ? 700 : 500, cursor: coverVersions ? "pointer" : "default", fontFamily: "inherit", opacity: coverVersions ? 1 : 0.5, display: "flex", alignItems: "center", gap: 4 }}>
@@ -5587,7 +5587,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 ))}
                 {coverVersions && (
                   <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginLeft: "auto" }}>
-                    ↻ Regenerate All
+                    {t("resume.regenerateAll")}
                   </Btn>
                 )}
               </div>
@@ -5595,11 +5595,11 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               {coverVersionsLoading && (
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.bgSoft, borderRadius: 10, marginBottom: 10 }}>
                   <div style={{ width: 16, height: 16, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: C.textMid }}>⚡ AI is generating all 4 cover letter versions — Professional (recommended), Friendly, Executive, ATS Optimized…</span>
+                  <span style={{ fontSize: 12, color: C.textMid }}>{t("resume.generatingCoverVersions")}</span>
                 </div>
               )}
               {coverVersions && !editingCoverLetter && (
-                <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>✓ 4 versions ready — select a style above</div>
+                <div style={{ fontSize: 11, color: C.green, fontWeight: 600, marginBottom: 8 }}>{t("resume.coverVersionsReady")}</div>
               )}
               {/* Edit mode: textarea; display mode: ContentDisplay */}
               {editingCoverLetter ? (
@@ -5614,12 +5614,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <Btn variant="primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => {
                     if (coverVersions) setCoverVersions(prev => ({ ...prev, [activeCoverVersion]: editedCoverText }));
                     setEditingCoverLetter(false);
-                  }}>✓ Done</Btn>
+                  }}>{t("resume.doneBtn")}</Btn>
                 ) : (
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>✏️ Edit</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => { setEditingCoverLetter(true); setEditedCoverText(currentCoverText); }}>{t("resume.editBtn")}</Btn>
                 )}
-                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📄 Download PDF</Btn>
-                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>📝 Download DOCX</Btn>
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadPdf")}</Btn>
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadDocx")}</Btn>
                 <CopyBtn text={currentCoverText} label="📋 Copy" variant="secondary" />
               </div>
             </div>
@@ -5631,15 +5631,15 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                   <div style={{ width: 18, height: 18, flexShrink: 0, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating your personalized insights…</div>
-                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>CareerPersona AI is reviewing your resume against this role's requirements</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>{t("resume.generatingInsights")}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("resume.insightsReviewBody")}</div>
                   </div>
                 </div>
               )}
               {isOptimized && !insightsLoading && (
                 <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 12, padding: "14px 16px" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>✅ Resume optimized for this job.</div>
-                  <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6 }}>These insights are based on the original analysis. Run <strong>New Analysis</strong> after updating your resume or selecting another job to generate new insights.</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 4 }}>{t("resume.optimizedForJob")}</div>
+                  <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6 }}>{t("resume.insightsBasedOnOriginal")}</div>
                 </div>
               )}
               {resultsInsights && (() => {
@@ -5657,7 +5657,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   const expanded = insightsSectionExpanded[sectionKey];
                   return (
                     <button onClick={() => toggleInsightSection(sectionKey)} style={{ marginTop: 10, background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color, padding: 0, textAlign: "left" }}>
-                      {expanded ? "Show less ↑" : `Show ${items.length - initialShow} more ↓`}
+                      {expanded ? t("resume.showLessInsights") : t("resume.showMoreInsights").replace("{n}", items.length - initialShow)}
                     </button>
                   );
                 };
@@ -5665,7 +5665,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <>
                     {/* Strengths */}
                     <div style={{ background: C.greenLight, border: `1px solid ${C.green}25`, borderRadius: 12, padding: 16 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 10 }}>💪 Resume Strengths</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 10 }}>{t("resume.strengthsTitle")}</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {(insightsSectionExpanded.strengths ? strengths : strengths.slice(0, 2)).map((s, i) => (
                           <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -5680,8 +5680,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     {/* Growth Opportunities — categorized by priority tier */}
                     {improvements.length > 0 && (
                       <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}30`, borderRadius: 12, padding: 16 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: C.yellow, marginBottom: 4 }}>💡 Growth Opportunities</div>
-                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Addressing these areas will strengthen your resume and improve recruiter interest:</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.yellow, marginBottom: 4 }}>{t("resume.growthTitle")}</div>
+                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>{t("resume.growthBody")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                           {(insightsSectionExpanded.improvements ? improvements : improvements.slice(0, 2)).map((w, i) => {
                             const tier = PRIORITY_TIERS[Math.min(i, 2)];
@@ -5700,8 +5700,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     {/* Skills to Develop */}
                     {missingSkills.length > 0 && (
                       <div style={{ background: "#FFF7ED", border: "1px solid #EA580C25", borderRadius: 12, padding: 16 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#EA580C", marginBottom: 4 }}>🎯 Skills to Develop</div>
-                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>Adding these capabilities could further strengthen your candidacy for this role:</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#EA580C", marginBottom: 4 }}>{t("resume.skillsDevelopTitle")}</div>
+                        <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>{t("resume.skillsDevelopBody")}</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                           {(insightsSectionExpanded.skills ? missingSkills : missingSkills.slice(0, 6)).map((s, i) => (
                             <span key={i} style={{ background: "#fff", border: "1.5px solid #EA580C40", borderRadius: 20, padding: "5px 13px", fontSize: 12, fontWeight: 600, color: "#EA580C", lineHeight: 1.4 }}>{s}</span>
@@ -5714,7 +5714,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     {/* Tailoring Opportunities */}
                     {tailoring.length > 0 && (
                       <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 16 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 10 }}>✨ Tailoring Opportunities</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 10 }}>{t("resume.tailoringTitle")}</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {(insightsSectionExpanded.tailoring ? tailoring : tailoring.slice(0, 2)).map((o, i) => (
                             <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -5731,22 +5731,22 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               })()}
               {!resultsInsights && !insightsLoading && (
                 <div style={{ padding: 24, background: C.bgSoft, borderRadius: 12, fontSize: 13, color: C.textMuted, textAlign: "center" }}>
-                  Insights will appear here after your analysis completes.
+                  {t("resume.insightsPending")}
                 </div>
               )}
 
               {/* Deep Insights — grammar, readability, action verbs, formatting */}
               <div style={{ borderTop: `1.5px solid ${C.border}`, paddingTop: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>🔬 Deep Resume Analysis</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{t("resume.deepAnalysisTitle")}</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {deepInsights && (deepInsights.issues?.length > 0 || deepInsights.weakBullets?.length > 0 || deepInsights.weakActionVerbs?.length > 0) && (
                       <Btn onClick={applyAllDeepFixes} loading={applyingAllFixes} style={{ fontSize: 11, padding: "5px 12px" }}>
-                        ⚡ Apply All Fixes
+                        {t("resume.applyAllFixes")}
                       </Btn>
                     )}
                     <Btn onClick={runDeepInsights} loading={deepInsightsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>
-                      {deepInsights ? "↻ Re-analyze" : "Run Deep Analysis"}
+                      {deepInsights ? t("resume.reanalyze") : t("resume.runDeepAnalysis")}
                     </Btn>
                   </div>
                 </div>
@@ -5754,16 +5754,16 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 {deepInsightsLoading && (
                   <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.bgSoft, borderRadius: 10 }}>
                     <div style={{ width: 16, height: 16, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: C.textMid }}>Analyzing grammar, readability, action verbs, and formatting…</span>
+                    <span style={{ fontSize: 12, color: C.textMid }}>{t("resume.deepAnalysisLoading")}</span>
                   </div>
                 )}
                 {deepInsights && (() => {
                   const scores = [
-                    { label: "Grammar", val: deepInsights.grammarScore, color: hubHealthColor(deepInsights.grammarScore) },
-                    { label: "Readability", val: deepInsights.readabilityScore, color: hubHealthColor(deepInsights.readabilityScore) },
-                    { label: "Formatting", val: deepInsights.formattingScore, color: hubHealthColor(deepInsights.formattingScore) },
-                    { label: "Keywords", val: deepInsights.keywordDensity, color: hubHealthColor(deepInsights.keywordDensity) },
-                    { label: "Action Verbs", val: deepInsights.actionVerbScore, color: hubHealthColor(deepInsights.actionVerbScore) },
+                    { label: t("resume.grammarLabel"), val: deepInsights.grammarScore, color: hubHealthColor(deepInsights.grammarScore) },
+                    { label: t("resume.readabilityLabel"), val: deepInsights.readabilityScore, color: hubHealthColor(deepInsights.readabilityScore) },
+                    { label: t("resume.formatting"), val: deepInsights.formattingScore, color: hubHealthColor(deepInsights.formattingScore) },
+                    { label: t("resume.keywordDensityLabel"), val: deepInsights.keywordDensity, color: hubHealthColor(deepInsights.keywordDensity) },
+                    { label: t("resume.actionVerbsLabel"), val: deepInsights.actionVerbScore, color: hubHealthColor(deepInsights.actionVerbScore) },
                   ];
                   const severityColor = { high: C.red, medium: C.yellow, low: C.blue };
                   const severityBg = { high: C.redLight, medium: C.yellowLight, low: C.blueLight };
@@ -5780,14 +5780,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                       </div>
                       {/* Meta info */}
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                        {deepInsights.resumeLengthStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>📏 Length: {deepInsights.resumeLengthStatus}</span>}
-                        {deepInsights.contactInfoStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>📋 Contact: {deepInsights.contactInfoStatus}</span>}
-                        {deepInsights.missingSections?.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.orange, background: C.orangeLight, border: `1px solid ${C.orange}30`, borderRadius: 20, padding: "3px 10px" }}>⚠️ Missing: {deepInsights.missingSections.join(", ")}</span>}
+                        {deepInsights.resumeLengthStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>{t("resume.lengthLabel")} {deepInsights.resumeLengthStatus}</span>}
+                        {deepInsights.contactInfoStatus && <span style={{ fontSize: 11, fontWeight: 600, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>{t("resume.contactLabel")} {deepInsights.contactInfoStatus}</span>}
+                        {deepInsights.missingSections?.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.orange, background: C.orangeLight, border: `1px solid ${C.orange}30`, borderRadius: 20, padding: "3px 10px" }}>{t("resume.missingSectionsLabel")} {deepInsights.missingSections.join(", ")}</span>}
                       </div>
                       {/* Issues */}
                       {deepInsights.issues?.length > 0 && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>Issues Found</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("resume.issuesFound")}</div>
                           {deepInsights.issues.map((issue, i) => {
                             const isApplying = applyingIssueFix === issue.problem;
                             return (
@@ -5796,12 +5796,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                                   <span style={{ fontSize: 9, fontWeight: 700, color: severityColor[issue.severity] || C.blue, background: `${(severityColor[issue.severity] || C.blue)}20`, borderRadius: 4, padding: "2px 7px", textTransform: "uppercase" }}>{issue.severity}</span>
                                   <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{issue.category}</span>
                                   <Btn onClick={() => applyIssueFix(issue)} loading={isApplying} variant="secondary" style={{ fontSize: 10, padding: "3px 8px", marginLeft: "auto" }} disabled={!!applyingIssueFix}>
-                                    {isApplying ? "Fixing…" : "⚡ AI Fix"}
+                                    {isApplying ? t("resume.fixing") : t("resume.aiFix")}
                                   </Btn>
                                 </div>
                                 <div style={{ fontSize: 12, color: C.text, marginBottom: 4, lineHeight: 1.5 }}>{issue.problem}</div>
-                                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>Why it matters: {issue.reason}</div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: C.green }}>✓ Fix: {issue.fix}</div>
+                                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>{t("resume.whyItMatters")} {issue.reason}</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: C.green }}>{t("resume.fixLabel")} {issue.fix}</div>
                               </div>
                             );
                           })}
@@ -5810,12 +5810,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                       {/* Weak bullets */}
                       {deepInsights.weakBullets?.length > 0 && (
                         <div style={{ marginBottom: 14 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>💪 Stronger Bullet Points</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.strongerBullets")}</div>
                           {deepInsights.weakBullets.map((b, i) => (
                             <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 6 }}>
-                              <div style={{ fontSize: 11, color: C.red, marginBottom: 4, lineHeight: 1.5 }}>Before: {b.original}</div>
-                              <div style={{ fontSize: 11, color: C.green, fontWeight: 600, lineHeight: 1.5, marginBottom: 6 }}>After: {b.improved}</div>
-                              <Btn onClick={() => applyWeakBulletFix(b.original, b.improved)} variant="secondary" style={{ fontSize: 10, padding: "3px 8px" }}>⚡ Apply Fix</Btn>
+                              <div style={{ fontSize: 11, color: C.red, marginBottom: 4, lineHeight: 1.5 }}>{t("resume.beforeLabel")} {b.original}</div>
+                              <div style={{ fontSize: 11, color: C.green, fontWeight: 600, lineHeight: 1.5, marginBottom: 6 }}>{t("resume.afterLabel")} {b.improved}</div>
+                              <Btn onClick={() => applyWeakBulletFix(b.original, b.improved)} variant="secondary" style={{ fontSize: 10, padding: "3px 8px" }}>{t("resume.applyFix")}</Btn>
                             </div>
                           ))}
                         </div>
@@ -5823,14 +5823,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                       {/* Weak action verbs */}
                       {deepInsights.weakActionVerbs?.length > 0 && (
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>⚡ Stronger Action Verbs</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.strongerActionVerbs")}</div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             {deepInsights.weakActionVerbs.map((v, i) => (
                               <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
                                 <span style={{ color: C.red, textDecoration: "line-through" }}>{v.original}</span>
                                 <span style={{ color: C.textMuted }}>→</span>
                                 <span style={{ color: C.green, fontWeight: 700 }}>{v.stronger}</span>
-                                <button onClick={() => applyVerbFix(v.original, v.stronger)} style={{ marginLeft: 4, background: C.green, border: "none", borderRadius: 4, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+                                <button onClick={() => applyVerbFix(v.original, v.stronger)} style={{ marginLeft: 4, background: C.green, border: "none", borderRadius: 4, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit" }}>{t("resume.applyVerb")}</button>
                               </div>
                             ))}
                           </div>
@@ -5844,13 +5844,13 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     <Btn onClick={() => {
                       setInsightsDone(true);
                       document.getElementById("resume-analysis-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }} style={{ padding: "9px 22px" }}>✅ Done Applying</Btn>
-                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>Scroll up to save your optimized resume.</div>
+                    }} style={{ padding: "9px 22px" }}>{t("resume.doneApplying")}</Btn>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{t("resume.scrollToSave")}</div>
                   </div>
                 )}
                 {!deepInsights && !deepInsightsLoading && (
                   <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: "12px 0" }}>
-                    {results ? "Analyzing your resume…" : "Grammar, readability, action verbs, bullet quality, missing sections, and more."}
+                    {results ? t("resume.analyzingResumeText") : t("resume.deepAnalysisDesc")}
                   </div>
                 )}
               </div>
@@ -5870,8 +5870,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
                   <span style={{ fontSize: 20 }}>📊</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>No analysis history yet</div>
-                    <div style={{ fontSize: 12, color: C.textMuted }}>Save a resume to start tracking progress.</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{t("resume.noHistory")}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>{t("resume.noHistoryDesc")}</div>
                   </div>
                 </div>
               </Card>
@@ -5879,10 +5879,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             {analysisHistory?.length > 0 && (
               <Card style={{ flex: 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>📊 Analysis History</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{t("resume.historyTitle")}</div>
                   {analysisHistory.length > 3 && (
                     <button onClick={() => setShowAllHistory(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: C.purple, padding: 0 }}>
-                      {showAllHistory ? "Show Less ↑" : `View All ${analysisHistory.length} ↓`}
+                      {showAllHistory ? t("resume.showLessHistory") : t("resume.viewAllHistory").replace("{n}", analysisHistory.length)}
                     </button>
                   )}
                 </div>
@@ -5907,8 +5907,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                                 {entry.atsScore != null && <span style={{ fontSize: 11, fontWeight: 800, color: hc }}>ATS {entry.atsScore}%</span>}
                                 {delta !== null && <span style={{ fontSize: 10, fontWeight: 700, color: delta > 0 ? C.green : delta < 0 ? C.red : C.textMuted }}>({delta > 0 ? `+${delta}` : delta})</span>}
                                 {isOptimizedEntry
-                                  ? <span style={{ fontSize: 9, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 4, padding: "1px 4px" }}>✅ Optimized</span>
-                                  : <span style={{ fontSize: 9, color: C.textMuted, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 4px" }}>Original</span>
+                                  ? <span style={{ fontSize: 9, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 4, padding: "1px 4px" }}>{t("resume.optimizedBadge")}</span>
+                                  : <span style={{ fontSize: 9, color: C.textMuted, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 4px" }}>{t("resume.originalBadge")}</span>
                                 }
                               </div>
                             </div>
@@ -5941,14 +5941,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               const trendScores = scores.slice(0, 5).reverse();
               return (
                 <Card style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 8 }}>📈 Performance Analytics</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 8 }}>{t("resume.analyticsTitle")}</div>
                   {/* 4 stat squares in one horizontal row */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
                     {[
-                      { label: "Saves", value: total, color: C.purple },
-                      { label: "Improved", value: improved, color: C.green },
-                      { label: "Avg ATS", value: avgScore != null ? `${avgScore}%` : "—", color: C.yellow },
-                      { label: "Trend", value: trend != null ? `${trend > 0 ? "+" : ""}${trend}%` : "—", color: trend != null && trend > 0 ? C.green : trend != null && trend < 0 ? C.red : C.textMuted },
+                      { label: t("resume.savesLabel"), value: total, color: C.purple },
+                      { label: t("resume.improvedLabel"), value: improved, color: C.green },
+                      { label: t("resume.avgAtsLabel"), value: avgScore != null ? `${avgScore}%` : "—", color: C.yellow },
+                      { label: t("resume.trendLabel"), value: trend != null ? `${trend > 0 ? "+" : ""}${trend}%` : "—", color: trend != null && trend > 0 ? C.green : trend != null && trend < 0 ? C.red : C.textMuted },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ background: C.bgSoft, borderRadius: 6, padding: "5px 2px", textAlign: "center", border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
                         <div style={{ fontSize: 12, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
@@ -5958,7 +5958,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   </div>
                   {trendScores.length > 1 && (
                     <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>ATS Trend (last {trendScores.length})</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>{t("resume.atsTrend").replace("{n}", trendScores.length)}</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         {trendScores.map((s, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -5972,7 +5972,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   )}
                   {Object.values(healthCounts).some(v => v > 0) && (
                     <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>Health Distribution</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, marginBottom: 5 }}>{t("resume.healthDistribution")}</div>
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                         {Object.entries(healthCounts).filter(([, v]) => v > 0).map(([k, v]) => {
                           const hc = hubHealthColor(k === "Excellent" ? 95 : k === "Very Good" ? 85 : k === "Good" ? 75 : k === "Needs Improvement" ? 65 : 30);
@@ -5999,31 +5999,31 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>🤖 AI Resume Toolkit</div>
         <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           {[
-            { icon: "📊", title: "Score Benchmarking", desc: "Compare ATS score against industry average",
+            { icon: "📊", title: t("resume.benchmarkToolTitle"), desc: t("resume.benchmarkToolDesc"),
               active: true, panelId: "benchmark",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("benchmark"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                if (!resume.trim()) { setToolGuidancePanelId("benchmark"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "benchmark" ? null : "benchmark"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: "Ready to benchmark", color: C.textMuted } : { text: "Add a resume first", color: C.textMuted } },
-            { icon: "🔍", title: "Job Fit Analyzer", desc: "Skill-by-skill match for any job description",
+              getStatus: () => benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: t("resume.readyToBenchmark"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+            { icon: "🔍", title: t("resume.jobFitToolTitle"), desc: t("resume.jobFitToolDesc"),
               active: true, panelId: "jobfit",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
-                if (!jobDesc.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg("Add a job description to analyze your fit for this role."); return; }
+                if (!resume.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
+                if (!jobDesc.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg(t("resume.addJobDescFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "jobfit" ? null : "jobfit"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: "Ready to analyze", color: C.textMuted } : { text: "Add resume + job desc", color: C.textMuted } },
-            { icon: "📝", title: "LinkedIn Optimizer", desc: "Headline, About section, experience bullets",
+              getStatus: () => jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: t("resume.readyToAnalyze"), color: C.textMuted } : { text: t("resume.addResumeAndJob"), color: C.textMuted } },
+            { icon: "📝", title: t("resume.linkedinToolTitle"), desc: t("resume.linkedinToolDesc"),
               active: true, panelId: "linkedin-opt",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg("Select a resume from your Resume Library, or upload/create one first."); return; }
+                if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => linkedinOptData ? { text: `Optimized · ${linkedinOptData.headlineScore ?? "—"}% headline`, color: C.green } : resume.trim() ? { text: "Ready to optimize", color: C.textMuted } : { text: "Add a resume first", color: C.textMuted } },
-            { icon: "🎤", title: "AI Voice Resume Writer", desc: "Speak naturally — AI writes your ATS-optimized resume",
+              getStatus: () => linkedinOptData ? { text: `Optimized · ${linkedinOptData.headlineScore ?? "—"}% headline`, color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+            { icon: "🎤", title: t("resume.voiceToolTitle"), desc: t("resume.voiceToolDesc"),
               active: false, panelId: null,
-              comingSoon: "AI Voice Resume Writer is coming soon. This feature will be available in a future update." },
+              comingSoon: t("resume.voiceToolComingSoon") },
           ].map(({ icon, title, desc, active, panelId, action, getStatus, comingSoon }) => {
             const status = getStatus ? getStatus() : null;
             const isHighlighted = panelId ? activeToolPanel === panelId : false;
@@ -6040,7 +6040,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 </div>
                 <div style={{ fontSize: 11, color: "#475569", fontWeight: 400, lineHeight: 1.4, marginBottom: status ? 6 : 0 }}>{desc}</div>
                 {status && <div style={{ fontSize: 10, fontWeight: 600, color: status.color, marginTop: 4 }}>{status.text}</div>}
-                {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 6 }}>Coming Soon</div>}
+                {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 6 }}>{t("resume.comingSoon")}</div>}
                 {toolGuidancePanelId === panelId && toolGuidanceMsg && (
                   <div style={{ fontSize: 10, color: "#334155", fontWeight: 500, marginTop: 5, lineHeight: 1.35 }}>{toolGuidanceMsg}</div>
                 )}
@@ -6062,7 +6062,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         {activeToolPanel === "benchmark" && (
           <Card style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📊 Score Benchmarking</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.benchmarkPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Refresh</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
@@ -6071,7 +6071,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             {resume.trim() && !benchmarkData && !benchmarkLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                <div style={{ fontSize: 13, color: C.textMuted }}>Preparing benchmark analysis…</div>
+                <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.benchmarkPreparing")}</div>
               </div>
             )}
             {benchmarkError &&<div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{benchmarkError}</div>}
@@ -6079,8 +6079,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Analyzing against market benchmarks…</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Comparing keyword coverage, formatting, experience, and skills against your industry</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>{t("resume.benchmarkAnalyzing")}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("resume.benchmarkAnalyzingBody")}</div>
                 </div>
               </div>
             )}
@@ -6092,9 +6092,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Vs market comparison */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
                     {[
-                      { label: "Your Score", val: `${atsScore ?? "—"}`, color: hubHealthColor(atsScore), sub: "ATS score" },
-                      { label: "Industry Avg", val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || "Your industry" },
-                      { label: "Top 25%", val: `${topCandidateAverage ?? "—"}`, color: C.purple, sub: "Target benchmark" },
+                      { label: t("resume.yourScore"), val: `${atsScore ?? "—"}`, color: hubHealthColor(atsScore), sub: t("resume.atsScoreSub") },
+                      { label: t("resume.industryAvg"), val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || "Your industry" },
+                      { label: t("resume.top25"), val: `${topCandidateAverage ?? "—"}`, color: C.purple, sub: t("resume.targetBenchmark") },
                     ].map(({ label, val, color, sub }) => (
                       <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
                         <div style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>{val}</div>
@@ -6107,22 +6107,22 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
                     <div style={{ flex: 1, background: C.purpleLight, border: `1.5px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
                       <div style={{ fontSize: 20, fontWeight: 900, color: C.purple }}>{percentileLabel || `Top ${100 - (percentile || 50)}%`}</div>
-                      <div style={{ fontSize: 11, color: C.purple, marginTop: 2 }}>Candidate Percentile</div>
+                      <div style={{ fontSize: 11, color: C.purple, marginTop: 2 }}>{t("resume.candidatePercentile")}</div>
                     </div>
                     <div style={{ flex: 1, background: `${rankColor}12`, border: `1.5px solid ${rankColor}30`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 800, color: rankColor }}>{overallRanking}</div>
-                      <div style={{ fontSize: 11, color: rankColor, marginTop: 2 }}>Overall Ranking</div>
+                      <div style={{ fontSize: 11, color: rankColor, marginTop: 2 }}>{t("resume.overallRanking")}</div>
                     </div>
                   </div>
                   {/* Category scores */}
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Category Breakdown</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.categoryBreakdown")}</div>
                     {[
-                      { label: "Keyword Coverage", val: keywordCoverage },
-                      { label: "Formatting", val: formattingScore },
-                      { label: "Experience", val: experienceScore },
-                      { label: "Skills", val: skillsScore },
-                      { label: "Education", val: educationScore },
+                      { label: t("resume.keywordCoverageLabel"), val: keywordCoverage },
+                      { label: t("resume.formatting"), val: formattingScore },
+                      { label: t("resume.experienceLabel"), val: experienceScore },
+                      { label: t("resume.skills"), val: skillsScore },
+                      { label: t("resume.educationLabel"), val: educationScore },
                     ].map(({ label, val }) => (
                       <div key={label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                         <div style={{ fontSize: 12, color: C.textMid, width: 130, flexShrink: 0 }}>{label}</div>
@@ -6134,7 +6134,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Recommendations */}
                   {recommendations?.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recommendations to Improve Your Ranking</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.benchmarkRecommendations")}</div>
                       {recommendations.map((r, i) => (
                         <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.bgSoft, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
                           <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
@@ -6153,7 +6153,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         {activeToolPanel === "jobfit" && (
           <Card style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>🔍 Job Fit Analyzer</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.jobFitPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Re-analyze</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
@@ -6162,7 +6162,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             {resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                <div style={{ fontSize: 13, color: C.textMuted }}>Analyzing job fit…</div>
+                <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.analyzingJobFit")}</div>
               </div>
             )}
             {jobFitError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{jobFitError}</div>}
@@ -6170,8 +6170,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Calculating job fit…</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Matching skills, experience, keywords, education, and seniority</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>{t("resume.calculatingJobFit")}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("resume.jobFitBody")}</div>
                 </div>
               </div>
             )}
@@ -6186,13 +6186,13 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     <div style={{ flex: 1, background: `${matchColor}12`, border: `2px solid ${matchColor}40`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
                       <div style={{ fontSize: 36, fontWeight: 900, color: matchColor, lineHeight: 1 }}>{overallMatch}%</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: matchColor, marginTop: 4 }}>{matchLabel}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Overall Job Fit</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("resume.overallJobFit")}</div>
                     </div>
                     <div style={{ flex: 1, background: `${readinessColor}12`, border: `1.5px solid ${readinessColor}30`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 800, color: readinessColor, lineHeight: 1.2 }}>{applicationReadiness}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>Application Readiness</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{t("resume.applicationReadinessLabel")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-                        <div style={{ fontSize: 10, color: C.textMuted, width: 60, flexShrink: 0 }}>Keywords</div>
+                        <div style={{ fontSize: 10, color: C.textMuted, width: 60, flexShrink: 0 }}>{t("resume.keywordsQuickLabel")}</div>
                         <PBar val={keywordMatchScore} color={hubHealthColor(keywordMatchScore)} />
                         <div style={{ fontSize: 10, fontWeight: 700, color: hubHealthColor(keywordMatchScore), width: 28, flexShrink: 0 }}>{keywordMatchScore}%</div>
                       </div>
@@ -6201,7 +6201,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Skills match */}
                   {requiredSkillsMatch?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Required Skills</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.requiredSkills")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {requiredSkillsMatch.map((s, i) => (
                           <div key={i} style={{ background: s.found ? C.greenLight : C.redLight, border: `1px solid ${s.found ? C.green : C.red}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: s.found ? C.green : C.red }}>
@@ -6213,7 +6213,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   )}
                   {preferredSkillsMatch?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Preferred Skills</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.preferredSkills")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {preferredSkillsMatch.map((s, i) => (
                           <div key={i} style={{ background: s.found ? C.greenLight : C.bgSoft, border: `1px solid ${s.found ? C.green : C.border}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, color: s.found ? C.green : C.textMuted }}>
@@ -6225,7 +6225,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   )}
                   {missingSkills?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 8 }}>Missing Skills</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 8 }}>{t("resume.missingSkillsLabel")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {missingSkills.map((s, i) => (
                           <span key={i} style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: C.red }}>✗ {s}</span>
@@ -6236,7 +6236,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Quick Wins */}
                   {missingSkills?.length > 0 && (
                     <div style={{ background: C.purpleLight, border: `1.5px solid ${C.purple}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 6 }}>⚡ Quick Wins</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 6 }}>{t("resume.quickWins")}</div>
                       <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
                         Adding <strong>{missingSkills.slice(0, 2).join(" and ")}</strong> to your resume could significantly improve your match score. {missingSkills.length > 2 ? `${missingSkills.length - 2} more gap${missingSkills.length - 2 !== 1 ? "s" : ""} identified above.` : "These skills are explicitly listed in the job description."}
                       </div>
@@ -6246,7 +6246,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {[experienceMatch, educationMatch, seniorityMatch].filter(Boolean).map((dim, i) => (
                     <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{["Experience", "Education", "Seniority"][i]} Match</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{[t("resume.experienceLabel"), t("resume.educationLabel"), t("resume.seniorityLabel")][i]} Match</span>
                         <span style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(dim.score) }}>{dim.score}%</span>
                         <span style={{ fontSize: 10, color: C.textMuted }}>{dim.status}</span>
                       </div>
@@ -6256,7 +6256,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Recommendations */}
                   {topRecommendations?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recommendations to Improve Fit</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.jobFitRecommendations")}</div>
                       {topRecommendations.map((r, i) => (
                         <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.bgSoft, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
                           <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
@@ -6267,7 +6267,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   )}
                   {coverLetterTip && (
                     <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px", fontSize: 12, color: C.purple }}>
-                      <span style={{ fontWeight: 700 }}>💌 Cover Letter Tip: </span>{coverLetterTip}
+                      <span style={{ fontWeight: 700 }}>{t("resume.coverLetterTipLabel")} </span>{coverLetterTip}
                     </div>
                   )}
                 </>
@@ -6280,7 +6280,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
         {activeToolPanel === "linkedin-opt" && (
           <Card style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>📝 LinkedIn Optimizer</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.linkedinPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
@@ -6289,7 +6289,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             {resume.trim() && !linkedinOptData && !linkedinOptLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                <div style={{ fontSize: 13, color: C.textMuted }}>Generating LinkedIn optimizations…</div>
+                <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.generatingLinkedin")}</div>
               </div>
             )}
             {linkedinOptError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{linkedinOptError}</div>}
@@ -6297,8 +6297,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Generating LinkedIn optimizations…</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Crafting headline, About section, experience bullets, and recruiter visibility tips</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>{t("resume.generatingLinkedin")}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("resume.linkedinOptBody")}</div>
                 </div>
               </div>
             )}
@@ -6309,9 +6309,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Score strip */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
                     {[
-                      { label: "ATS Alignment", val: atsAlignmentScore, color: hubHealthColor(atsAlignmentScore) },
-                      { label: "Profile Complete", val: profileCompleteness, color: hubHealthColor(profileCompleteness) },
-                      { label: "Headline Score", val: headlineScore, color: hubHealthColor(headlineScore) },
+                      { label: t("resume.atsAlignmentLabel"), val: atsAlignmentScore, color: hubHealthColor(atsAlignmentScore) },
+                      { label: t("resume.profileCompleteLabel"), val: profileCompleteness, color: hubHealthColor(profileCompleteness) },
+                      { label: t("resume.headlineScoreLabel"), val: headlineScore, color: hubHealthColor(headlineScore) },
                     ].map(({ label, val, color }) => (
                       <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 8px", textAlign: "center" }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color }}>{val ?? "—"}</div>
@@ -6322,27 +6322,27 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Headline */}
                   {headline && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Optimized Headline</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("resume.optimizedHeadline")}</div>
                       <div style={{ background: C.purpleLight, border: `1.5px solid ${C.purple}25`, borderRadius: 9, padding: "10px 14px", fontSize: 13, fontWeight: 600, color: C.purple }}>
                         {headline}
                       </div>
-                      <CopyBtn text={headline} label="Copy Headline" variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
+                      <CopyBtn text={headline} label={t("resume.copyHeadline")} variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
                     </div>
                   )}
                   {/* About section */}
                   {aboutSection && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Optimized About Section</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("resume.optimizedAbout")}</div>
                       <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 13, color: C.text, lineHeight: 1.7, whiteSpace: "pre-line" }}>
                         {aboutSection}
                       </div>
-                      <CopyBtn text={aboutSection} label="Copy About Section" variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
+                      <CopyBtn text={aboutSection} label={t("resume.copyAbout")} variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
                     </div>
                   )}
                   {/* Skills to add */}
                   {topSkillsToAdd?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Skills to Add to Your Profile</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.skillsToAdd")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {topSkillsToAdd.map((s, i) => (
                           <span key={i} style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 600, color: C.purple }}>+ {s}</span>
@@ -6353,7 +6353,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Keywords to feature */}
                   {keywordsToFeature?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Keywords to Feature</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.keywordsToFeatureLabel")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {keywordsToFeature.map((k, i) => (
                           <span key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, color: C.textMid }}>🔑 {k}</span>
@@ -6364,7 +6364,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Experience optimizations */}
                   {experienceOptimizations?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Experience Bullet Improvements</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.bulletImprovements")}</div>
                       {experienceOptimizations.map((exp, i) => (
                         <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{exp.title} @ {exp.company}</div>
@@ -6378,7 +6378,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {/* Recruiter visibility tips */}
                   {recruiterVisibilityTips?.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>Recruiter Visibility Tips</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.recruiterTips")}</div>
                       {recruiterVisibilityTips.map((tip, i) => (
                         <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.purpleLight, border: `1px solid ${C.purple}15`, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
                           <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>💡</span>
@@ -6393,9 +6393,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             {/* Refine with LinkedIn profile text — shown after results */}
             {linkedinOptData && (
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>Refine with your LinkedIn profile text:</div>
-                <textarea value={linkedinProfile} onChange={e => setLinkedinProfile(e.target.value)} placeholder={"Paste your current About section and experience descriptions for more targeted suggestions."} style={{ width: "100%", minHeight: 70, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 12, lineHeight: 1.6, padding: "8px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
-                <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 12 }}>↻ Regenerate With Profile</Btn>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>{t("resume.refineWithLinkedin")}</div>
+                <textarea value={linkedinProfile} onChange={e => setLinkedinProfile(e.target.value)} placeholder={t("resume.linkedinProfilePlaceholder")} style={{ width: "100%", minHeight: 70, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 12, lineHeight: 1.6, padding: "8px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
+                <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 12 }}>{t("resume.regenerateWithProfile")}</Btn>
               </div>
             )}
           </Card>
