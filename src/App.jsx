@@ -2045,7 +2045,7 @@ function AuthPage({ t }) {
   };
 
   const handleForgot = async () => {
-    if (!forgotEmail.trim()) { setForgotError("Please enter your email address."); return; }
+    if (!forgotEmail.trim()) { setForgotError(t("auth.forgotEmailRequired")); return; }
     setForgotLoading(true); setForgotError("");
     const { error: err } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
       redirectTo: window.location.origin,
@@ -2069,26 +2069,26 @@ function AuthPage({ t }) {
             forgotSent ? (
               <div style={{ textAlign: "center", padding: "12px 0" }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>📧</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Check Your Email</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("auth.checkEmailTitle")}</div>
                 <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
-                  We sent a password reset link to <strong>{forgotEmail}</strong>. Open it on this device to set a new password.
+                  {(() => { const [pre, post] = t("auth.forgotSentBody").split("{email}"); return <>{pre}<strong>{forgotEmail}</strong>{post}</>; })()}
                 </div>
                 <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setForgotPassword(false); setForgotSent(false); setForgotEmail(""); setForgotError(""); }}>
-                  ← Back to Sign In
+                  {t("auth.forgotBackBtn")}
                 </Btn>
               </div>
             ) : (
               <>
-                <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>Forgot Password?</div>
-                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Enter your email and we'll send you a reset link.</div>
-                <Input label="Email Address" type="email" placeholder="you@email.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleForgot()} />
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("auth.forgotTitle")}</div>
+                <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>{t("auth.forgotSubtitle")}</div>
+                <Input label={t("auth.forgotEmailLabel")} type="email" placeholder="you@email.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleForgot()} />
                 {forgotError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{forgotError}</div>}
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
                   <Btn onClick={handleForgot} loading={forgotLoading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
-                    {forgotLoading ? "Sending…" : "Send Reset Link"}
+                    {forgotLoading ? t("auth.forgotSending") : t("auth.forgotSendBtn")}
                   </Btn>
                   <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={() => { setForgotPassword(false); setForgotError(""); }}>
-                    ← Back to Sign In
+                    {t("auth.forgotBackBtn")}
                   </Btn>
                 </div>
               </>
@@ -2117,7 +2117,7 @@ function AuthPage({ t }) {
               {mode === "login" && (
                 <div style={{ textAlign: "right", marginTop: 8 }}>
                   <button onClick={() => { setForgotPassword(true); setForgotEmail(form.email); setError(""); }} style={{ background: "none", border: "none", color: C.purple, fontSize: 13, cursor: "pointer", fontWeight: 600, padding: 0, fontFamily: "inherit" }}>
-                    Forgot password?
+                    {t("auth.forgotPasswordLink")}
                   </button>
                 </div>
               )}
@@ -8965,6 +8965,7 @@ function ProfilePage({ profile, updateProfile }) {
 
 // ─── OPPORTUNITY INTELLIGENCE PAGE ─────────────────────────
 function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState("opportunities");
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -9048,7 +9049,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       setAnalysis({ ...result, generatedAt: new Date().toISOString() });
       insertNotification(profile?.id, { type: "opportunity", title: "Opportunity analysis ready.", body: "A new career opportunity analysis is available." });
     } catch {
-      setAnalysisError("Analysis failed. Please try again.");
+      setAnalysisError(t("opportunity.analysisFailed"));
     } finally {
       setAnalysisLoading(false);
     }
@@ -9062,22 +9063,22 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       await watchlistAdd(addInput.trim(), status);
       setAddInput("");
     } catch {
-      setAddError("Failed to add company. Please try again.");
+      setAddError(t("opportunity.addCompanyFailed"));
     } finally {
       setAddingCompany(false);
     }
   };
 
   const pageTabs = [
-    { id: "opportunities", label: "Opportunities" },
-    { id: "watchlist", label: `Company Watchlist${wl.length ? ` (${wl.length})` : ""}` },
-    { id: "trends", label: "Market Trends" },
+    { id: "opportunities", label: t("opportunity.tabOpportunities") },
+    { id: "watchlist", label: `${t("opportunity.tabWatchlist")}${wl.length ? ` (${wl.length})` : ""}` },
+    { id: "trends", label: t("opportunity.tabTrends") },
   ];
 
   return (
     <div>
       <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
-        ← Back to Dashboard
+        {t("opportunity.backToDashboard")}
       </button>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 16 }}>
@@ -9086,18 +9087,18 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             <span style={{ fontSize: 24 }}>🎯</span>
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>Opportunity Intelligence</h1>
-            <p style={{ fontSize: 13, color: C.textMuted }}>AI-powered career opportunities ranked for your profile.</p>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("opportunity.pageTitle")}</h1>
+            <p style={{ fontSize: 13, color: C.textMuted }}>{t("opportunity.pageSubtitle")}</p>
           </div>
         </div>
         <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={refreshAnalysis} loading={analysisLoading}>
-          {analysisLoading ? "Analyzing…" : "↻ Refresh AI Analysis"}
+          {analysisLoading ? t("opportunity.analyzing") : t("opportunity.refreshAnalysis")}
         </Btn>
       </div>
 
       {analysis?.generatedAt && (
         <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 20 }}>
-          Analysis generated {new Date(analysis.generatedAt).toLocaleString()}
+          {t("opportunity.analysisGenerated").replace("{date}", new Date(analysis.generatedAt).toLocaleString())}
         </div>
       )}
 
@@ -9107,9 +9108,9 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 
       {/* Tab bar */}
       <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
-        {pageTabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ border: "none", background: "none", padding: "10px 16px", fontSize: 14, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.purple : C.textMuted, cursor: "pointer", borderBottom: `2px solid ${tab === t.id ? C.purple : "transparent"}`, marginBottom: -1, fontFamily: "inherit" }}>
-            {t.label}
+        {pageTabs.map(tItem => (
+          <button key={tItem.id} onClick={() => setTab(tItem.id)} style={{ border: "none", background: "none", padding: "10px 16px", fontSize: 14, fontWeight: tab === tItem.id ? 700 : 500, color: tab === tItem.id ? C.purple : C.textMuted, cursor: "pointer", borderBottom: `2px solid ${tab === tItem.id ? C.purple : "transparent"}`, marginBottom: -1, fontFamily: "inherit" }}>
+            {tItem.label}
           </button>
         ))}
       </div>
@@ -9122,15 +9123,15 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🏆 Better Job Opportunities</div>
-                <div style={{ fontSize: 12, color: C.textMuted }}>Your saved jobs ranked by AI match score.</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>{t("opportunity.betterJobsTitle")}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{t("opportunity.betterJobsSubtitle")}</div>
               </div>
-              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("jobs")}>Find More Jobs →</Btn>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("jobs")}>{t("opportunity.findMoreJobs")}</Btn>
             </div>
             {betterJobs.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: "24px 0" }}>
-                Save jobs from Job Search to see AI-ranked opportunities here.
-                <div style={{ marginTop: 12 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage("jobs")}>Go to Job Search</Btn></div>
+                {t("opportunity.betterJobsEmpty")}
+                <div style={{ marginTop: 12 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage("jobs")}>{t("opportunity.goToJobSearch")}</Btn></div>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column" }}>
@@ -9144,21 +9145,21 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                       <div style={{ flex: 1, minWidth: 200 }}>
                         <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", marginBottom: 3 }}>
                           <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{j.title}</span>
-                          {watched && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "2px 6px" }}>Watched</span>}
-                          {refCon && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 8, padding: "2px 6px" }}>Referral</span>}
-                          {applied && <span style={{ fontSize: 10, fontWeight: 700, color: C.blue, background: C.blueLight, borderRadius: 8, padding: "2px 6px" }}>Applied</span>}
+                          {watched && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "2px 6px" }}>{t("opportunity.watchedBadge")}</span>}
+                          {refCon && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 8, padding: "2px 6px" }}>{t("opportunity.referralBadge")}</span>}
+                          {applied && <span style={{ fontSize: 10, fontWeight: 700, color: C.blue, background: C.blueLight, borderRadius: 8, padding: "2px 6px" }}>{t("opportunity.appliedBadge")}</span>}
                         </div>
                         <div style={{ fontSize: 13, color: C.textMuted }}>{j.company}{j.location ? ` · ${j.location}` : ""}{sal ? ` · ${sal}` : ""}</div>
-                        {refCon && <div style={{ fontSize: 11, color: C.green, marginTop: 3 }}>You know {refCon.name} here — ask for a referral</div>}
+                        {refCon && <div style={{ fontSize: 11, color: C.green, marginTop: 3 }}>{t("opportunity.youKnowContact").replace("{name}", refCon.name)}</div>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                         {j.matchScore != null && (
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: 18, fontWeight: 800, color: matchColor(j.matchScore) }}>{j.matchScore}%</div>
-                            <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>Match</div>
+                            <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>{t("opportunity.matchLabel")}</div>
                           </div>
                         )}
-                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>Apply →</a>}
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>{t("opportunity.applyLink")}</a>}
                       </div>
                     </div>
                   );
@@ -9167,8 +9168,8 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             )}
             {saved.length > 0 && (
               <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("saved")}>All Saved Jobs →</Btn>
-                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("tracker")}>Job Tracker →</Btn>
+                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("saved")}>{t("opportunity.allSavedJobs")}</Btn>
+                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("tracker")}>{t("opportunity.jobTracker")}</Btn>
               </div>
             )}
           </Card>
@@ -9177,19 +9178,19 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>💰 Salary Improvement Opportunities</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>{t("opportunity.salaryOppTitle")}</div>
                 <div style={{ fontSize: 12, color: C.textMuted }}>
-                  {desiredNum ? `Jobs exceeding your target of $${Math.round(desiredNum / 1000)}K/yr.` : marketMedian ? `Jobs near or above the $${Math.round(marketMedian / 1000)}K market median.` : "Jobs with competitive salary ranges from your saved list."}
+                  {desiredNum ? t("opportunity.salaryOppTargetSubtitle").replace("{n}", Math.round(desiredNum / 1000)) : marketMedian ? t("opportunity.salaryOppMarketSubtitle").replace("{n}", Math.round(marketMedian / 1000)) : t("opportunity.salaryOppDefaultSubtitle")}
                 </div>
               </div>
-              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("salary")}>Salary Research →</Btn>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("salary")}>{t("opportunity.salaryResearch")}</Btn>
             </div>
             {salaryData?.results?.marketRange && (
               <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                {[["Low", salaryData.results.marketRange.low, C.textMuted], ["Median", salaryData.results.marketRange.median, C.green], ["High", salaryData.results.marketRange.high, C.purple]].map(([label, val, color]) => val ? (
+                {[[t("opportunity.marketLow"), salaryData.results.marketRange.low, C.textMuted], [t("opportunity.marketMedian"), salaryData.results.marketRange.median, C.green], [t("opportunity.marketHigh"), salaryData.results.marketRange.high, C.purple]].map(([label, val, color]) => val ? (
                   <div key={label} style={{ flex: 1, minWidth: 72, background: C.bgSoft, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color }}>${Math.round(val / 1000)}K</div>
-                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Market {label}</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
                   </div>
                 ) : null)}
               </div>
@@ -9197,12 +9198,12 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             {salaryJobs.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted, padding: "12px 0" }}>
                 {!desiredNum && !marketMedian
-                  ? "Set your desired salary in Profile, or run Salary Intelligence to establish a market baseline — then matching jobs will surface here."
-                  : "No saved jobs currently exceed your salary target. Search for more jobs or adjust your target role."}
+                  ? t("opportunity.salaryOppEmpty1")
+                  : t("opportunity.salaryOppEmpty2")}
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {!desiredNum && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("profile")}>Update Profile →</Btn>}
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Research Salaries →</Btn>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Find Jobs →</Btn>
+                  {!desiredNum && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("profile")}>{t("opportunity.updateProfile")}</Btn>}
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>{t("opportunity.researchSalaries")}</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>{t("opportunity.findJobs")}</Btn>
                 </div>
               </div>
             ) : (
@@ -9218,7 +9219,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 800, color: C.green }}>{sal}</div>
                         {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: matchColor(j.matchScore) }}>{j.matchScore}%</span>}
-                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>Apply →</a>}
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>{t("opportunity.applyLink")}</a>}
                       </div>
                     </div>
                   );
@@ -9231,17 +9232,17 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🤝 Referral Opportunities</div>
-                <div style={{ fontSize: 12, color: C.textMuted }}>Jobs where your network contacts can refer you. Referrals increase interview chances by 3–5×.</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>{t("opportunity.referralOppTitle")}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{t("opportunity.referralOppSubtitle")}</div>
               </div>
-              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("network")}>Manage Network →</Btn>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("network")}>{t("opportunity.manageNetwork")}</Btn>
             </div>
             {referralJobs.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted, padding: "12px 0" }}>
-                {contacts.length === 0 ? "Add contacts in Networking Intelligence and save jobs — when a contact works at a company you saved, it appears here as a referral opportunity." : "None of your contacts currently work at companies in your saved jobs. Save more jobs or expand your network."}
+                {contacts.length === 0 ? t("opportunity.referralEmpty1") : t("opportunity.referralEmpty2")}
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Add Contacts →</Btn>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Save More Jobs →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>{t("opportunity.addContacts")}</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>{t("opportunity.saveMoreJobs")}</Btn>
                 </div>
               </div>
             ) : (
@@ -9251,13 +9252,13 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{j.title} — {j.company}</div>
-                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ {j.referralContact.name} works here</div>
+                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{t("opportunity.contactWorksHere").replace("{name}", j.referralContact.name)}</div>
                         {j.referralContact.email && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{j.referralContact.email}</div>}
                         {j.matchScore != null && <div style={{ fontSize: 12, color: matchColor(j.matchScore), fontWeight: 600, marginTop: 4 }}>{j.matchScore}% match</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-                        <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Draft Message</Btn>
-                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Btn style={{ fontSize: 12, padding: "5px 12px" }}>Apply</Btn></a>}
+                        <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>{t("opportunity.draftMessage")}</Btn>
+                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Btn style={{ fontSize: 12, padding: "5px 12px" }}>{t("opportunity.applyBtn")}</Btn></a>}
                       </div>
                     </div>
                   </div>
@@ -9268,8 +9269,8 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 
           {/* Internal Promotion Signals */}
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>📈 Internal Promotion Signals</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>What it takes to advance from your current level based on your experience and target role.</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("opportunity.promoSignalsTitle")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>{t("opportunity.promoSignalsSubtitle")}</div>
             {analysis?.internalPromotionSignals?.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {analysis.internalPromotionSignals.map((sig, i) => (
@@ -9279,22 +9280,22 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                   </div>
                 ))}
                 <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("interview")}>Interview Prep →</Btn>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("resume")}>Update Resume →</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("interview")}>{t("opportunity.interviewPrep")}</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("resume")}>{t("opportunity.updateResume")}</Btn>
                 </div>
               </div>
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                {analysisLoading ? "Generating promotion signals…" : "Run AI Analysis to generate personalized internal promotion signals based on your role and experience."}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+                {analysisLoading ? t("opportunity.promoSignalsLoading") : t("opportunity.promoSignalsEmpty")}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
 
           {/* Career Pivot Opportunities */}
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🔄 Career Pivot Opportunities</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Adjacent roles your skills transfer to, with salary uplift estimates.</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("opportunity.pivotTitle")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>{t("opportunity.pivotSubtitle")}</div>
             {analysis?.careerPivotOpportunities?.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }} className="three-col">
                 {analysis.careerPivotOpportunities.map((opp, i) => (
@@ -9303,36 +9304,36 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                       <div style={{ fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, marginRight: 8 }}>{opp.role}</div>
                       <div style={{ textAlign: "center", flexShrink: 0 }}>
                         <div style={{ fontSize: 16, fontWeight: 800, color: matchColor(opp.fit) }}>{opp.fit}%</div>
-                        <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>Fit</div>
+                        <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>{t("opportunity.fitLabel")}</div>
                       </div>
                     </div>
-                    {opp.salaryUplift && <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 8 }}>{opp.salaryUplift} salary uplift</div>}
+                    {opp.salaryUplift && <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 8 }}>{t("opportunity.salaryUplift").replace("{n}", opp.salaryUplift)}</div>}
                     <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 10 }}>{opp.reason}</div>
                     {opp.skillsNeeded?.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, marginBottom: 5, letterSpacing: 0.5 }}>SKILLS TO ADD</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, marginBottom: 5, letterSpacing: 0.5 }}>{t("opportunity.skillsToAdd")}</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
                           {opp.skillsNeeded.map(s => <span key={s} style={{ fontSize: 11, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px", fontWeight: 600 }}>{s}</span>)}
                         </div>
                       </div>
                     )}
-                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px", width: "100%" }} onClick={() => setPage("jobs")}>Search This Role →</Btn>
+                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px", width: "100%" }} onClick={() => setPage("jobs")}>{t("opportunity.searchThisRole")}</Btn>
                   </div>
                 ))}
               </div>
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                {analysisLoading ? "Analyzing career pivot opportunities…" : "Run AI Analysis to discover adjacent roles where your existing skills give you a competitive head start."}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+                {analysisLoading ? t("opportunity.pivotLoading") : t("opportunity.pivotEmpty")}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
 
           {/* Cross-module quick actions */}
           <Card style={{ background: C.bgSoft }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.navText, marginBottom: 12 }}>Continue in CareerPersona AI</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("opportunity.continueInApp")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[["Resume Intelligence", "resume"], ["Interview Prep", "interview"], ["Salary Research", "salary"], ["Networking", "network"], ["Smart Apply", "saved"], ["Job Tracker", "tracker"], ["AI Briefing", "briefing"], ["Action Plan", "plan"]].map(([label, pid]) => (
+              {[[t("opportunity.quickLinkResume"), "resume"], [t("opportunity.quickLinkInterview"), "interview"], [t("opportunity.quickLinkSalary"), "salary"], [t("opportunity.quickLinkNetworking"), "network"], [t("opportunity.quickLinkSmartApply"), "saved"], [t("opportunity.quickLinkTracker"), "tracker"], [t("opportunity.quickLinkBriefing"), "briefing"], [t("opportunity.quickLinkPlan"), "plan"]].map(([label, pid]) => (
                 <Btn key={pid} variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage(pid)}>{label} →</Btn>
               ))}
             </div>
@@ -9344,28 +9345,28 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       {tab === "watchlist" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>Track a Company</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("opportunity.trackCompanyTitle")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
                 value={addInput}
                 onChange={e => setAddInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAdd("watching")}
-                placeholder="Company name (e.g. Stripe, Anthropic, Google…)"
+                placeholder={t("opportunity.trackCompanyPlaceholder")}
                 style={{ flex: 1, minWidth: 200, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, color: C.text, outline: "none", fontFamily: "inherit" }}
               />
-              <Btn style={{ padding: "10px 20px" }} onClick={() => handleAdd("watching")} loading={addingCompany}>Watch</Btn>
-              <Btn variant="secondary" style={{ padding: "10px 20px" }} onClick={() => handleAdd("dream_company")} loading={addingCompany}>⭐ Dream</Btn>
+              <Btn style={{ padding: "10px 20px" }} onClick={() => handleAdd("watching")} loading={addingCompany}>{t("opportunity.watchBtn")}</Btn>
+              <Btn variant="secondary" style={{ padding: "10px 20px" }} onClick={() => handleAdd("dream_company")} loading={addingCompany}>{t("opportunity.dreamBtn")}</Btn>
             </div>
             {addError && <div style={{ fontSize: 12, color: C.red, marginTop: 8 }}>{addError}</div>}
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 10 }}>Press Enter or click Watch to add. Mark companies as Dream to prioritize them across all AI recommendations.</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 10 }}>{t("opportunity.trackCompanyHint")}</div>
           </Card>
 
           {watchlistEnriched.length === 0 ? (
             <Card style={{ textAlign: "center", padding: "40px 24px" }}>
               <div style={{ fontSize: 36, marginBottom: 14 }}>🏢</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>No companies tracked yet</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("opportunity.watchlistEmptyTitle")}</div>
               <div style={{ fontSize: 13, color: C.textMuted, maxWidth: 380, margin: "0 auto" }}>
-                Track your target companies. Dream companies get prioritized in your AI briefings, action plans, and opportunity rankings.
+                {t("opportunity.watchlistEmptyBody")}
               </div>
             </Card>
           ) : (
@@ -9378,21 +9379,21 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
                           <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{w.company_name}</div>
                           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: w.status === "dream_company" ? "#FEF3C7" : C.purpleLight, color: w.status === "dream_company" ? "#B45309" : C.purple }}>
-                            {w.status === "dream_company" ? "⭐ Dream Company" : "👁 Watching"}
+                            {w.status === "dream_company" ? t("opportunity.dreamBadge") : t("opportunity.watchingBadge")}
                           </span>
                         </div>
                         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                          {w.jobCount > 0 && <div style={{ fontSize: 12, color: C.blue }}>{w.jobCount} saved job{w.jobCount !== 1 ? "s" : ""}</div>}
-                          {w.hasContact && <div style={{ fontSize: 12, color: C.green }}>✓ You have a contact here</div>}
+                          {w.jobCount > 0 && <div style={{ fontSize: 12, color: C.blue }}>{w.jobCount !== 1 ? t("opportunity.savedJobPlural").replace("{n}", w.jobCount) : t("opportunity.savedJobSingular").replace("{n}", w.jobCount)}</div>}
+                          {w.hasContact && <div style={{ fontSize: 12, color: C.green }}>{t("opportunity.hasContactHere")}</div>}
                         </div>
                         {w.notes && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, lineHeight: 1.5 }}>{w.notes}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
                         <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => watchlistUpdateStatus(w.id, w.status === "dream_company" ? "watching" : "dream_company")}>
-                          {w.status === "dream_company" ? "→ Watching" : "⭐ Dream"}
+                          {w.status === "dream_company" ? t("opportunity.toWatching") : t("opportunity.dreamBtn")}
                         </Btn>
-                        {w.jobCount > 0 && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("saved")}>View Jobs</Btn>}
-                        {w.hasContact && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>Contact</Btn>}
+                        {w.jobCount > 0 && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("saved")}>{t("opportunity.viewJobs")}</Btn>}
+                        {w.hasContact && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>{t("opportunity.contactBtn")}</Btn>}
                         <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px", color: C.red }} onClick={() => watchlistRemove(w.id)}>✕</Btn>
                       </div>
                     </div>
@@ -9402,7 +9403,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 
               <Card style={{ background: C.bgSoft }}>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "space-around" }}>
-                  {[["Tracked", wl.length, C.purple], ["Dream Companies", wl.filter(w => w.status === "dream_company").length, "#B45309"], ["Jobs Found", watchlistEnriched.reduce((s, w) => s + w.jobCount, 0), C.blue], ["With Contacts", watchlistEnriched.filter(w => w.hasContact).length, C.green]].map(([label, val, color]) => (
+                  {[[t("opportunity.statTracked"), wl.length, C.purple], [t("opportunity.statDreamCos"), wl.filter(w => w.status === "dream_company").length, "#B45309"], [t("opportunity.statJobsFound"), watchlistEnriched.reduce((s, w) => s + w.jobCount, 0), C.blue], [t("opportunity.statWithContacts"), watchlistEnriched.filter(w => w.hasContact).length, C.green]].map(([label, val, color]) => (
                     <div key={label} style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
                       <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{label}</div>
@@ -9423,10 +9424,10 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>🔥 Trending Skills</div>
-                <div style={{ fontSize: 12, color: C.textMuted }}>Skills in highest demand across your saved and matched jobs, with AI salary premium data.</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3 }}>{t("opportunity.trendingSkillsTitle")}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{t("opportunity.trendingSkillsSubtitle")}</div>
               </div>
-              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("resume")}>Update Resume →</Btn>
+              <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("resume")}>{t("opportunity.updateResume")}</Btn>
             </div>
             {analysis?.trendingSkills?.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
@@ -9440,14 +9441,14 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 14, fontWeight: 800, color: C.green }}>{s.salaryPremium}</div>
-                      <div style={{ fontSize: 10, color: C.textMuted }}>salary premium</div>
+                      <div style={{ fontSize: 10, color: C.textMuted }}>{t("opportunity.salaryPremium")}</div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : jobTrendingSkills.length > 0 ? (
               <div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 10 }}>From your {saved.length} saved jobs — run AI Analysis to add demand and salary premium data:</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 10 }}>{t("opportunity.fromSavedJobs").replace("{n}", saved.length)}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                   {jobTrendingSkills.map(([skill, count]) => (
                     <div key={skill} style={{ display: "flex", alignItems: "center", gap: 5, background: C.purpleLight, borderRadius: 20, padding: "6px 12px" }}>
@@ -9456,14 +9457,14 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                     </div>
                   ))}
                 </div>
-                <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{analysisLoading ? "Analyzing…" : "↻ Get AI Demand Insights"}</Btn>
+                <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{analysisLoading ? t("opportunity.analyzing") : t("opportunity.getAiDemandInsights")}</Btn>
               </div>
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                Save jobs with skills tags to see trending skills, or run AI Analysis to get market demand insights for your target role.
+                {t("opportunity.trendingSkillsEmpty")}
                 <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>Find Jobs →</Btn>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>AI Analysis</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>{t("opportunity.findJobs")}</Btn>
+                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{t("opportunity.aiAnalysis")}</Btn>
                 </div>
               </div>
             )}
@@ -9471,8 +9472,8 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 
           {/* Emerging Industries */}
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🌱 Emerging Industries</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Fast-growing sectors where your skills are in demand, with average compensation data.</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("opportunity.emergingIndustriesTitle")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>{t("opportunity.emergingIndustriesSubtitle")}</div>
             {analysis?.emergingIndustries?.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {analysis.emergingIndustries.map((ind, i) => (
@@ -9481,7 +9482,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                       <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{ind.industry}</div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <span style={{ fontSize: 12, fontWeight: 800, color: C.green, background: C.greenLight, borderRadius: 8, padding: "3px 9px" }}>↑ {ind.growth}</span>
-                        {ind.avgSalary && <span style={{ fontSize: 12, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "3px 9px" }}>{ind.avgSalary} avg</span>}
+                        {ind.avgSalary && <span style={{ fontSize: 12, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 8, padding: "3px 9px" }}>{ind.avgSalary} {t("opportunity.avgLabel")}</span>}
                       </div>
                     </div>
                     {ind.roles?.length > 0 && (
@@ -9489,30 +9490,30 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                         {ind.roles.map(r => <span key={r} style={{ fontSize: 11, color: C.textMid, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px" }}>{r}</span>)}
                       </div>
                     )}
-                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>Explore Jobs →</Btn>
+                    <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>{t("opportunity.exploreJobs")}</Btn>
                   </div>
                 ))}
               </div>
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                {analysisLoading ? "Identifying emerging industries…" : "Run AI Analysis to discover fast-growing industries aligned with your skills and career trajectory."}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+                {analysisLoading ? t("opportunity.emergingLoading") : t("opportunity.emergingEmpty")}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
 
           {/* Growing Companies */}
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>🚀 Growing Companies</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>Companies actively expanding in your target field, with hiring signals and your match score.</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("opportunity.growingCompaniesTitle")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>{t("opportunity.growingCompaniesSubtitle")}</div>
             {frequentCompanies.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>ACTIVE IN YOUR SAVED JOBS</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>{t("opportunity.activeInSavedJobs")}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {frequentCompanies.map(([company, count]) => (
                     <div key={company} style={{ display: "flex", alignItems: "center", gap: 5, background: C.purpleLight, borderRadius: 20, padding: "6px 12px" }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>{company}</span>
-                      <span style={{ fontSize: 11, color: C.textMuted }}>{count} roles</span>
+                      <span style={{ fontSize: 11, color: C.textMuted }}>{t("opportunity.rolesCount").replace("{n}", count)}</span>
                     </div>
                   ))}
                 </div>
@@ -9520,7 +9521,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             )}
             {analysis?.growingCompanies?.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {frequentCompanies.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>AI MARKET INTELLIGENCE</div>}
+                {frequentCompanies.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("opportunity.aiMarketIntelligence")}</div>}
                 {analysis.growingCompanies.map((c, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", background: C.bgSoft, borderRadius: 9, flexWrap: "wrap", alignItems: "flex-start" }}>
                     <div style={{ flex: 1 }}>
@@ -9529,24 +9530,24 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                         {c.category && <Badge color={C.purple}>{c.category}</Badge>}
                       </div>
                       <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 4 }}>{c.signal}</div>
-                      {c.openRoles > 0 && <div style={{ fontSize: 11, color: C.blue }}>{c.openRoles} open roles</div>}
+                      {c.openRoles > 0 && <div style={{ fontSize: 11, color: C.blue }}>{t("opportunity.openRoles").replace("{n}", c.openRoles)}</div>}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
                       {c.yourMatch != null && (
                         <div style={{ textAlign: "center" }}>
                           <div style={{ fontSize: 15, fontWeight: 800, color: matchColor(c.yourMatch) }}>{c.yourMatch}%</div>
-                          <div style={{ fontSize: 9, color: C.textMuted }}>Match</div>
+                          <div style={{ fontSize: 9, color: C.textMuted }}>{t("opportunity.matchLabel")}</div>
                         </div>
                       )}
-                      <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>Search →</Btn>
+                      <Btn variant="secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => setPage("jobs")}>{t("opportunity.searchBtn")}</Btn>
                     </div>
                   </div>
                 ))}
               </div>
             ) : frequentCompanies.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                {analysisLoading ? "Identifying growing companies…" : "Run AI Analysis to discover which companies in your field are expanding rapidly and hiring."}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>Generate Analysis</Btn></div>}
+                {analysisLoading ? t("opportunity.growingLoading") : t("opportunity.growingEmpty")}
+                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             ) : null}
           </Card>
@@ -9554,12 +9555,14 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           {/* Market Intelligence from Salary Research */}
           {salaryData?.results ? (
             <Card>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>📊 Market Intelligence</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("opportunity.marketIntelTitle")}</div>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
-                From your salary research for {salaryData.results.jobTitle || profile?.preferred_job_title || "your role"}{salaryData.results.location ? ` in ${salaryData.results.location}` : ""}.
+                {salaryData.results.location
+                  ? t("opportunity.marketIntelSubtitleWithLocation").replace("{role}", salaryData.results.jobTitle || profile?.preferred_job_title || "your role").replace("{location}", salaryData.results.location)
+                  : t("opportunity.marketIntelSubtitleBase").replace("{role}", salaryData.results.jobTitle || profile?.preferred_job_title || "your role")}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                {[["Demand", salaryData.results.demandLevel, salaryData.results.demandLevel === "High" ? C.green : C.yellow], ["Trend", salaryData.results.trend, salaryData.results.trendDirection === "up" ? C.green : C.textMuted]].map(([label, val, color]) => val ? (
+                {[[t("opportunity.demandLabel"), salaryData.results.demandLevel, salaryData.results.demandLevel === "High" ? C.green : C.yellow], [t("opportunity.trendLabel"), salaryData.results.trend, salaryData.results.trendDirection === "up" ? C.green : C.textMuted]].map(([label, val, color]) => val ? (
                   <div key={label} style={{ background: C.bgSoft, borderRadius: 9, padding: "8px 14px" }}>
                     <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{label}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
@@ -9567,7 +9570,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                 ) : null)}
                 {(salaryData.results.skills || []).length > 0 && (
                   <div style={{ flex: 1, background: C.bgSoft, borderRadius: 9, padding: "8px 14px" }}>
-                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 4 }}>Top Skills</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 4 }}>{t("opportunity.topSkillsLabel")}</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {salaryData.results.skills.slice(0, 4).map(s => <Badge key={s} color={C.purple}>{s}</Badge>)}
                     </div>
@@ -9576,19 +9579,19 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
               </div>
               {salaryData.results.topPayingCompanies?.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>TOP PAYING COMPANIES</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 8 }}>{t("opportunity.topPayingCompanies")}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {salaryData.results.topPayingCompanies.map(co => <span key={co} style={{ fontSize: 12, color: C.textMid, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px" }}>{co}</span>)}
                   </div>
                 </div>
               )}
-              <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Full Salary Report →</Btn>
+              <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>{t("opportunity.fullSalaryReport")}</Btn>
             </Card>
           ) : (
             <Card style={{ background: C.bgSoft }}>
               <div style={{ fontSize: 13, color: C.textMuted }}>
-                <strong style={{ color: C.text }}>Unlock Market Intelligence:</strong> Run Salary Intelligence to add market demand data, top-paying companies, and in-demand skills to this page.
-                <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>Research Salaries →</Btn></div>
+                <strong style={{ color: C.text }}>{t("opportunity.unlockMarketIntel")}</strong> {t("opportunity.unlockMarketIntelBody")}
+                <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("salary")}>{t("opportunity.researchSalaries")}</Btn></div>
               </div>
             </Card>
           )}
@@ -9596,7 +9599,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       )}
 
       <div style={{ textAlign: "center", paddingTop: 32 }}>
-        <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Back to Dashboard</button>
+        <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{t("opportunity.backToDashboard")}</button>
       </div>
     </div>
   );
