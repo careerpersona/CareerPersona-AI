@@ -2863,7 +2863,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           {smartApplyQueueLoading && saQueue.length === 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", marginBottom: 12 }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>Loading your Smart Apply queue…</div>
+              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>{t("savedJobs.loadingQueue")}</div>
             </div>
           ) : saQueue.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>No jobs in your Smart Apply queue yet. Find matching jobs to analyze and add to your pipeline.</div>
@@ -8687,7 +8687,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
       await purgeQueueByJobId?.(item.job_id);
       setSavedJobs(p => p.filter(j => j.job_id !== item.job_id));
       onQueueChange?.();
-    } catch { setQueueError("Failed to remove. Please try again."); }
+    } catch { setQueueError(t("savedJobs.removeError")); }
   };
 
   const handleRetry = async (item) => {
@@ -8748,7 +8748,7 @@ Company: ${item.company}`, 8000);
 
       {/* ── Section 1: Your Saved Jobs ─────────────────────────── */}
       <div style={{ marginBottom: 36 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>Your Saved Jobs</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("savedJobs.sectionTitle")}</div>
         {savedJobs.length === 0 && (
           <Card style={{ textAlign: "center", padding: 64 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>♡</div>
@@ -8767,11 +8767,11 @@ Company: ${item.company}`, 8000);
 
             // Status badge
             let statusColor = C.textMuted;
-            let statusLabel = "Saved";
-            if (isApplied) { statusColor = C.blue; statusLabel = "Applied"; }
-            else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = "AI Package Ready"; }
-            else if (activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = "In Queue"; }
-            else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = "Generation Failed"; }
+            let statusLabel = t("savedJobs.statusSaved");
+            if (isApplied) { statusColor = C.blue; statusLabel = t("savedJobs.statusApplied"); }
+            else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = t("savedJobs.statusAiReady"); }
+            else if (activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = t("savedJobs.statusInQueue"); }
+            else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = t("savedJobs.statusGenFailed"); }
 
             return (
               <Card key={job.job_id}>
@@ -8785,7 +8785,7 @@ Company: ${item.company}`, 8000);
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       {job.matchScore && <Badge color={C.purple}>{job.matchScore}{t("savedJobs.matchSuffix")}</Badge>}
                       {(job.salaryMin || job.salaryMax) && <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>}
-                      {job.saved_at && <span style={{ fontSize: 12, color: C.textMuted }}>Saved {fmtDate(job.saved_at)}</span>}
+                      {job.saved_at && <span style={{ fontSize: 12, color: C.textMuted }}>{t("savedJobs.savedDateLabel").replace("{date}", fmtDate(job.saved_at))}</span>}
                       <MissingSkillsBadges skills={readyEntry?.missing_skills} />
                     </div>
                   </div>
@@ -8799,10 +8799,10 @@ Company: ${item.company}`, 8000);
                     {readyEntry && (isMobile ? (
                       <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
                     ) : appliedId === readyEntry.id ? (
-                      <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
+                      <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
                     ) : (
                       <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
-                        {applyingId === readyEntry.id ? "Applying…" : "Apply"}
+                        {applyingId === readyEntry.id ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
                       </Btn>
                     ))}
                   </div>
@@ -8825,7 +8825,7 @@ Company: ${item.company}`, 8000);
           {queueLoading && visibleQueue.length === 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0" }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>Loading your Smart Apply queue…</div>
+              <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>{t("savedJobs.loadingQueue")}</div>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
