@@ -8356,6 +8356,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 
 // ─── SAVED JOBS ────────────────────────────────────────────
 function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
+  const { t } = useI18n();
   const [offset, setOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const startX = useRef(null);
@@ -8380,15 +8381,15 @@ function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
   };
 
   if (justApplied) {
-    return <div style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, textAlign: "center", minWidth: 120, ...containerStyle }}>✓ Applied</div>;
+    return <div style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, textAlign: "center", minWidth: 120, ...containerStyle }}>{t("savedJobs.appliedConfirm")}</div>;
   }
   const progress = Math.min(1, offset / THRESHOLD);
   return (
     <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: C.green, height: 40, minWidth: 140, userSelect: "none", touchAction: "pan-y", cursor: "pointer", ...containerStyle }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>✓ Applied</div>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>{t("savedJobs.appliedConfirm")}</div>
       <div style={{ position: "absolute", left: offset, top: 0, bottom: 0, width: "100%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, color: C.text, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.12)", transition: swiping ? "none" : "left 0.2s ease" }}>
-        {applying ? "Applying…" : "Swipe to Apply →"}
+        {applying ? t("savedJobs.applyingBtn") : t("savedJobs.swipeToApply")}
       </div>
     </div>
   );
@@ -8401,9 +8402,9 @@ function PackageView({ item, resumes }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: C.purple, letterSpacing: 1, marginBottom: 8 }}>APPLICATION PACKAGE</div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: C.purple, letterSpacing: 1, marginBottom: 8 }}>{t("savedJobs.applicationPackage")}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
-        {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Resume: {selectedResumeName}</div>}
+        {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{t("savedJobs.resumePrefix")}: {selectedResumeName}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Badge color={C.green}>{statusLabel}</Badge>
           {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
@@ -8421,9 +8422,9 @@ function PackageView({ item, resumes }) {
           <Label>{t("savedJobs.coverLetter")}</Label>
           <ContentDisplay content={item.cover_letter} />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <CopyBtn text={item.cover_letter} label="Copy" />
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>Download PDF</Btn>
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>Download DOCX</Btn>
+            <CopyBtn text={item.cover_letter} label={t("savedJobs.copy")} />
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>{t("savedJobs.downloadPdf")}</Btn>
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>{t("savedJobs.downloadDocx")}</Btn>
           </div>
         </div>
       )}
@@ -8432,9 +8433,9 @@ function PackageView({ item, resumes }) {
           <Label>{t("savedJobs.tailoredResume")}</Label>
           <ContentDisplay content={item.tailored_resume} />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <CopyBtn text={item.tailored_resume} label="Copy" />
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>Download PDF</Btn>
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>Download DOCX</Btn>
+            <CopyBtn text={item.tailored_resume} label={t("savedJobs.copy")} />
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>{t("savedJobs.downloadPdf")}</Btn>
+            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>{t("savedJobs.downloadDocx")}</Btn>
           </div>
         </div>
       )}
@@ -8455,13 +8456,13 @@ function PackageView({ item, resumes }) {
         const low = fmt(r.low); const med = fmt(r.median); const high = fmt(r.high);
         return (
           <div>
-            <Label>💰 Salary Insight</Label>
+            <Label>{t("savedJobs.salaryInsightLabel")}</Label>
             <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
               {(low || med || high) && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>MARKET RANGE</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>{t("savedJobs.marketRange")}</div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    {[["Low", low, C.yellow], ["Median", med, C.green], ["High", high, C.blue]].filter(([, v]) => v).map(([label, val, color]) => (
+                    {[[t("savedJobs.salaryLow"), low, C.yellow], [t("savedJobs.salaryMedian"), med, C.green], [t("savedJobs.salaryHigh"), high, C.blue]].filter(([, v]) => v).map(([label, val, color]) => (
                       <div key={label} style={{ flex: 1, background: `${color}12`, border: `1px solid ${color}30`, borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
                         <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
                         <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, marginTop: 2 }}>{label}</div>
@@ -8470,9 +8471,9 @@ function PackageView({ item, resumes }) {
                   </div>
                 </div>
               )}
-              {si.userPositioning && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>YOUR POSITIONING</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.userPositioning}</div></div>}
-              {si.negotiationLeverage && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>NEGOTIATION LEVERAGE</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.negotiationLeverage}</div></div>}
-              {si.benchmarks?.length > 0 && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>BENCHMARKS</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{si.benchmarks.map((b, i) => <Badge key={i} color={C.textMuted}>{b}</Badge>)}</div></div>}
+              {si.userPositioning && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>{t("savedJobs.yourPositioning")}</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.userPositioning}</div></div>}
+              {si.negotiationLeverage && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>{t("savedJobs.negotiationLeverage")}</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{si.negotiationLeverage}</div></div>}
+              {si.benchmarks?.length > 0 && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.benchmarks")}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{si.benchmarks.map((b, i) => <Badge key={i} color={C.textMuted}>{b}</Badge>)}</div></div>}
             </div>
           </div>
         );
@@ -8480,17 +8481,17 @@ function PackageView({ item, resumes }) {
       {item.company_insight && (() => {
         const ci = item.company_insight;
         const trendColor = ci.hiringTrend === "growing" ? C.green : ci.hiringTrend === "shrinking" ? C.red : C.yellow;
-        const trendLabel = ci.hiringTrend === "growing" ? "↑ Growing" : ci.hiringTrend === "shrinking" ? "↓ Shrinking" : "→ Stable";
+        const trendLabel = ci.hiringTrend === "growing" ? t("savedJobs.hiringTrendGrowing") : ci.hiringTrend === "shrinking" ? t("savedJobs.hiringTrendShrinking") : t("savedJobs.hiringTrendStable");
         return (
           <div>
-            <Label>🏢 Company Insight</Label>
+            <Label>{t("savedJobs.companyInsightLabel")}</Label>
             <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-              {ci.hiringTrend && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>HIRING TREND</div><Badge color={trendColor}>{trendLabel}</Badge></div>}
-              {ci.culture && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>CULTURE</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.culture}</div></div>}
-              {ci.recentNews && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>RECENT NEWS</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.recentNews}</div></div>}
+              {ci.hiringTrend && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>{t("savedJobs.hiringTrendHeader")}</div><Badge color={trendColor}>{trendLabel}</Badge></div>}
+              {ci.culture && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>{t("savedJobs.cultureHeader")}</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.culture}</div></div>}
+              {ci.recentNews && <div><div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 4, letterSpacing: 0.5 }}>{t("savedJobs.recentNewsHeader")}</div><div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ci.recentNews}</div></div>}
               {ci.greenFlags?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>GREEN FLAGS</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.greenFlagsHeader")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {ci.greenFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
                   </div>
@@ -8498,7 +8499,7 @@ function PackageView({ item, resumes }) {
               )}
               {ci.redFlags?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>RED FLAGS</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.redFlagsHeader")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {ci.redFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
                   </div>
@@ -8506,7 +8507,7 @@ function PackageView({ item, resumes }) {
               )}
               {ci.talkingPoints?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>INTERVIEW TALKING POINTS</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.interviewTalkingPoints")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {ci.talkingPoints.map((p, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span></div>)}
                   </div>
@@ -8555,6 +8556,7 @@ function extractSkillName(raw) {
 }
 
 function MissingSkillsBadges({ skills }) {
+  const { t } = useI18n();
   if (!skills?.length) return null;
   const cleaned = skills.map(extractSkillName).filter(Boolean);
   const show = cleaned.slice(0, 3);
@@ -8562,7 +8564,7 @@ function MissingSkillsBadges({ skills }) {
   const text = show.join(" • ") + (extra > 0 ? ` • +${extra}` : "");
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: `${C.red}12`, border: `1px solid ${C.red}25`, borderRadius: 6, padding: "3px 10px", fontSize: 11, color: C.red, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
-      <span style={{ fontWeight: 700, flexShrink: 0 }}>Missing Skills:</span>
+      <span style={{ fontWeight: 700, flexShrink: 0 }}>{t("savedJobs.missingSkillsPrefix")}</span>
       <span style={{ fontWeight: 500 }}>{text}</span>
     </span>
   );
@@ -8602,15 +8604,15 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
               <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
             )}
             {!justApplied && (
-              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>Remove</Btn>
+              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>{t("savedJobs.removeBtn")}</Btn>
             )}
             {isMobile ? (
               <SwipeToApply onApply={() => onApply(item)} applying={applying} justApplied={justApplied} />
             ) : justApplied ? (
-              <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>✓ Applied</Btn>
+              <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
             ) : (
               <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>
-                {applying ? "Applying…" : "Apply"}
+                {applying ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
               </Btn>
             )}
           </div>
@@ -8622,7 +8624,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
           <div style={{ fontSize: 13, color: C.red, marginBottom: 8 }}>{t("savedJobs.generationFailed")}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
-            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>Remove</Btn>
+            <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>{t("savedJobs.removeBtn")}</Btn>
           </div>
         </div>
       )}
