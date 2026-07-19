@@ -7475,7 +7475,7 @@ Return ONLY this JSON (no markdown):
               <Card key={q.id} style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{tCat(q.category)}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>{t("interview.starBadge")}</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>✓ Practiced ({savedFeedback[q.id].feedback?.score}/10)</Badge>}</div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}><Badge color={C.purple}>{tCat(q.category)}</Badge><Badge color={diffColor[q.difficulty]}>{q.difficulty}</Badge>{q.star && <Badge color={C.blue}>{t("interview.starBadge")}</Badge>}{savedFeedback[q.id] && <Badge color={C.green}>{t("interview.practicedBadge").replace("{score}", savedFeedback[q.id].feedback?.score)}</Badge>}</div>
                     <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6, fontWeight: 500 }}>Q{i+1}. {q.question}</div>
                   </div>
                   <span style={{ color: C.textMuted, fontSize: 22, marginLeft: 12, pointerEvents: "none" }}>›</span>
@@ -7515,10 +7515,10 @@ Return ONLY this JSON (no markdown):
               {/* Performance + Progress — clearly separated */}
               <div style={{ display: "flex", flexDirection: "column", gap: 0, background: C.bgSoft, borderRadius: 12, padding: "4px 0", marginBottom: 20, overflow: "hidden" }}>
                 {[
-                  ["Interview Score", <span style={{ fontSize: 18, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red }}>{mockSummary.avgScore} / 10</span>],
-                  ["Questions Answered", <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.answered} / {mockSummary.total}</span>],
-                  ["Questions Skipped", <span style={{ fontSize: 15, fontWeight: 700, color: mockSummary.skipped > 0 ? C.yellow : C.text }}>{mockSummary.skipped}</span>],
-                  ["Completion", <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</span>],
+                  [t("interview.summaryInterviewScore"), <span style={{ fontSize: 18, fontWeight: 800, color: mockSummary.avgScore >= 8 ? C.green : mockSummary.avgScore >= 6 ? C.yellow : C.red }}>{mockSummary.avgScore} / 10</span>],
+                  [t("interview.summaryAnswered"), <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.answered} / {mockSummary.total}</span>],
+                  [t("interview.summarySkipped"), <span style={{ fontSize: 15, fontWeight: 700, color: mockSummary.skipped > 0 ? C.yellow : C.text }}>{mockSummary.skipped}</span>],
+                  [t("interview.summaryCompletion"), <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{mockSummary.total ? Math.round((mockSummary.answered / mockSummary.total) * 100) : 0}%</span>],
                 ].map(([label, value], i, arr) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none" }}>
                     <span style={{ fontSize: 14, color: C.textMid }}>{label}</span>
@@ -7530,9 +7530,9 @@ Return ONLY this JSON (no markdown):
               {/* AI Performance Summary */}
               {mockSummary.aiSummary ? (
                 <div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 12, padding: 18, marginBottom: 24 }}>
-                  <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 14, letterSpacing: "0.05em" }}>AI PERFORMANCE SUMMARY</div>
+                  <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 14, letterSpacing: "0.05em" }}>{t("interview.aiPerfSummaryTitle")}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-                    {[["Technical", mockSummary.aiSummary.technicalPerformance], ["Behavioral", mockSummary.aiSummary.behavioralPerformance], ["Communication", mockSummary.aiSummary.communication], ["Confidence", mockSummary.aiSummary.confidence]].map(([label, val]) => {
+                    {[[t("interview.perfTechnical"), mockSummary.aiSummary.technicalPerformance], [t("interview.perfBehavioral"), mockSummary.aiSummary.behavioralPerformance], [t("interview.perfCommunication"), mockSummary.aiSummary.communication], [t("interview.perfConfidence"), mockSummary.aiSummary.confidence]].map(([label, val]) => {
                       const col = val === "Excellent" || val === "Strong" ? C.green : val === "Good" ? C.blue : val === "Fair" ? C.yellow : C.red;
                       return (
                         <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
@@ -7543,14 +7543,14 @@ Return ONLY this JSON (no markdown):
                     })}
                   </div>
                   <div style={{ fontSize: 13, color: C.text, marginBottom: 8, lineHeight: 1.5 }}>
-                    <span style={{ color: C.green, fontWeight: 700 }}>Biggest Strength — </span>{mockSummary.aiSummary.biggestStrength}
+                    <span style={{ color: C.green, fontWeight: 700 }}>{t("interview.biggestStrengthLabel")}</span>{mockSummary.aiSummary.biggestStrength}
                   </div>
                   <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                    <span style={{ color: C.yellow, fontWeight: 700 }}>Key Improvement — </span>{mockSummary.aiSummary.biggestImprovement}
+                    <span style={{ color: C.yellow, fontWeight: 700 }}>{t("interview.keyImprovementLabel")}</span>{mockSummary.aiSummary.biggestImprovement}
                   </div>
                 </div>
               ) : mockSummary.answered > 0 && (
-                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 24, color: C.textMuted, fontSize: 13 }}>Generating AI performance summary…</div>
+                <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 24, color: C.textMuted, fontSize: 13 }}>{t("interview.generatingAiSummary")}</div>
               )}
 
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -7586,7 +7586,7 @@ Return ONLY this JSON (no markdown):
                             <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", background: `${scoreColor}10`, border: `1.5px solid ${scoreColor}30`, borderRadius: 10 }}>
                               <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}<span style={{ fontSize: 16, color: C.textMuted, fontWeight: 500 }}>/10</span></span>
                               <div>
-                                <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 2 }}>AI SCORE</div>
+                                <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 2 }}>{t("interview.aiScoreLabel")}</div>
                                 {ans.feedback.scoreExplanation && <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{ans.feedback.scoreExplanation}</div>}
                               </div>
                             </div>
@@ -7606,7 +7606,7 @@ Return ONLY this JSON (no markdown):
                           {/* AI Recommended Answer */}
                           {ans.feedback?.revisedAnswer && (
                             <div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 10, padding: "12px 14px" }}>
-                              <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 6 }}>AI RECOMMENDED ANSWER</div>
+                              <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 6 }}>{t("interview.aiRecommendedLabel")}</div>
                               <div style={{ fontSize: 13, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{ans.feedback.revisedAnswer}</div>
                               <div style={{ marginTop: 8 }}><CopyBtn text={ans.feedback.revisedAnswer} label="Copy" /></div>
                             </div>
@@ -7615,7 +7615,7 @@ Return ONLY this JSON (no markdown):
                       ) : (
                         <div>
                           <div style={{ fontSize: 13, color: C.textMuted, fontStyle: "italic", marginBottom: 10 }}>{t("interview.skippedMsg")}</div>
-                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>STRONG ANSWER</div>
+                          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, marginBottom: 4 }}>{t("interview.strongAnswerLabel")}</div>
                           <div style={{ background: C.bgSoft, borderRadius: 8, padding: "12px 14px", fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{q.strongAnswer}</div>
                         </div>
                       )}
