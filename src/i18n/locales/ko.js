@@ -313,6 +313,9 @@
     statusGhosted: "응답 없음",
     statusUnknown: "알 수 없음",
     all: "전체",
+    deleteFailed: "삭제 실패. 다시 시도해 주세요.",
+    saveFailed: "저장 실패. 다시 시도해 주세요.",
+    saving: "저장 중…",
   },
   salary: {
     heading: "연봉 인사이트",

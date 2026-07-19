@@ -7815,7 +7815,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
             <div style={{ gridColumn: "1 / -1" }}><Input label={t("tracker.jobUrlLabel")} placeholder={t("tracker.jobUrlPlaceholder")} value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
           <div style={{ marginBottom: 16 }}><Textarea label={t("tracker.notesLabel")} placeholder={t("tracker.notesPlaceholder")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
-          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save} disabled={saving}>{saving ? "Saving…" : t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm} disabled={saving}>{t("tracker.cancel")}</Btn></div>
+          <div style={{ display: "flex", gap: 10 }}><Btn onClick={save} disabled={saving}>{saving ? t("tracker.saving") : t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm} disabled={saving}>{t("tracker.cancel")}</Btn></div>
         </Card>
       )}
       {filtered.length === 0 && !showForm && <Card style={{ textAlign: "center", padding: 56 }}><div style={{ fontSize: 40, marginBottom: 14 }}>📋</div><div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{applications.length === 0 ? t("tracker.noApplicationsYet") : t("tracker.noMatchesFound")}</div><div style={{ fontSize: 14, color: C.textMuted }}>{applications.length === 0 ? t("tracker.addManuallyHint") : t("tracker.tryDifferentSearch")}</div></Card>}

@@ -313,6 +313,9 @@
     statusGhosted: "音信不通",
     statusUnknown: "不明",
     all: "すべて",
+    deleteFailed: "削除に失敗しました。もう一度お試しください。",
+    saveFailed: "保存に失敗しました。もう一度お試しください。",
+    saving: "保存中…",
   },
   salary: {
     heading: "給与インサイト",

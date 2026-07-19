@@ -313,6 +313,9 @@
     statusGhosted: "Yanıt Yok",
     statusUnknown: "Bilinmiyor",
     all: "Tümü",
+    deleteFailed: "Silme başarısız. Lütfen tekrar deneyin.",
+    saveFailed: "Kaydetme başarısız. Lütfen tekrar deneyin.",
+    saving: "Kaydediliyor…",
   },
   salary: {
     heading: "Maaş Bilgileri",

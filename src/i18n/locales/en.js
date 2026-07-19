@@ -318,6 +318,8 @@ export default {
     statusUnknown: "Unknown",
     all: "All",
     deleteFailed: "Delete failed. Please try again.",
+    saveFailed: "Save failed. Please try again.",
+    saving: "Saving…",
   },
   salary: {
     heading: "Salary Insights",

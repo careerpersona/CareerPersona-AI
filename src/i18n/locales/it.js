@@ -313,6 +313,9 @@
     statusGhosted: "Nessuna Risposta",
     statusUnknown: "Sconosciuto",
     all: "Tutti",
+    deleteFailed: "Eliminazione fallita. Riprova.",
+    saveFailed: "Salvataggio fallito. Riprova.",
+    saving: "Salvataggio…",
   },
   salary: {
     heading: "Approfondimenti Salariali",

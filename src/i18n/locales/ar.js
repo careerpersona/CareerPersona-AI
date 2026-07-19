@@ -313,6 +313,9 @@
     statusGhosted: "لا رد",
     statusUnknown: "غير معروف",
     all: "الكل",
+    deleteFailed: "فشل الحذف. يرجى المحاولة مرة أخرى.",
+    saveFailed: "فشل الحفظ. يرجى المحاولة مرة أخرى.",
+    saving: "جارٍ الحفظ…",
   },
   salary: {
     heading: "رؤى الراتب",

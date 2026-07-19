@@ -313,6 +313,9 @@
     statusGhosted: "Geen Reactie",
     statusUnknown: "Onbekend",
     all: "Alle",
+    deleteFailed: "Verwijderen mislukt. Probeer het opnieuw.",
+    saveFailed: "Opslaan mislukt. Probeer het opnieuw.",
+    saving: "Opslaan…",
   },
   salary: {
     heading: "Salarisinzichten",

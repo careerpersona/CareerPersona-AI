@@ -313,6 +313,9 @@
     statusGhosted: "杳无回音",
     statusUnknown: "未知",
     all: "全部",
+    deleteFailed: "删除失败。请再次尝试。",
+    saveFailed: "保存失败。请再次尝试。",
+    saving: "保存中…",
   },
   salary: {
     heading: "薪资洞察",

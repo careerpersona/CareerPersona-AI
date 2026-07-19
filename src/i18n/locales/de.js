@@ -313,6 +313,9 @@
     statusGhosted: "Keine Rückmeldung",
     statusUnknown: "Unbekannt",
     all: "Alle",
+    deleteFailed: "Löschen fehlgeschlagen. Bitte erneut versuchen.",
+    saveFailed: "Speichern fehlgeschlagen. Bitte erneut versuchen.",
+    saving: "Wird gespeichert…",
   },
   salary: {
     heading: "Gehaltsanalyse",

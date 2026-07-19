@@ -313,6 +313,9 @@
     statusGhosted: "Sans Réponse",
     statusUnknown: "Inconnu",
     all: "Tous",
+    deleteFailed: "Suppression échouée. Veuillez réessayer.",
+    saveFailed: "Enregistrement échoué. Veuillez réessayer.",
+    saving: "Enregistrement…",
   },
   salary: {
     heading: "Analyse Salariale",

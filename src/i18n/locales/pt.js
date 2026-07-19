@@ -313,6 +313,9 @@
     statusGhosted: "Sem Resposta",
     statusUnknown: "Desconhecido",
     all: "Todos",
+    deleteFailed: "Eliminação falhou. Por favor, tente novamente.",
+    saveFailed: "Guardar falhou. Por favor, tente novamente.",
+    saving: "A guardar…",
   },
   salary: {
     heading: "Informações Salariais",
