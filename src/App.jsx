@@ -6861,7 +6861,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }} className="three-col">
           <Input label={t("jobSearch.jobTitleLabel")} placeholder={t("jobSearch.jobTitlePlaceholder")} value={filters.title} onChange={e => setFilters(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
-          <Input label="Keyword / Skills" placeholder="e.g. React, AWS, CPA, HVAC…" value={filters.keywords || ""} onChange={e => setFilters(f => ({ ...f, keywords: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
+          <Input label={t("jobSearch.keywordsLabel")} placeholder={t("jobSearch.keywordsPlaceholder")} value={filters.keywords || ""} onChange={e => setFilters(f => ({ ...f, keywords: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
           <Select label={t("jobSearch.countryLabel")} value={filters.country} onChange={e => setFilters(f => ({ ...f, country: e.target.value }))}>
             {JS_COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{t(`jobSearch.${JS_COUNTRY_LABEL_KEY[c]}`)}</option>)}
           </Select>
@@ -6877,7 +6877,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
-          {autoApplyingCount > 0 && <span style={{ color: C.purple, fontSize: 13 }}>✨ AI is preparing {autoApplyingCount} application{autoApplyingCount !== 1 ? "s" : ""}…</span>}
+          {autoApplyingCount > 0 && <span style={{ color: C.purple, fontSize: 13 }}>{autoApplyingCount === 1 ? t("jobSearch.aiPreparingMsgSingular") : t("jobSearch.aiPreparingMsgPlural").replace("{n}", autoApplyingCount)}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? t("jobSearch.resumeAdded") : t("jobSearch.addResumeForMatch")}</Btn>
             <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? t("jobSearch.searching") : t("jobSearch.searchJobs")}</Btn>
@@ -6927,16 +6927,16 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
           {/* Saved resume picker — select from user_resumes library */}
           {(resumes || []).length > 0 && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 8 }}>Or select a saved resume:</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 8 }}>{t("jobSearch.orSelectSavedResume")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {(resumes || []).map(r => (
                   <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: selectedResumeId === r.id ? C.purpleLight : C.bgSoft, border: `1px solid ${selectedResumeId === r.id ? C.purple : C.border}`, borderRadius: 9, padding: "8px 12px", flexWrap: "wrap" }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>Default</span>}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("jobSearch.defaultBadge")}</span>}</div>
                       <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}</div>
                     </div>
                     <Btn variant={selectedResumeId === r.id ? "secondary" : "ghost"} style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => { setResume(r.content || ""); setResumeFileName(r.name); setSelectedResumeId(r.id); }}>
-                      {selectedResumeId === r.id ? "Selected ✓" : "Select"}
+                      {selectedResumeId === r.id ? t("jobSearch.selectedBtn") : t("jobSearch.selectBtn")}
                     </Btn>
                   </div>
                 ))}
@@ -6954,7 +6954,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
       {/* Recent search chips */}
       {recentSearches.length > 0 && (
         <div style={{ marginBottom: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>Recent:</span>
+          <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{t("jobSearch.recentLabel")}</span>
           {recentSearches.map(r => (
             <span key={r.ts} onClick={() => setFilters(f => ({ ...f, title: r.title, city: r.city || f.city }))} style={{ background: C.bgSoft, color: C.textMid, borderRadius: 20, padding: "3px 10px", fontSize: 12, cursor: "pointer", border: `1px solid ${C.border}` }}>{r.title}</span>
           ))}
@@ -6975,18 +6975,18 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                 {" · "}
                 <span style={{ color: C.purple }}>JSearch: {sourceCounts.rapidapi}</span>
               </span>}
-              {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginLeft: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} New</span> : null; })()}
+              {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginLeft: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} {t("jobSearch.newBadge")}</span> : null; })()}
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
-                <option value="relevance">Relevance</option>
-                <option value="match">Match ↓</option>
-                <option value="date">Date ↓</option>
+                <option value="relevance">{t("jobSearch.sortRelevance")}</option>
+                <option value="match">{t("jobSearch.sortMatch")}</option>
+                <option value="date">{t("jobSearch.sortDate")}</option>
               </select>
-              {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? "All" : `Dupes (${dupeSet.size})`}</Btn>}
+              {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? t("jobSearch.showAll") : t("jobSearch.dupesFilter").replace("{n}", dupeSet.size)}</Btn>}
               {analyzeStatus && (
                 <span style={{ fontSize: 12, color: analyzeStatus.state === "complete" ? C.green : C.textMuted, fontWeight: 500, display: "flex", alignItems: "center", gap: 4, userSelect: "none" }}>
-                  {analyzeStatus.state === "scoring" ? `🤖 AI Scoring ${analyzeStatus.done}/${analyzeStatus.total}` : `✅ AI Analysis Complete`}
+                  {analyzeStatus.state === "scoring" ? t("jobSearch.aiScoringStatus").replace("{done}", analyzeStatus.done).replace("{total}", analyzeStatus.total) : t("jobSearch.aiAnalysisComplete")}
                 </span>
               )}
             </div>
@@ -7006,8 +7006,8 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       {job.remote && <span style={{ background: `${C.green}15`, color: C.green, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.remoteBadge")}</span>}
                       <span style={{ background: `${C.textMuted}12`, color: C.textMuted, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.employmentType}</span>
                       {job.experienceLevel && <span style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.experienceLevel}</span>}
-                      {isNewJob(job) && <span style={{ background: C.green, color: "#fff", borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>New</span>}
-                      {dupeSet.has(job.id) && <span style={{ background: `${C.yellow}25`, color: C.yellow, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>Dup</span>}
+                      {isNewJob(job) && <span style={{ background: C.green, color: "#fff", borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.newBadge")}</span>}
+                      {dupeSet.has(job.id) && <span style={{ background: `${C.yellow}25`, color: C.yellow, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.dupBadge")}</span>}
                       <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
                     </div>
                     {/* Title */}
@@ -7038,11 +7038,11 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                     {/* Row 2: Smart Apply — full width, state machine */}
                     <div style={{ marginBottom: (mr && expandedAnalysisId === job.id) ? 8 : 0 }}>
                       {smartApplying === job.id ? (
-                        <Btn variant="secondary" loading style={{ width: "100%", fontSize: 11, padding: "8px 4px" }}>🟡 Preparing AI Package…</Btn>
+                        <Btn variant="secondary" loading style={{ width: "100%", fontSize: 11, padding: "8px 4px" }}>{t("jobSearch.preparingAiPackage")}</Btn>
                       ) : isSmartApplied(job) ? (
-                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>➡️ Continue in Saved Jobs</Btn>
+                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>{t("jobSearch.continueInSaved")}</Btn>
                       ) : (
-                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>✨ Smart Apply</Btn>
+                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>{t("jobSearch.smartApply")}</Btn>
                       )}
                     </div>
                     {/* AI Analysis panel — toggle-controlled by AI Match button */}
@@ -7083,8 +7083,8 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                         {job.remote && <Badge color={C.green}>{t("jobSearch.remoteBadge")}</Badge>}
                         <Badge color={C.textMuted}>{job.employmentType}</Badge>
                         {job.experienceLevel && <Badge color={C.purple}>{job.experienceLevel}</Badge>}
-                        {isNewJob(job) && <Badge color={C.green}>New</Badge>}
-                        {dupeSet.has(job.id) && <Badge color={C.yellow}>Dup</Badge>}
+                        {isNewJob(job) && <Badge color={C.green}>{t("jobSearch.newBadge")}</Badge>}
+                        {dupeSet.has(job.id) && <Badge color={C.yellow}>{t("jobSearch.dupBadge")}</Badge>}
                         <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
@@ -7101,11 +7101,11 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                         ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
                         : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
                       {smartApplying === job.id ? (
-                        <Btn variant="secondary" loading style={{ fontSize: 13, padding: "9px 14px" }}>🟡 Preparing AI Package…</Btn>
+                        <Btn variant="secondary" loading style={{ fontSize: 13, padding: "9px 14px" }}>{t("jobSearch.preparingAiPackage")}</Btn>
                       ) : isSmartApplied(job) ? (
-                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>➡️ Continue in Saved Jobs</Btn>
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>{t("jobSearch.continueInSaved")}</Btn>
                       ) : (
-                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)}>✨ Smart Apply</Btn>
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)}>{t("jobSearch.smartApply")}</Btn>
                       )}
                     </div>
                   </div>
