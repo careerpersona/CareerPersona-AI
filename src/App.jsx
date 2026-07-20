@@ -2177,6 +2177,22 @@ function tPlanCat(id, t, fallback) {
   return m[id] ? t(m[id]) : (fallback || id);
 }
 
+function tStatusVal(val, t) {
+  if (!val) return val;
+  const m = {
+    "Excellent": "common.statusExcellent", "Strong": "common.statusStrong", "Good": "common.statusGood",
+    "Fair": "common.statusFair", "Limited": "common.statusLimited", "Consistent": "common.statusConsistent",
+    "Moderate": "common.statusModerate", "Developing": "common.statusDeveloping", "Focused": "common.statusFocused",
+    "Aligned": "common.statusAligned", "Broad": "common.statusBroad", "Scattered": "common.statusScattered",
+    "Needs Focus": "common.statusNeedsFocus", "Improving": "common.statusImproving", "Stable": "common.statusStable",
+    "Needs Review": "common.statusNeedsReview", "Building": "common.statusBuilding",
+    "Above Average": "common.statusAboveAverage", "Average": "common.statusAverage", "Below Average": "common.statusBelowAverage",
+    "Exploding": "common.statusExploding", "High": "common.statusHigh", "Growing": "common.statusGrowing", "Low": "common.statusLow",
+    "Very Good": "common.statusVeryGood", "Needs Improvement": "common.statusNeedsImprovement", "Poor": "common.statusPoor",
+  };
+  return m[val] ? t(m[val]) : val;
+}
+
 // ─── PLAN PAYLOAD BUILDER (shared by DashboardPage + PlanPage) ───────────────
 async function buildPlanPayload(ctx) {
   const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","certifications":"<1 sentence recommending a specific certification relevant to the user's target role and industry — be concrete (e.g. AWS Solutions Architect, PMP, Security+, ISTQB, Google Cloud, Azure, Scrum, CPA) and suggest how to take the first step today>"}\nUser data: ${ctx}`, 900);
@@ -2914,7 +2930,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
                   {highPriorityJobs > 0 && <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{highPriorityJobs === 1 ? t("dashboard.highPriorityMatchSingular") : t("dashboard.highPriorityMatchPlural").replace("{n}", highPriorityJobs)}</div>}
                   {newOpportunities > 0 && <div style={{ fontSize: 12, color: C.blue }}>{t("dashboard.newThisWeek").replace("{n}", newOpportunities)}</div>}
-                  {salaryData?.results?.demandLevel && <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.marketDemandLabel")} <strong>{salaryData.results.demandLevel}</strong></div>}
+                  {salaryData?.results?.demandLevel && <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.marketDemandLabel")} <strong>{tStatusVal(salaryData.results.demandLevel, t)}</strong></div>}
                   {!avgMatchScore && <div style={{ fontSize: 12, color: C.textMuted }}>{saved.length === 1 ? t("dashboard.savedJobSingular") : t("dashboard.savedJobPlural").replace("{n}", saved.length)}</div>}
                 </div>
               </div>
@@ -2999,7 +3015,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 return (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: C.textMid }}>{label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color }}>{status || "—"}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color }}>{tStatusVal(status, t) || "—"}</span>
                   </div>
                 );
               })}
@@ -3036,7 +3052,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {[[t("dashboard.interviewTechnical"), aiS.technicalPerformance], [t("dashboard.interviewBehavioral"), aiS.behavioralPerformance], [t("dashboard.interviewCommunication"), aiS.communication], [t("dashboard.interviewConfidence"), aiS.confidence]].map(([label, val]) => {
                     const col = val === "Excellent" || val === "Strong" ? C.green : val === "Good" ? C.blue : val === "Fair" ? C.yellow : C.red;
-                    return <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: C.textMid }}>{label}</span><span style={{ fontWeight: 700, color: col }}>{val}</span></div>;
+                    return <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: C.textMid }}>{label}</span><span style={{ fontWeight: 700, color: col }}>{tStatusVal(val, t)}</span></div>;
                   })}
                 </div>
               ) : null; })()}
@@ -3062,7 +3078,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 <span>{t("dashboard.salaryLow")} <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.low || 0).toLocaleString()}</strong></span>
                 <span>{t("dashboard.salaryHigh")} <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.high || 0).toLocaleString()}</strong></span>
               </div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.demandLabel")} <strong style={{ color: C.text }}>{salaryData.results.demandLevel || "—"}</strong></div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.demandLabel")} <strong style={{ color: C.text }}>{tStatusVal(salaryData.results.demandLevel, t) || "—"}</strong></div>
               {salaryData.results.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{salaryData.results.marketOutlook.slice(0, 110)}…</div>}
             </div>
           ) : (
@@ -4292,7 +4308,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
                 const status = a?.[key]?.status;
                 return (
                   <div key={key} style={{ background: statusBg(status), borderRadius: 8, padding: "10px 8px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: statusColor(status), marginBottom: 2 }}>{status || "—"}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: statusColor(status), marginBottom: 2 }}>{tStatusVal(status, t) || "—"}</div>
                     <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.3 }}>{title}</div>
                   </div>
                 );
@@ -5988,7 +6004,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                           return (
                             <div key={k} style={{ background: C.bgSoft, borderRadius: 6, padding: "3px 7px", textAlign: "center", border: `1px solid ${C.border}` }}>
                               <div style={{ fontSize: 13, fontWeight: 800, color: hc }}>{v}</div>
-                              <div style={{ fontSize: 9, color: hc }}>{k}</div>
+                              <div style={{ fontSize: 9, color: hc }}>{tStatusVal(k, t)}</div>
                             </div>
                           );
                         })}
@@ -6119,7 +6135,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                       <div style={{ fontSize: 11, color: C.purple, marginTop: 2 }}>{t("resume.candidatePercentile")}</div>
                     </div>
                     <div style={{ flex: 1, background: `${rankColor}12`, border: `1.5px solid ${rankColor}30`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: rankColor }}>{overallRanking}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: rankColor }}>{tStatusVal(overallRanking, t)}</div>
                       <div style={{ fontSize: 11, color: rankColor, marginTop: 2 }}>{t("resume.overallRanking")}</div>
                     </div>
                   </div>
@@ -7546,7 +7562,7 @@ Return ONLY this JSON (no markdown):
                       return (
                         <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
                           <span style={{ color: C.textMid }}>{label}</span>
-                          <span style={{ fontWeight: 700, color: col }}>{val}</span>
+                          <span style={{ fontWeight: 700, color: col }}>{tStatusVal(val, t)}</span>
                         </div>
                       );
                     })}
@@ -7977,7 +7993,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[[t("salary.totalCompMedian"), fmt(results.totalComp?.median), C.purple], [t("salary.equity"), txt(results.equityRange), C.yellow], [t("salary.bonus"), txt(results.bonusRange), C.green], [t("salary.marketDemand"), txt(results.demandLevel), C.blue]].map(([l, v, c]) => (
+              {[[t("salary.totalCompMedian"), fmt(results.totalComp?.median), C.purple], [t("salary.equity"), txt(results.equityRange), C.yellow], [t("salary.bonus"), txt(results.bonusRange), C.green], [t("salary.marketDemand"), tStatusVal(results.demandLevel, t) || txt(results.demandLevel), C.blue]].map(([l, v, c]) => (
                 <div key={l} style={{ background: `${c}12`, border: `1px solid ${c}25`, borderRadius: 10, padding: "10px 16px" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{l}</div>
@@ -9445,7 +9461,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{s.skill}</div>
                       <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, color: s.demand === "Exploding" ? C.red : s.demand === "High" ? C.orange : C.yellow }}>
-                        {s.demand === "Exploding" ? "🔥" : s.demand === "High" ? "📈" : "↗"} {s.demand}
+                        {s.demand === "Exploding" ? "🔥" : s.demand === "High" ? "📈" : "↗"} {tStatusVal(s.demand, t)}
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
@@ -9571,7 +9587,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                   : t("opportunity.marketIntelSubtitleBase").replace("{role}", salaryData.results.jobTitle || profile?.preferred_job_title || "your role")}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                {[[t("opportunity.demandLabel"), salaryData.results.demandLevel, salaryData.results.demandLevel === "High" ? C.green : C.yellow], [t("opportunity.trendLabel"), salaryData.results.trend, salaryData.results.trendDirection === "up" ? C.green : C.textMuted]].map(([label, val, color]) => val ? (
+                {[[t("opportunity.demandLabel"), tStatusVal(salaryData.results.demandLevel, t), salaryData.results.demandLevel === "High" ? C.green : C.yellow], [t("opportunity.trendLabel"), salaryData.results.trend, salaryData.results.trendDirection === "up" ? C.green : C.textMuted]].map(([label, val, color]) => val ? (
                   <div key={label} style={{ background: C.bgSoft, borderRadius: 9, padding: "8px 14px" }}>
                     <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{label}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
