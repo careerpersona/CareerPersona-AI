@@ -1272,6 +1272,10 @@ export default {
     goToNetworking: "Go to Networking →",
     goToCertifications: "Go to Certification →",
     genError: "Generation failed. Please try again.",
+    catPriorities: "Today's Priorities",
+    catApplications: "Recommended Applications",
+    catResume: "Resume Improvements",
+    catInterview: "Interview Practice",
   },
   progress: {
     backToDashboard: "← Back to Dashboard",

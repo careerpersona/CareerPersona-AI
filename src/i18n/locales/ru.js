@@ -1268,6 +1268,10 @@
     goToNetworking: "Перейти к Нетворкингу →",
     goToCertifications: "Перейти к Сертификации →",
     genError: "Генерация не удалась. Пожалуйста, попробуйте снова.",
+    catPriorities: "Приоритеты на сегодня",
+    catApplications: "Рекомендуемые заявки",
+    catResume: "Улучшение резюме",
+    catInterview: "Практика собеседований",
   },
   progress: {
     backToDashboard: "← Вернуться на Дашборд",

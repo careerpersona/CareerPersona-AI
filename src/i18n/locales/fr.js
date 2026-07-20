@@ -1268,6 +1268,10 @@
     goToNetworking: "Aller au Réseautage →",
     goToCertifications: "Aller aux Certifications →",
     genError: "Échec de la génération. Veuillez réessayer.",
+    catPriorities: "Priorités du Jour",
+    catApplications: "Candidatures Recommandées",
+    catResume: "Améliorations du CV",
+    catInterview: "Entraînement aux Entretiens",
   },
   progress: {
     backToDashboard: "← Retour au Tableau de Bord",

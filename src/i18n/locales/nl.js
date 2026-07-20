@@ -1268,6 +1268,10 @@
     goToNetworking: "Ga naar Netwerken →",
     goToCertifications: "Ga naar Certificeringen →",
     genError: "Genereren mislukt. Probeer het opnieuw.",
+    catPriorities: "Prioriteiten van Vandaag",
+    catApplications: "Aanbevolen Sollicitaties",
+    catResume: "CV-verbeteringen",
+    catInterview: "Sollicitatiegesprek Oefenen",
   },
   progress: {
     backToDashboard: "← Terug naar Dashboard",

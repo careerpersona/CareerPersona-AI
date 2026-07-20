@@ -1268,6 +1268,10 @@
     goToNetworking: "الذهاب إلى التواصل المهني →",
     goToCertifications: "الذهاب إلى الشهادات →",
     genError: "فشل الإنشاء. يرجى المحاولة مرة أخرى.",
+    catPriorities: "أولويات اليوم",
+    catApplications: "الطلبات الموصى بها",
+    catResume: "تحسينات السيرة الذاتية",
+    catInterview: "ممارسة المقابلات",
   },
   progress: {
     backToDashboard: "← العودة إلى لوحة التحكم",

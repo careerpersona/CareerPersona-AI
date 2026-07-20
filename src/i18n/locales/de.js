@@ -1268,6 +1268,10 @@
     goToNetworking: "Zum Netzwerk →",
     goToCertifications: "Zu Zertifizierungen →",
     genError: "Generierung fehlgeschlagen. Bitte versuche es erneut.",
+    catPriorities: "Heutige Prioritäten",
+    catApplications: "Empfohlene Bewerbungen",
+    catResume: "Lebenslauf-Verbesserungen",
+    catInterview: "Interview-Übungen",
   },
   progress: {
     backToDashboard: "← Zurück zum Dashboard",

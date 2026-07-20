@@ -1268,6 +1268,10 @@
     goToNetworking: "네트워킹으로 이동 →",
     goToCertifications: "자격증으로 이동 →",
     genError: "생성 실패. 다시 시도해 주세요.",
+    catPriorities: "오늘의 우선순위",
+    catApplications: "추천 지원",
+    catResume: "이력서 개선",
+    catInterview: "면접 연습",
   },
   progress: {
     backToDashboard: "← 대시보드로 돌아가기",

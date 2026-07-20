@@ -1268,6 +1268,10 @@
     goToNetworking: "नेटवर्किंग पर जाएं →",
     goToCertifications: "सर्टिफिकेशन पर जाएं →",
     genError: "उत्पन्न करने में विफल। कृपया पुनः प्रयास करें।",
+    catPriorities: "आज की प्राथमिकताएं",
+    catApplications: "अनुशंसित आवेदन",
+    catResume: "रेज़्यूमे सुधार",
+    catInterview: "साक्षात्कार अभ्यास",
   },
   progress: {
     backToDashboard: "← डैशबोर्ड पर वापस जाएं",

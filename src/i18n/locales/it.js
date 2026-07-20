@@ -1268,6 +1268,10 @@
     goToNetworking: "Vai al Networking →",
     goToCertifications: "Vai alle Certificazioni →",
     genError: "Generazione fallita. Riprova.",
+    catPriorities: "Priorità di Oggi",
+    catApplications: "Candidature Consigliate",
+    catResume: "Miglioramenti al CV",
+    catInterview: "Pratica per Colloqui",
   },
   progress: {
     backToDashboard: "← Torna alla Dashboard",

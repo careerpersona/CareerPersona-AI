@@ -1268,6 +1268,10 @@
     goToNetworking: "前往人脉拓展 →",
     goToCertifications: "前往认证 →",
     genError: "生成失败。请再试一次。",
+    catPriorities: "今日优先事项",
+    catApplications: "推荐申请",
+    catResume: "简历改进",
+    catInterview: "面试练习",
   },
   progress: {
     backToDashboard: "← 返回仪表板",

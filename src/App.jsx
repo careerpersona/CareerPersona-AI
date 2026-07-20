@@ -2172,6 +2172,11 @@ async function buildBriefingPayload(ctx) {
   };
 }
 
+function tPlanCat(id, t, fallback) {
+  const m = { priorities: "plan.catPriorities", applications: "plan.catApplications", resume: "plan.catResume", interview: "plan.catInterview" };
+  return m[id] ? t(m[id]) : (fallback || id);
+}
+
 // ─── PLAN PAYLOAD BUILDER (shared by DashboardPage + PlanPage) ───────────────
 async function buildPlanPayload(ctx) {
   const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","certifications":"<1 sentence recommending a specific certification relevant to the user's target role and industry — be concrete (e.g. AWS Solutions Architect, PMP, Security+, ISTQB, Google Cloud, Azure, Scrum, CPA) and suggest how to take the first step today>"}\nUser data: ${ctx}`, 900);
@@ -2837,7 +2842,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                     </div>
                     <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, minWidth: 0 }}>
                       <span style={{ display: "flex", flex: 1, minWidth: 0, overflow: "hidden" }}>
-                        <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{item.category}</span>
+                        <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{tPlanCat(item.id, t, item.category)}</span>
                         {item.task && <span style={{ color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>&nbsp;—&nbsp;{item.task}</span>}
                       </span>
                       <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
@@ -3549,7 +3554,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
                     <StatusCircle id={item.id} filled={done} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: done ? C.textMuted : C.text, textDecoration: done ? "line-through" : "none" }}>{item.category}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: done ? C.textMuted : C.text, textDecoration: done ? "line-through" : "none" }}>{tPlanCat(item.id, t, item.category)}</div>
                         <div style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{item.time}</div>
                       </div>
                       <div style={{ fontSize: 13, color: done ? C.textMuted : C.textMid, lineHeight: 1.6, marginBottom: goPage ? 10 : 0, textDecoration: done ? "line-through" : "none" }}>{item.task}</div>
@@ -3559,7 +3564,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
                           else if (goPage === "saved") { setPage("saved"); setTimeout(() => document.getElementById("smart-apply-queue")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }
                           else { setPage(goPage); }
                         }} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
-                          {t("plan.goTo").replace("{n}", item.category)}
+                          {t("plan.goTo").replace("{n}", tPlanCat(item.id, t, item.category))}
                         </button>
                       )}
                     </div>

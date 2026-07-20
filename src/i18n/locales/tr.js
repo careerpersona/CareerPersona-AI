@@ -1268,6 +1268,10 @@
     goToNetworking: "Ağ Oluşturmaya Git →",
     goToCertifications: "Sertifikasyonlara Git →",
     genError: "Oluşturma başarısız oldu. Lütfen tekrar deneyin.",
+    catPriorities: "Bugünün Öncelikleri",
+    catApplications: "Önerilen Başvurular",
+    catResume: "Özgeçmiş İyileştirmeleri",
+    catInterview: "Mülakat Pratiği",
   },
   progress: {
     backToDashboard: "← Panele Dön",

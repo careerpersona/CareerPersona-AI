@@ -1268,6 +1268,10 @@
     goToNetworking: "ネットワーキングへ →",
     goToCertifications: "資格認定へ →",
     genError: "生成に失敗しました。もう一度お試しください。",
+    catPriorities: "今日の優先事項",
+    catApplications: "おすすめの応募",
+    catResume: "履歴書の改善",
+    catInterview: "面接練習",
   },
   progress: {
     backToDashboard: "← ダッシュボードに戻る",
