@@ -2601,7 +2601,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
     } catch (e) {
       console.error("[Briefing] Generation failed:", e?.message || e);
-      setBriefingError("Generation failed. Tap Retry to try again.");
+      setBriefingError(t("dashboard.briefingError"));
     }
     finally { setBriefingLoading(false); }
   };
@@ -2623,7 +2623,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
     } catch (e) {
       console.error("[ActionPlan] Generation failed:", e?.message || e);
-      setPlanError("Generation failed. Tap Retry to try again.");
+      setPlanError(t("dashboard.planError"));
     }
     finally { setPlanLoading(false); }
   };
@@ -2646,7 +2646,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       addChatMessage("ai", raw).catch(err => console.error("assistant chat save failed", err));
       logActivity("Chat: " + userMsg.slice(0, 30));
     } catch {
-      setChatMessages(prev => [...prev, { role: "ai", text: "Sorry, I couldn't process that. Please try again." }]);
+      setChatMessages(prev => [...prev, { role: "ai", text: t("dashboard.chatError") }]);
     } finally { setChatLoading(false); }
   };
 
@@ -3424,7 +3424,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
       insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
     } catch (e) {
       console.error("[PlanPage] Generation failed:", e?.message || e);
-      setGenError("Generation failed. Please try again.");
+      setGenError(t("plan.genError"));
     }
     finally { setGenLoading(false); }
   };
@@ -4030,7 +4030,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
       saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
       logActivity("Job Intelligence landscape analysis generated");
     } catch (e) {
-      setGenError("Analysis failed. Tap Regenerate to try again.");
+      setGenError(t("jobIntel.genError"));
     } finally { setGenLoading(false); }
   };
 
@@ -4771,7 +4771,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
       setLibrarySaved(true);
     } catch (e) {
       console.error("[SaveToLibrary]", e);
-      setLibrarySaveError("Save failed. Please try again.");
+      setLibrarySaveError(t("resume.librarySaveError"));
     } finally {
       setSavingToLibrary(false);
     }
@@ -4817,7 +4817,7 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
       }
     } catch (e) {
       console.error("[AIBuilder]", e);
-      setAiError("Could not generate resume. Please check your connection and try again.");
+      setAiError(t("resume.aiError"));
     } finally {
       setAiBuilding(false);
     }
@@ -4839,7 +4839,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000);
         const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
         saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
       }
-    } catch (e) { console.error("[Benchmark]", e); setBenchmarkError("Benchmarking failed. Please try again."); }
+    } catch (e) { console.error("[Benchmark]", e); setBenchmarkError(t("resume.benchmarkError")); }
     finally { setBenchmarkLoading(false); }
   };
 
@@ -4859,7 +4859,7 @@ JOB DESCRIPTION:${jobDesc}`, 2500);
         const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
         saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
       }
-    } catch (e) { console.error("[JobFit]", e); setJobFitError("Job fit analysis failed. Please try again."); }
+    } catch (e) { console.error("[JobFit]", e); setJobFitError(t("resume.jobFitError")); }
     finally { setJobFitLoading(false); }
   };
 
@@ -4878,7 +4878,7 @@ RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + l
         const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
         saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
       }
-    } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError("LinkedIn optimization failed. Please try again."); }
+    } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError(t("resume.linkedinOptError")); }
     finally { setLinkedinOptLoading(false); }
   };
 
@@ -4900,7 +4900,7 @@ JOB DESCRIPTION:${jobDesc || "General professional role"}
 BASE COVER LETTER:${results?.coverLetter || ""}`, 4000);
       const parsed = JSON.parse(raw);
       setCoverVersions(parsed);
-    } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError("Could not generate versions. Please try again."); }
+    } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError(t("resume.coverVersionsError")); }
     finally { setCoverVersionsLoading(false); }
   };
 
@@ -4919,7 +4919,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
         const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
         saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
       }
-    } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError("Deep analysis failed. Please try again."); }
+    } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError(t("resume.deepInsightsError")); }
     finally { setDeepInsightsLoading(false); }
   };
 
@@ -5123,7 +5123,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
   const isFirstTime = resumes.length === 0 && !results;
 
   const hubHealthColor = (s) => s == null ? C.textMuted : s >= 80 ? C.green : s >= 70 ? C.yellow : s >= 60 ? C.orange : C.red;
-  const hubHealthLabel = (s) => s == null ? null : s >= 90 ? "Excellent" : s >= 80 ? "Very Good" : s >= 70 ? "Good" : s >= 60 ? "Needs Improvement" : "Poor";
+  const hubHealthLabel = (s) => s == null ? null : s >= 90 ? t("resume.healthExcellent") : s >= 80 ? t("resume.healthVeryGood") : s >= 70 ? t("resume.healthGood") : s >= 60 ? t("resume.healthNeedsImprovement") : t("resume.healthPoor");
 
   const newAnalysisReset = () => {
     setResults(null); setResume(""); setJobDesc(""); setLoadedResumeId(null);
@@ -5182,7 +5182,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         {profile?.location && <span style={{ whiteSpace: "nowrap" }}>📍 {profile.location}</span>}
                         {profile?.job_title && <span style={{ whiteSpace: "nowrap" }}>💼 {profile.job_title}</span>}
                         {profile?.preferred_job_title && <span style={{ whiteSpace: "nowrap" }}>🎯 {profile.preferred_job_title}</span>}
-                        {profile?.years_experience && <span style={{ whiteSpace: "nowrap" }}>⏱️ {profile.years_experience}yrs exp</span>}
+                        {profile?.years_experience && <span style={{ whiteSpace: "nowrap" }}>⏱️ {profile.years_experience}{t("resume.yrsExp")}</span>}
                         {profile?.work_type && <span style={{ whiteSpace: "nowrap" }}>🏢 {profile.work_type}</span>}
                       </div>
                     ) : (
@@ -5360,8 +5360,8 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{t("resume.analysisComplete")}</div>
-                    {results.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{results.jobTitle}{validCompany(results.company) ? ` at ${results.company}` : ""}</div>}
-                    {editingResumeName && <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 2 }}>✏️ Editing: {editingResumeName}</div>}
+                    {results.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{results.jobTitle}{validCompany(results.company) ? t("resume.atSeparator") + results.company : ""}</div>}
+                    {editingResumeName && <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 2 }}>{t("resume.editingLabel")} {editingResumeName}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <Btn onClick={handleSaveToLibrary} disabled={improving || savingToLibrary || !profile?.id} loading={savingToLibrary} style={{ fontSize: 13 }}>
@@ -5453,7 +5453,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 <ScoreRing score={animatedAts ?? results.atsScore} size={120} />
                 <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, fontWeight: 600 }}>{t("resume.currentAtsScore")}</div>
                 {!improveStats && analysisHistory?.length >= 2 && analysisHistory[1]?.atsScore != null && (
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>prev. {analysisHistory[1].atsScore}%</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{t("resume.prevLabel")} {analysisHistory[1].atsScore}%</div>
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
@@ -5906,7 +5906,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         <div style={{ flex: 1, padding: "6px 6px 6px 5px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.resumeName || "Resume"}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.resumeName || t("resume.resumeFallbackName")}</div>
                               <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
                                 {entry.atsScore != null && <span style={{ fontSize: 11, fontWeight: 800, color: hc }}>ATS {entry.atsScore}%</span>}
                                 {delta !== null && <span style={{ fontSize: 10, fontWeight: 700, color: delta > 0 ? C.green : delta < 0 ? C.red : C.textMuted }}>({delta > 0 ? `+${delta}` : delta})</span>}
@@ -6000,7 +6000,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
 
       {/* SECTION 6 — AI Toolkit */}
       <Card style={{ marginBottom: activeToolPanel ? 0 : 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>🤖 AI Resume Toolkit</div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("resume.aiToolkitTitle")}</div>
         <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           {[
             { icon: "📊", title: t("resume.benchmarkToolTitle"), desc: t("resume.benchmarkToolDesc"),
@@ -6024,7 +6024,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => linkedinOptData ? { text: `Optimized · ${linkedinOptData.headlineScore ?? "—"}% headline`, color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+              getStatus: () => linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.headlineScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🎤", title: t("resume.voiceToolTitle"), desc: t("resume.voiceToolDesc"),
               active: false, panelId: null,
               comingSoon: t("resume.voiceToolComingSoon") },
@@ -6068,7 +6068,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.benchmarkPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Refresh</Btn>}
+                {benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.refreshBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
@@ -6097,7 +6097,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
                     {[
                       { label: t("resume.yourScore"), val: `${atsScore ?? "—"}`, color: hubHealthColor(atsScore), sub: t("resume.atsScoreSub") },
-                      { label: t("resume.industryAvg"), val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || "Your industry" },
+                      { label: t("resume.industryAvg"), val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || t("resume.yourIndustry") },
                       { label: t("resume.top25"), val: `${topCandidateAverage ?? "—"}`, color: C.purple, sub: t("resume.targetBenchmark") },
                     ].map(({ label, val, color, sub }) => (
                       <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
@@ -6159,7 +6159,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.jobFitPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Re-analyze</Btn>}
+                {jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.reAnalyzeBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
@@ -6242,7 +6242,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                     <div style={{ background: C.purpleLight, border: `1.5px solid ${C.purple}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 6 }}>{t("resume.quickWins")}</div>
                       <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
-                        Adding <strong>{missingSkills.slice(0, 2).join(" and ")}</strong> to your resume could significantly improve your match score. {missingSkills.length > 2 ? `${missingSkills.length - 2} more gap${missingSkills.length - 2 !== 1 ? "s" : ""} identified above.` : "These skills are explicitly listed in the job description."}
+                        {t("resume.quickWinsBody").replace("{skills}", missingSkills.slice(0, 2).join(" and "))} {missingSkills.length > 2 ? (missingSkills.length - 2 === 1 ? t("resume.quickWinsExtraSingular").replace("{n}", 1) : t("resume.quickWinsExtraPlural").replace("{n}", missingSkills.length - 2)) : t("resume.quickWinsExactMatch")}
                       </div>
                     </div>
                   )}
@@ -6250,7 +6250,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                   {[experienceMatch, educationMatch, seniorityMatch].filter(Boolean).map((dim, i) => (
                     <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{[t("resume.experienceLabel"), t("resume.educationLabel"), t("resume.seniorityLabel")][i]} Match</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{[t("resume.experienceLabel"), t("resume.educationLabel"), t("resume.seniorityLabel")][i]}{t("resume.matchSuffix")}</span>
                         <span style={{ fontSize: 11, fontWeight: 700, color: hubHealthColor(dim.score) }}>{dim.score}%</span>
                         <span style={{ fontSize: 10, color: C.textMuted }}>{dim.status}</span>
                       </div>
@@ -6286,7 +6286,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.linkedinPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>↻ Regenerate</Btn>}
+                {linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.linkedinRegenerateBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
@@ -6422,7 +6422,7 @@ const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
   const resumeFileRef = useRef();
@@ -7021,7 +7021,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                     {/* Salary + Posted date on one line */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</span>
-                      <span style={{ fontSize: 10, color: C.textMuted }}>{job.datePosted ? new Date(job.datePosted).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t("jobSearch.recently")}</span>
+                      <span style={{ fontSize: 10, color: C.textMuted }}>{job.datePosted ? new Date(job.datePosted).toLocaleDateString(language, { month: "short", day: "numeric" }) : t("jobSearch.recently")}</span>
                     </div>
                     {/* Skill badges (compact) */}
                     {job.skills?.length > 0 && (
@@ -7096,7 +7096,7 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
                       <div style={{ fontSize: 14, color: C.green, fontWeight: 700, marginBottom: 10 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</div>
                       <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 10 }}>{job.description?.slice(0, 200)}…</div>
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>{job.skills?.slice(0, 5).map(s => <span key={s} style={{ background: C.purpleLight, color: C.purple, borderRadius: 6, padding: "3px 9px", fontSize: 12, fontWeight: 600 }}>{s}</span>)}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
                       <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={analyzing === job.id} onClick={() => handleAiMatch(job)}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
@@ -7744,7 +7744,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
       setForm(blankForm);
       setShowForm(false);
     } catch {
-      setSaveError(t("tracker.saveFailed") || "Save failed. Please try again.");
+      setSaveError(t("tracker.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -8642,9 +8642,9 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
 }
 
 function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId, enqueue }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
-  const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
+  const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
 
   const [applyingId, setApplyingId] = useState(null);
   const [appliedId, setAppliedId] = useState(null);
@@ -8868,7 +8868,7 @@ function PricingPage({ profile }) {
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
-              <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1 }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(`Connect Stripe to enable ${plan.name} payments`); }}>
+              <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1 }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(t("pricing.connectStripe").replace("{name}", plan.name)); }}>
                 {profile?.plan === plan.id ? t("pricing.currentPlan") : plan.cta}
               </Btn>
             </div>
@@ -9031,7 +9031,7 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
     if (!min && !max) return null;
     const f = n => `$${Math.round(n / 1000)}K`;
     if (min && max) return `${f(min)}–${f(max)}`;
-    return min ? `${f(min)}+` : `Up to ${f(max)}`;
+    return min ? `${f(min)}+` : t("opportunity.upTo").replace("{amount}", f(max));
   };
 
   const refreshAnalysis = async () => {
@@ -9258,7 +9258,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{j.title} — {j.company}</div>
                         <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{t("opportunity.contactWorksHere").replace("{name}", j.referralContact.name)}</div>
                         {j.referralContact.email && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{j.referralContact.email}</div>}
-                        {j.matchScore != null && <div style={{ fontSize: 12, color: matchColor(j.matchScore), fontWeight: 600, marginTop: 4 }}>{j.matchScore}% match</div>}
+                        {j.matchScore != null && <div style={{ fontSize: 12, color: matchColor(j.matchScore), fontWeight: 600, marginTop: 4 }}>{t("opportunity.matchPct").replace("{pct}", j.matchScore)}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                         <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>{t("opportunity.draftMessage")}</Btn>
