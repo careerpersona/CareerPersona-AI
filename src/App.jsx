@@ -1944,6 +1944,7 @@ function copyResumeToClipboard(content) {
 
 // ─── RESET PASSWORD PAGE ───────────────────────────────────
 function ResetPasswordPage({ onDone }) {
+  const { t } = useI18n();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1951,9 +1952,9 @@ function ResetPasswordPage({ onDone }) {
   const [success, setSuccess] = useState(false);
 
   const handle = async () => {
-    if (!password) { setError("Password is required."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    if (password !== confirm) { setError("Passwords do not match."); return; }
+    if (!password) { setError(t("auth.resetPasswordRequired")); return; }
+    if (password.length < 6) { setError(t("auth.resetPasswordTooShort")); return; }
+    if (password !== confirm) { setError(t("auth.resetPasswordMismatch")); return; }
     setLoading(true); setError("");
     const { error: err } = await supabase.auth.updateUser({ password });
     setLoading(false);
@@ -1974,22 +1975,22 @@ function ResetPasswordPage({ onDone }) {
           {success ? (
             <div style={{ textAlign: "center", padding: "12px 0" }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Password updated!</div>
-              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Your password has been changed. Please sign in with your new password.</div>
-              <Btn style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={onDone}>Go to Sign In →</Btn>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("auth.resetSuccessTitle")}</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>{t("auth.resetSuccessBody")}</div>
+              <Btn style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={onDone}>{t("auth.resetGoToSignIn")}</Btn>
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>Set New Password</div>
-              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Choose a new password for your account.</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("auth.resetTitle")}</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>{t("auth.resetSubtitle")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <Input label="New Password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
-                <Input label="Confirm New Password" type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
+                <Input label={t("auth.resetNewPasswordLabel")} type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
+                <Input label={t("auth.resetConfirmPasswordLabel")} type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
               </div>
               {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginTop: 14 }}>{error}</div>}
               <div style={{ marginTop: 20 }}>
                 <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
-                  {loading ? "Saving…" : "💾 Save New Password"}
+                  {loading ? t("auth.resetSaving") : t("auth.resetSaveBtn")}
                 </Btn>
               </div>
             </>
@@ -9889,8 +9890,8 @@ export default function App() {
       <Logo size={52} />
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         <div style={{ width: 28, height: 28, border: `3px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        <div style={{ fontSize: 15, fontWeight: 600, color: C.textMid }}>Completing sign-in…</div>
-        <div style={{ fontSize: 12, color: C.textMuted }}>This only takes a moment</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: C.textMid }}>{t("auth.completingSignIn")}</div>
+        <div style={{ fontSize: 12, color: C.textMuted }}>{t("auth.signInMoment")}</div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
