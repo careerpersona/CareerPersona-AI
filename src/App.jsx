@@ -1943,8 +1943,7 @@ function copyResumeToClipboard(content) {
 }
 
 // ─── RESET PASSWORD PAGE ───────────────────────────────────
-function ResetPasswordPage({ onDone }) {
-  const { t } = useI18n();
+function ResetPasswordPage({ onDone, t }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2196,7 +2195,7 @@ async function buildPlanPayload(ctx) {
 }
 
 // ─── CAREER PROGRESS PAYLOAD BUILDER ─────────────────────────────────────────
-async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
+async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline, t) {
   const goalLine = careerGoal ? `Career Goal: ${careerGoal}.${careerTimeline ? ` Target Timeline: ${careerTimeline}.` : ""}` : "No career goal set yet.";
   const raw = await askClaude(`You are CareerPersona AI. Assess this user's career progress against their stated goal. Be honest, specific, and actionable. Return ONLY valid JSON, no markdown:\n{"v":1,"progressPercent":<integer 0-100 based on how far they are toward their career goal given their current data>,"careerHealth":"excellent|good|fair|needs_attention","assessment":"<2-3 sentences: where they are today relative to their goal, what's working>","blockers":[{"issue":"<specific blocker>","priority":"high|medium|low","detail":"<1 sentence on how to address it>"}],"nextMilestone":"<the single most impactful next step they should take>","skills":[{"name":"<skill name relevant to their target role>","level":"advanced|intermediate|beginner","gap":"<one specific sentence on what to improve, or null if already strong>"}]}\nUser data: ${ctx}\n${goalLine}\nProvide 4-6 skills most critical for their target role, ordered by importance.`, 1000);
   let result;
@@ -2209,9 +2208,9 @@ async function buildCareerProgressPayload(ctx, careerGoal, careerTimeline) {
     v: 1, generatedAt: new Date().toISOString(),
     progressPercent: 10,
     careerHealth: "fair",
-    assessment: "Set your career goal in your profile to unlock a personalized AI progress assessment. The more data you add, the more accurate your progress tracking becomes.",
-    blockers: [{ issue: "Career goal not defined", priority: "high", detail: "Set your target role, goal, and timeline in your profile to enable AI progress tracking." }],
-    nextMilestone: "Complete your career profile with a specific goal and target timeline.",
+    assessment: t ? t("progress.fallbackAssessment") : "Set your career goal in your profile to unlock a personalized AI progress assessment. The more data you add, the more accurate your progress tracking becomes.",
+    blockers: [{ issue: t ? t("progress.fallbackBlockerIssue") : "Career goal not defined", priority: "high", detail: t ? t("progress.fallbackBlockerDetail") : "Set your target role, goal, and timeline in your profile to enable AI progress tracking." }],
+    nextMilestone: t ? t("progress.fallbackMilestone") : "Complete your career profile with a specific goal and target timeline.",
     skills: []
   };
 }
@@ -2757,14 +2756,14 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             {/* Left: content */}
             <div className="briefing-content-col" style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.briefingTitle")}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>Here's what CareerPersona AI accomplished for you today.</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.briefingSubtitle")}</div>
               {!briefingReady && !briefingError && (
-                <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>{briefingLoading || briefingHistoryLoading ? "Generating your daily briefing…" : "Loading briefing…"}</div>
+                <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>{briefingLoading || briefingHistoryLoading ? t("dashboard.briefingGenerating") : t("dashboard.briefingLoading")}</div>
               )}
               {!briefingReady && briefingError && (
                 <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 12, color: C.red }}>{briefingError}</span>
-                  <button onClick={generateBriefing} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Retry</button>
+                  <button onClick={generateBriefing} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.briefingRetry")}</button>
                 </div>
               )}
               {briefingReady && (
@@ -2786,7 +2785,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                   </div>
                   <div style={{ paddingTop: 0 }}>
                     <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("briefing")}>
-                      View Full Briefing →
+                      {t("dashboard.viewFullBriefing")}
                     </button>
                   </div>
                 </div>
@@ -2815,16 +2814,16 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         {/* Today's Action Plan */}
         <Card style={{ padding: "8px 14px 8px", alignSelf: "flex-start" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.planTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>AI-generated career actions to complete today.</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.planSubtitle")}</div>
           {!planReady && !planError && (
             <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>
-              {planLoading || planHistoryLoading ? "Generating your action plan…" : "Loading action plan…"}
+              {planLoading || planHistoryLoading ? t("dashboard.planGenerating") : t("dashboard.planLoading")}
             </div>
           )}
           {!planReady && planError && (
             <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: C.red }}>{planError}</span>
-              <button onClick={generatePlan} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Retry</button>
+              <button onClick={generatePlan} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.planRetry")}</button>
             </div>
           )}
           {planReady && (
@@ -2847,7 +2846,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               </div>
               <div style={{ paddingTop: 0 }}>
                 <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("plan")}>
-                  View Full Action Plan →
+                  {t("dashboard.viewFullPlan")}
                 </button>
               </div>
             </div>
@@ -2859,19 +2858,19 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
         {/* Smart Apply Center */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>AI Smart Apply Center</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>Find matching jobs and analyze description fit. Your application preparation pipeline.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.smartApplyTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.smartApplySubtitle")}</div>
           {smartApplyQueueLoading && saQueue.length === 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", marginBottom: 12 }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
               <div style={{ fontSize: 13, color: C.textMuted, minWidth: 0 }}>{t("savedJobs.loadingQueue")}</div>
             </div>
           ) : saQueue.length === 0 ? (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>No jobs in your Smart Apply queue yet. Find matching jobs to analyze and add to your pipeline.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{t("dashboard.smartApplyEmpty")}</div>
           ) : (
             <div>
               <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                {[["Ready", saReady, C.green], ["In Queue", saWaiting, C.yellow], ["Applied", saApplied, C.purple]].map(([label, count, color]) => (
+                {[[t("dashboard.saReady"), saReady, C.green], [t("dashboard.saInQueue"), saWaiting, C.yellow], [t("dashboard.saApplied"), saApplied, C.purple]].map(([label, count, color]) => (
                   <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 10, padding: "8px 6px", textAlign: "center" }}>
                     <div style={{ fontSize: 20, fontWeight: 800, color }}>{count}</div>
                     <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
@@ -2879,38 +2878,38 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 ))}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: saHasResume ? C.green : C.textMuted }}>{saHasResume ? "✓ Tailored resume ready" : "○ Resume not yet tailored"}</div>
-                <div style={{ fontSize: 12, color: saHasCover ? C.green : C.textMuted }}>{saHasCover ? "✓ Cover letter ready" : "○ Cover letter not yet generated"}</div>
-                {saReady > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginTop: 2 }}>{saReady} job{saReady !== 1 ? "s" : ""} ready to apply now</div>}
+                <div style={{ fontSize: 12, color: saHasResume ? C.green : C.textMuted }}>{saHasResume ? t("dashboard.resumeTailored") : t("dashboard.resumeNotTailored")}</div>
+                <div style={{ fontSize: 12, color: saHasCover ? C.green : C.textMuted }}>{saHasCover ? t("dashboard.coverReady") : t("dashboard.coverNotReady")}</div>
+                {saReady > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginTop: 2 }}>{saReady === 1 ? t("dashboard.saJobsReadySingular") : t("dashboard.saJobsReadyPlural").replace("{n}", saReady)}</div>}
               </div>
             </div>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("jobs")}>Find Matching Jobs →</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("saved")}>View Queue →</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("jobs")}>{t("dashboard.findMatchingJobs")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("saved")}>{t("dashboard.viewQueue")}</Btn>
           </div>
         </Card>
 
         {/* Opportunity Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Opportunity Intelligence</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>Best matching opportunities from your saved jobs.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.opportunityTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.opportunitySubtitle")}</div>
           {saved.length === 0 ? (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>Save jobs from Job Search to see AI-ranked opportunities and match scores.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{t("dashboard.opportunityEmpty")}</div>
           ) : (
             <div>
               <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
                 {avgMatchScore != null && (
                   <div style={{ background: `${avgMatchScore >= 80 ? C.green : avgMatchScore >= 60 ? C.yellow : C.red}12`, borderRadius: 10, padding: "8px 10px", textAlign: "center", minWidth: 68, flexShrink: 0 }}>
                     <div style={{ fontSize: 20, fontWeight: 800, color: avgMatchScore >= 80 ? C.green : avgMatchScore >= 60 ? C.yellow : C.red }}>{avgMatchScore}</div>
-                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Avg Match</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{t("dashboard.avgMatch")}</div>
                   </div>
                 )}
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
-                  {highPriorityJobs > 0 && <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{highPriorityJobs} high priority match{highPriorityJobs !== 1 ? "es" : ""} (80+)</div>}
-                  {newOpportunities > 0 && <div style={{ fontSize: 12, color: C.blue }}>{newOpportunities} new this week</div>}
-                  {salaryData?.results?.demandLevel && <div style={{ fontSize: 12, color: C.textMuted }}>Market demand: <strong>{salaryData.results.demandLevel}</strong></div>}
-                  {!avgMatchScore && <div style={{ fontSize: 12, color: C.textMuted }}>{saved.length} saved job{saved.length !== 1 ? "s" : ""}</div>}
+                  {highPriorityJobs > 0 && <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{highPriorityJobs === 1 ? t("dashboard.highPriorityMatchSingular") : t("dashboard.highPriorityMatchPlural").replace("{n}", highPriorityJobs)}</div>}
+                  {newOpportunities > 0 && <div style={{ fontSize: 12, color: C.blue }}>{t("dashboard.newThisWeek").replace("{n}", newOpportunities)}</div>}
+                  {salaryData?.results?.demandLevel && <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.marketDemandLabel")} <strong>{salaryData.results.demandLevel}</strong></div>}
+                  {!avgMatchScore && <div style={{ fontSize: 12, color: C.textMuted }}>{saved.length === 1 ? t("dashboard.savedJobSingular") : t("dashboard.savedJobPlural").replace("{n}", saved.length)}</div>}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 }}>
@@ -2923,7 +2922,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               </div>
             </div>
           )}
-          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("opportunity")}>View Opportunities →</Btn>
+          <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("opportunity")}>{t("dashboard.viewOpportunities")}</Btn>
         </Card>
       </div>
 
@@ -2932,7 +2931,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         {/* Resume Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.resumeIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Resume strength and ATS readiness.</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.resumeIntelSubtitle")}</div>
           {bestResume ? (
             <div>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
@@ -2940,23 +2939,23 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {(() => {
                     const s = bestResume.ats_score;
-                    const strength = s >= 80 ? "Strong" : s >= 60 ? "Good" : s >= 40 ? "Fair" : "Needs Work";
+                    const strength = s >= 80 ? t("dashboard.atsStrong") : s >= 60 ? t("dashboard.atsGood") : s >= 40 ? t("dashboard.atsFair") : t("dashboard.atsNeedsWork");
                     const strengthColor = s >= 80 ? C.green : s >= 60 ? C.yellow : s >= 40 ? "#EA580C" : C.red;
                     const missingCount = (bestResume.keywords_missing || []).length;
                     const topMissing = (bestResume.keywords_missing || []).slice(0, 3).join(", ");
                     const suggestCount = (bestResume.suggestions || []).length;
                     return (
                       <>
-                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>Resume Strength</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>{t("dashboard.resumeStrength")}</div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: strengthColor, marginBottom: 6 }}>{strength}</div>
                         {missingCount > 0 && (
                           <>
-                            <div style={{ fontSize: 11, color: C.textMuted }}>Missing Keywords <span style={{ fontWeight: 700, color: "#EA580C" }}>{missingCount}</span></div>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>{t("dashboard.missingKeywords")} <span style={{ fontWeight: 700, color: "#EA580C" }}>{missingCount}</span></div>
                             {topMissing && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1, marginBottom: 4 }}>{topMissing}</div>}
                           </>
                         )}
-                        {suggestCount > 0 && <div style={{ fontSize: 11, color: C.textMuted }}>AI Suggestions <span style={{ fontWeight: 700, color: C.blue }}>{suggestCount}</span></div>}
-                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Resume Health <span style={{ fontWeight: 700, color: strengthColor }}>{strength}</span></div>
+                        {suggestCount > 0 && <div style={{ fontSize: 11, color: C.textMuted }}>{t("dashboard.aiSuggestions")} <span style={{ fontWeight: 700, color: C.blue }}>{suggestCount}</span></div>}
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{t("dashboard.resumeHealth")} <span style={{ fontWeight: 700, color: strengthColor }}>{strength}</span></div>
                       </>
                     );
                   })()}
@@ -2965,25 +2964,25 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               {bestResume.top_priority && <div style={{ fontSize: 11, color: C.textMid, background: C.bgSoft, borderRadius: 7, padding: "6px 9px", marginBottom: 4, lineHeight: 1.5 }}>⚡ {bestResume.top_priority}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? "Analyze a resume on the Resume page to see insights here." : t("dashboard.resumeIntelEmpty")}</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? t("dashboard.analyzeResumeHint") : t("dashboard.resumeIntelEmpty")}</div>
           )}
           <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>JOB INTELLIGENCE</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>AI analysis of your complete job search landscape.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.jobIntelTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.jobIntelSubtitle")}</div>
           {jiAnalysisLoading && !jiAnalysis ? (
-            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>Loading…</div>
+            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>{t("dashboard.loading")}</div>
           ) : jiAnalysis ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {[
-                ["Market Patterns", jiAnalysis.marketPatterns?.status],
-                ["Employer Demand", jiAnalysis.employerDemand?.status],
-                ["Market Fit", jiAnalysis.marketFit?.status],
-                ["Search Strategy", jiAnalysis.searchStrategy?.status],
-                ["Search Performance", jiAnalysis.searchPerformance?.status],
+                [t("dashboard.marketPatterns"), jiAnalysis.marketPatterns?.status],
+                [t("dashboard.employerDemand"), jiAnalysis.employerDemand?.status],
+                [t("dashboard.marketFit"), jiAnalysis.marketFit?.status],
+                [t("dashboard.searchStrategy"), jiAnalysis.searchStrategy?.status],
+                [t("dashboard.searchPerformance"), jiAnalysis.searchPerformance?.status],
               ].map(([label, status]) => {
                 const s = (status || "").toLowerCase();
                 const color = ["excellent", "strong", "consistent"].includes(s) ? C.green
@@ -3001,20 +3000,20 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
-              {saved.length > 0 ? "Open Job Intelligence to generate your landscape analysis." : "Save jobs to unlock AI landscape analysis."}
+              {saved.length > 0 ? t("dashboard.jiOpenAnalysis") : t("dashboard.jiSaveJobs")}
             </div>
           )}
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
             <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("jobintel")}>
-              View Full Analysis →
+              {t("dashboard.viewFullAnalysis")}
             </button>
           </div>
         </Card>
 
         {/* Interview Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Interview Intelligence</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>AI mock interview performance.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.interviewIntelTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.interviewIntelSubtitle")}</div>
           {mockInterviewScore != null ? (
             <div>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
@@ -3023,13 +3022,13 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                   <span style={{ fontSize: 9, color: C.textMuted, lineHeight: 1.2 }}>/ 10</span>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>AI Interview Score</div>
-                  <div style={{ fontSize: 12, color: C.textMid }}>{mockAnswered} of {mockTotal} answered{mockSkipped > 0 ? ` · ${mockSkipped} skipped` : ""}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("dashboard.aiInterviewScore")}</div>
+                  <div style={{ fontSize: 12, color: C.textMid }}>{t("dashboard.interviewAnsweredOf").replace("{answered}", mockAnswered).replace("{total}", mockTotal)}{mockSkipped > 0 ? ` ${t("dashboard.interviewSkippedLabel").replace("{n}", mockSkipped)}` : ""}</div>
                 </div>
               </div>
               {(() => { const aiS = interviewSession?.mockSummary?.aiSummary; return aiS ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {[["Technical", aiS.technicalPerformance], ["Behavioral", aiS.behavioralPerformance], ["Communication", aiS.communication], ["Confidence", aiS.confidence]].map(([label, val]) => {
+                  {[[t("dashboard.interviewTechnical"), aiS.technicalPerformance], [t("dashboard.interviewBehavioral"), aiS.behavioralPerformance], [t("dashboard.interviewCommunication"), aiS.communication], [t("dashboard.interviewConfidence"), aiS.confidence]].map(([label, val]) => {
                     const col = val === "Excellent" || val === "Strong" ? C.green : val === "Good" ? C.blue : val === "Fair" ? C.yellow : C.red;
                     return <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: C.textMid }}>{label}</span><span style={{ fontWeight: 700, color: col }}>{val}</span></div>;
                   })}
@@ -3037,9 +3036,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               ) : null; })()}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No completed mock interview yet. Generate questions and run a mock interview to see your AI score.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.interviewEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>Go to Interview Prep →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>{t("dashboard.goToInterviewPrep")}</Btn>
         </Card>
       </div>
 
@@ -3048,14 +3047,14 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         {/* Salary Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.marketIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Market value and salary benchmarks.</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.marketSubtitle")}</div>
           {salaryData?.results ? (
             <div>
               <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>{t("dashboard.medianSalary")}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: C.green, marginBottom: 6 }}>${salaryData.results.salaryRange?.median?.toLocaleString() || "—"}</div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.textMuted, marginBottom: 6 }}>
-                <span>Low: <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.low || 0).toLocaleString()}</strong></span>
-                <span>High: <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.high || 0).toLocaleString()}</strong></span>
+                <span>{t("dashboard.salaryLow")} <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.low || 0).toLocaleString()}</strong></span>
+                <span>{t("dashboard.salaryHigh")} <strong style={{ color: C.text }}>${(salaryData.results.salaryRange?.high || 0).toLocaleString()}</strong></span>
               </div>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("dashboard.demandLabel")} <strong style={{ color: C.text }}>{salaryData.results.demandLevel || "—"}</strong></div>
               {salaryData.results.marketOutlook && <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{salaryData.results.marketOutlook.slice(0, 110)}…</div>}
@@ -3068,24 +3067,24 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
         {/* Career Progress */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>CAREER PROGRESS</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
           {cpAnalysisLoading && !cpAnalysis ? (
-            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>Loading…</div>
+            <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>{t("dashboard.loading")}</div>
           ) : cpAnalysis ? (() => {
             const cp = cpAnalysis;
-            const hm = { excellent: { label: "Excellent", color: C.green }, good: { label: "Good", color: C.blue }, fair: { label: "Fair", color: C.yellow }, needs_attention: { label: "Needs Attention", color: C.red } }[cp.careerHealth] || { label: "Fair", color: C.yellow };
+            const hm = { excellent: { label: t("dashboard.healthExcellent"), color: C.green }, good: { label: t("dashboard.healthGood"), color: C.blue }, fair: { label: t("dashboard.healthFair"), color: C.yellow }, needs_attention: { label: t("dashboard.healthNeedsAttention"), color: C.red } }[cp.careerHealth] || { label: t("dashboard.healthFair"), color: C.yellow };
             const topBlocker = cp.blockers?.find(b => b.priority === "high") || cp.blockers?.[0];
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {/* Career Goal */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>Career Goal</span>
-                  <span style={{ fontSize: 12, color: C.text, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{profile?.career_goal || <span style={{ color: C.textMuted, fontWeight: 400 }}>Not set</span>}</span>
+                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>{t("dashboard.careerGoalLabel")}</span>
+                  <span style={{ fontSize: 12, color: C.text, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{profile?.career_goal || <span style={{ color: C.textMuted, fontWeight: 400 }}>{t("dashboard.notSet")}</span>}</span>
                 </div>
                 {/* AI Progress Score */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: C.textMid, fontWeight: 600 }}>AI Progress Score</span>
+                    <span style={{ color: C.textMid, fontWeight: 600 }}>{t("dashboard.aiProgressScore")}</span>
                     <span style={{ fontWeight: 800, color: C.purple }}>{cp.progressPercent}%</span>
                   </div>
                   <PBar val={cp.progressPercent} color={C.purple} />
@@ -3093,44 +3092,44 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {/* Current Blocker */}
                 {topBlocker && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>Current Blocker</span>
+                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>{t("dashboard.currentBlocker")}</span>
                     <span style={{ fontSize: 12, color: C.red, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{topBlocker.issue}</span>
                   </div>
                 )}
                 {/* Next Milestone */}
                 {cp.nextMilestone && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>Next Milestone</span>
+                    <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>{t("dashboard.nextMilestoneLabel")}</span>
                     <span style={{ fontSize: 12, color: C.text, textAlign: "right", maxWidth: "60%", lineHeight: 1.4 }}>{cp.nextMilestone}</span>
                   </div>
                 )}
                 {/* Career Health */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>Career Health</span>
+                  <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>{t("dashboard.careerHealthLabel")}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: hm.color, background: `${hm.color}18`, borderRadius: 20, padding: "2px 10px" }}>{hm.label}</span>
                 </div>
               </div>
             );
           })() : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 4 }}>
-              {profile?.career_goal ? "View Career Progress to generate your AI assessment." : "Set your career goal to unlock AI progress tracking."}
+              {profile?.career_goal ? t("dashboard.viewProgressPrompt") : t("dashboard.setGoalPrompt")}
             </div>
           )}
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
             <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("progress")}>
-              View Career Progress →
+              {t("dashboard.viewCareerProgress")}
             </button>
           </div>
         </Card>
 
         {/* Networking Intelligence */}
         <Card style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>Networking Intelligence</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>Contacts, outreach progress, and follow-ups.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.networkingTitle")}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.networkingSubtitle")}</div>
           {networkContacts.length > 0 ? (
             <div>
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                {[["Contacts", networkContacts.length, C.purple], ["Responded", replied, C.green], ["Follow-up", followUpNeeded, followUpNeeded > 0 ? C.yellow : C.textMuted]].map(([label, val, color]) => (
+                {[[t("dashboard.networkingContacts"), networkContacts.length, C.purple], [t("dashboard.networkingResponded"), replied, C.green], [t("dashboard.networkingFollowUp"), followUpNeeded, followUpNeeded > 0 ? C.yellow : C.textMuted]].map(([label, val, color]) => (
                   <div key={label} style={{ flex: 1, background: `${color}12`, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
                     <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{label}</div>
@@ -3138,16 +3137,16 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 ))}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span style={{ color: C.textMid }}>Response rate</span>
+                <span style={{ color: C.textMid }}>{t("dashboard.responseRate")}</span>
                 <span style={{ fontWeight: 700, color: outreachRate >= 50 ? C.green : C.yellow }}>{outreachRate}%</span>
               </div>
               <PBar val={outreachRate} color={outreachRate >= 50 ? C.green : C.yellow} />
-              {followUpNeeded > 0 && <div style={{ marginTop: 8, fontSize: 12, color: C.yellow, fontWeight: 600 }}>⚠ {followUpNeeded} contact{followUpNeeded !== 1 ? "s" : ""} waiting for reply</div>}
+              {followUpNeeded > 0 && <div style={{ marginTop: 8, fontSize: 12, color: C.yellow, fontWeight: 600 }}>⚠ {followUpNeeded === 1 ? t("dashboard.networkingContactsWaitingSingular") : t("dashboard.networkingContactsWaitingPlural").replace("{n}", followUpNeeded)}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>No networking contacts yet. Build your network to track outreach and follow-ups.</div>
+            <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.networkingEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("network")}>Go to Networking →</Btn>
+          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("network")}>{t("dashboard.goToNetworking")}</Btn>
         </Card>
       </div>
 
@@ -3157,8 +3156,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</span>
           {chatMessages.length > 0 && (
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={handleClearConversation} style={{ fontSize: 11, color: C.textMuted, background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
-              <button onClick={handleNewConversation} style={{ fontSize: 11, color: C.purple, background: "none", border: `1px solid ${C.purple}50`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>+ New</button>
+              <button onClick={handleClearConversation} style={{ fontSize: 11, color: C.textMuted, background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>{t("dashboard.chatClear")}</button>
+              <button onClick={handleNewConversation} style={{ fontSize: 11, color: C.purple, background: "none", border: `1px solid ${C.purple}50`, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}>{t("dashboard.chatNew")}</button>
             </div>
           )}
         </div>
@@ -3170,7 +3169,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {t("dashboard.assistantEmpty")}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                {["Review my resume", "Analyze today's opportunities", "Strengthen my resume", "Prepare me for my interview", "Review my application pipeline", "Build today's action plan", "Compare two job offers", "Help me negotiate my salary"].map(p => (
+                {[t("dashboard.chatSuggest1"), t("dashboard.chatSuggest2"), t("dashboard.chatSuggest3"), t("dashboard.chatSuggest4"), t("dashboard.chatSuggest5"), t("dashboard.chatSuggest6"), t("dashboard.chatSuggest7"), t("dashboard.chatSuggest8")].map(p => (
                   <button key={p} onClick={() => sendChat(p)} style={{ fontSize: 11, color: C.purple, background: `${C.purple}0D`, border: `1px solid ${C.purple}30`, borderRadius: 20, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{p}</button>
                 ))}
               </div>
@@ -3635,7 +3634,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
     setGenLoading(true);
     try {
       const ctx = userContext.getContextString();
-      const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline);
+      const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline, t);
       setAnalysis(result);
       insertNotification(profile?.id, { type: "career_progress", title: "Career progress report ready.", body: "Your career progress report has been generated." });
       try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch {}
@@ -9881,7 +9880,7 @@ export default function App() {
     }
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} />;
+  if (recoveryMode) return <ResetPasswordPage onDone={() => { clearRecovery(); window.history.replaceState({}, "", window.location.pathname); }} t={t} />;
   // Show a branded loading screen while Supabase exchanges the auth callback
   // token (email verification, magic link, OAuth). This replaces the confusing
   // login-form flash that users would otherwise see before the session resolves.
