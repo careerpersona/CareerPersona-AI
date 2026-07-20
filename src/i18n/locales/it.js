@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Obiettivo di carriera non definito",
     fallbackBlockerDetail: "Imposta il tuo ruolo target, obiettivo e cronologia nel profilo per abilitare il monitoraggio del progresso IA.",
     fallbackMilestone: "Completa il tuo profilo di carriera con un obiettivo e una cronologia specifici.",
+  },  common: {
+    copy: "📋 Copia",
+    copied: "✓ Copiato!",
   },
+
   jobIntel: {
     backToDashboard: "← Torna alla Dashboard",
     title: "Job Intelligence",

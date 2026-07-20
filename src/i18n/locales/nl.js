@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Carrièredoel niet gedefinieerd",
     fallbackBlockerDetail: "Stel uw doelrol, doel en tijdlijn in uw profiel in om AI-voortgangsregistratie te activeren.",
     fallbackMilestone: "Voltooi uw carrièreprofiel met een specifiek doel en tijdlijn.",
+  },  common: {
+    copy: "📋 Kopiëren",
+    copied: "✓ Gekopieerd!",
   },
+
   jobIntel: {
     backToDashboard: "← Terug naar Dashboard",
     title: "Job Intelligence",

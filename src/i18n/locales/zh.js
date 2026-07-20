@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "职业目标未定义",
     fallbackBlockerDetail: "在您的档案中设置目标职位、目标和时间表，以启用 AI 进度跟踪。",
     fallbackMilestone: "用具体的目标和时间表完成您的职业档案。",
+  },  common: {
+    copy: "📋 复制",
+    copied: "✓ 已复制！",
   },
+
   jobIntel: {
     backToDashboard: "← 返回仪表板",
     title: "Job Intelligence",

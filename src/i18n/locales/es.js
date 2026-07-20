@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Objetivo profesional no definido",
     fallbackBlockerDetail: "Establece tu rol objetivo, meta y cronograma en tu perfil para habilitar el seguimiento de progreso IA.",
     fallbackMilestone: "Completa tu perfil profesional con un objetivo y cronograma específicos.",
+  },  common: {
+    copy: "📋 Copiar",
+    copied: "✓ Copiado!",
   },
+
   jobIntel: {
     backToDashboard: "← Volver al Panel",
     title: "Job Intelligence",

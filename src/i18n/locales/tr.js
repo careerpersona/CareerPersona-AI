@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Kariyer hedefi tanımlanmamış",
     fallbackBlockerDetail: "AI ilerleme takibini etkinleştirmek için profilinizde hedef rolünüzü, hedefinizi ve zaman çizelgenizi belirleyin.",
     fallbackMilestone: "Kariyer profilinizi belirli bir hedef ve zaman çizelgesiyle tamamlayın.",
+  },  common: {
+    copy: "📋 Kopyala",
+    copied: "✓ Kopyalandı!",
   },
+
   jobIntel: {
     backToDashboard: "← Panele Dön",
     title: "Job Intelligence",

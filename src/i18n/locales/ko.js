@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "경력 목표가 정의되지 않음",
     fallbackBlockerDetail: "AI 진행 추적을 활성화하려면 프로필에 목표 역할, 목표 및 타임라인을 설정하세요.",
     fallbackMilestone: "구체적인 목표와 타임라인으로 경력 프로필을 완성하세요.",
+  },  common: {
+    copy: "📋 복사",
+    copied: "✓ 복사됨!",
   },
+
   jobIntel: {
     backToDashboard: "← 대시보드로 돌아가기",
     title: "Job Intelligence",

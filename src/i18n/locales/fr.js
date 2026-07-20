@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Objectif de carrière non défini",
     fallbackBlockerDetail: "Définissez votre rôle cible, objectif et calendrier dans votre profil pour activer le suivi de progression IA.",
     fallbackMilestone: "Complétez votre profil de carrière avec un objectif et un calendrier spécifiques.",
+  },  common: {
+    copy: "📋 Copier",
+    copied: "✓ Copié!",
   },
+
   jobIntel: {
     backToDashboard: "← Retour au Tableau de Bord",
     title: "Job Intelligence",

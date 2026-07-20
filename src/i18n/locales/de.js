@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "Karriereziel nicht definiert",
     fallbackBlockerDetail: "Legen Sie Ihre Zielrolle, Ihr Ziel und Ihren Zeitplan in Ihrem Profil fest, um das KI-Fortschritts-Tracking zu aktivieren.",
     fallbackMilestone: "Vervollständigen Sie Ihr Karriereprofil mit einem spezifischen Ziel und Zeitplan.",
+  },  common: {
+    copy: "📋 Kopieren",
+    copied: "✓ Kopiert!",
   },
+
   jobIntel: {
     backToDashboard: "← Zurück zum Dashboard",
     title: "Job Intelligence",

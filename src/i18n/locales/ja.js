@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "キャリア目標が未設定",
     fallbackBlockerDetail: "プロフィールに目標ロール、目標、スケジュールを設定して、AI進捗追跡を有効にしてください。",
     fallbackMilestone: "具体的な目標とスケジュールを含むキャリアプロフィールを完成させてください。",
+  },  common: {
+    copy: "📋 コピー",
+    copied: "✓ コピーしました！",
   },
+
   jobIntel: {
     backToDashboard: "← ダッシュボードに戻る",
     title: "Job Intelligence",

@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "करियर लक्ष्य परिभाषित नहीं",
     fallbackBlockerDetail: "AI प्रगति ट्रैकिंग सक्षम करने के लिए अपने प्रोफ़ाइल में लक्ष्य भूमिका, लक्ष्य और समयरेखा सेट करें।",
     fallbackMilestone: "विशिष्ट लक्ष्य और समयरेखा के साथ अपना करियर प्रोफ़ाइल पूरा करें।",
+  },  common: {
+    copy: "📋 कॉपी करें",
+    copied: "✓ कॉपी हो गया!",
   },
+
   jobIntel: {
     backToDashboard: "← डैशबोर्ड पर वापस जाएं",
     title: "Job Intelligence",

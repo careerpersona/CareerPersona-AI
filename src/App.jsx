@@ -1620,14 +1620,15 @@ function downloadTextFile(text, filename) {
   void triggerDownload(new Blob([text], { type: "text/plain;charset=utf-8" }), filename);
 }
 
-function CopyBtn({ text, label = "Copy", variant = "ghost", style: outerStyle }) {
+function CopyBtn({ text, label, variant = "ghost", style: outerStyle }) {
+  const { t } = useI18n();
   const [c, setC] = useState(false);
   const handleCopy = () => {
     copyToClipboard(text)
       .then(() => { setC(true); setTimeout(() => setC(false), 2000); })
       .catch(() => { setC(true); setTimeout(() => setC(false), 2000); }); // still show feedback even if API errors
   };
-  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={handleCopy}>{c ? "✓ Copied!" : label}</Btn>;
+  return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={handleCopy}>{c ? t("common.copied") : (label ?? t("common.copy"))}</Btn>;
 }
 
 function ContentDisplay({ content }) {
@@ -5561,7 +5562,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 )}
                 <Btn variant="secondary" onClick={() => downloadPDF(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>{t("resume.downloadPdf")}</Btn>
                 <Btn variant="secondary" onClick={() => downloadDOCX(isOptimized ? resume : results.tailoredResume, isOptimized ? "optimized-resume" : "tailored-resume")} style={{ fontSize: 12, padding: "6px 14px" }}>{t("resume.downloadDocx")}</Btn>
-                <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} label="📋 Copy" variant="secondary" />
+                <CopyBtn text={resumeDocToHTML(parseResumeDoc(isOptimized ? resume : results.tailoredResume), true)} variant="secondary" />
               </div>
             </div>
           )}
@@ -5623,7 +5624,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                 )}
                 <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterPDF(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadPdf")}</Btn>
                 <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => downloadCoverLetterDOCX(currentCoverText, `cover-letter-${activeCoverVersion}`)}>{t("resume.downloadDocx")}</Btn>
-                <CopyBtn text={currentCoverText} label="📋 Copy" variant="secondary" />
+                <CopyBtn text={currentCoverText} variant="secondary" />
               </div>
             </div>
             );
@@ -7611,7 +7612,7 @@ Return ONLY this JSON (no markdown):
                             <div style={{ background: `linear-gradient(135deg, ${C.purpleLight}, #fff)`, border: `1px solid ${C.purple}25`, borderRadius: 10, padding: "12px 14px" }}>
                               <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginBottom: 6 }}>{t("interview.aiRecommendedLabel")}</div>
                               <div style={{ fontSize: 13, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{ans.feedback.revisedAnswer}</div>
-                              <div style={{ marginTop: 8 }}><CopyBtn text={ans.feedback.revisedAnswer} label="Copy" /></div>
+                              <div style={{ marginTop: 8 }}><CopyBtn text={ans.feedback.revisedAnswer} /></div>
                             </div>
                           )}
                         </div>

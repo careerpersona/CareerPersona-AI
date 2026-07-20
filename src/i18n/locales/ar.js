@@ -1310,7 +1310,11 @@
     fallbackBlockerIssue: "الهدف المهني غير محدد",
     fallbackBlockerDetail: "حدّد دورك المستهدف وهدفك وجدولك الزمني في ملفك الشخصي لتمكين تتبع تقدم الذكاء الاصطناعي.",
     fallbackMilestone: "أكمل ملفك المهني بهدف محدد وجدول زمني.",
+  },  common: {
+    copy: "📋 نسخ",
+    copied: "✓ تم النسخ!",
   },
+
   jobIntel: {
     backToDashboard: "← العودة إلى لوحة التحكم",
     title: "Job Intelligence",

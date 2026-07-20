@@ -1315,6 +1315,10 @@ export default {
     fallbackBlockerDetail: "Set your target role, goal, and timeline in your profile to enable AI progress tracking.",
     fallbackMilestone: "Complete your career profile with a specific goal and target timeline.",
   },
+  common: {
+    copy: "📋 Copy",
+    copied: "✓ Copied!",
+  },
   jobIntel: {
     backToDashboard: "← Back to Dashboard",
     title: "Job Intelligence",
