@@ -2261,15 +2261,52 @@ function detectResumeLanguage(text) {
   return { lang: bestLang, confidence: conf };
 }
 
-// Returns the job-language code to suggest generating in, or null if no suggestion.
-// Only fires when confidence >= 0.72 and resume language ≠ job language.
-function computeLanguageSuggestion(resume, jobLanguage) {
-  if (!resume || !jobLanguage) return null;
+// Country → primary job-market language. Conservative: only clear single-dominant-language markets.
+// Multilingual countries (Switzerland, Belgium, India) are intentionally omitted to avoid false positives.
+const COUNTRY_LANG = {
+  "Germany": "de", "Austria": "de",
+  "France": "fr",
+  "Spain": "es", "Mexico": "es", "Argentina": "es", "Colombia": "es", "Chile": "es",
+  "Italy": "it",
+  "Portugal": "pt", "Brazil": "pt",
+  "Netherlands": "nl",
+  "Turkey": "tr",
+  "Japan": "ja",
+  "South Korea": "ko",
+  "Russia": "ru",
+  "China": "zh",
+  "Saudi Arabia": "ar", "United Arab Emirates": "ar",
+};
+
+// Returns the language code to suggest, or null.
+// Decision priority: job posting text → search country → job language preference.
+// Only fires when resume confidence ≥ 0.72 and resume language ≠ resolved target language.
+function computeLanguageSuggestion({ resume, jobLanguage, jobDesc, searchCountry }) {
+  if (!resume) return null;
   if ((resume.language_confidence ?? 0) < 0.72) return null;
   const resumeLang = resume.language || resume.detected_language;
   if (!resumeLang) return null;
-  if (resumeLang === jobLanguage) return null;
-  return jobLanguage;
+
+  // Resolve target language from highest-priority available signal
+  let targetLang = null;
+
+  // 1. Job description text — detect language of the actual posting the user pasted.
+  //    Only attempt detection if there's enough text for the stop-word scorer to be reliable.
+  if (jobDesc && jobDesc.trim().length > 80) {
+    const { lang, confidence } = detectResumeLanguage(jobDesc);
+    if (lang && confidence >= 0.60) targetLang = lang;
+  }
+
+  // 2. Search country → primary job-market language (only used when no posting text is available)
+  if (!targetLang && searchCountry) {
+    targetLang = COUNTRY_LANG[searchCountry] || null;
+  }
+
+  // 3. User's explicit job language preference
+  if (!targetLang) targetLang = jobLanguage || "en";
+
+  if (resumeLang === targetLang) return null;
+  return targetLang;
 }
 
 function tPlanCat(id, t, fallback) {
@@ -4470,6 +4507,8 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [loadedResumeId, setLoadedResumeId] = useSessionState("cp_resume_loaded_id", null);
   const [editLabelId, setEditLabelId] = useState(null);
   const [labelValue, setLabelValue] = useState("");
+  // Read job search filters from session so the language suggestion can use the active search country.
+  const [searchFilters] = useSessionState("cp_jobs_filters", {});
   // Session-persistent: survive navigation away and back without losing the active session.
   const [resumeSource, setResumeSource] = useSessionState("cp_resume_source", "upload");
   const [selectedKeywords, setSelectedKeywords] = useSessionState("cp_resume_selected_kws", []);
@@ -5511,11 +5550,15 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
           {(() => {
             const loadedResume = resumes.find(r => r.id === loadedResumeId);
             const effectiveJobLang = jobLanguage || "en";
-            const suggestLang = loadedResume ? computeLanguageSuggestion(loadedResume, effectiveJobLang) : null;
+            const suggestLang = loadedResume ? computeLanguageSuggestion({
+              resume: loadedResume,
+              jobLanguage: effectiveJobLang,
+              jobDesc,
+              searchCountry: searchFilters?.country,
+            }) : null;
             const suggestMeta = suggestLang ? LANGUAGES.find(l => l.code === suggestLang) : null;
             if (!suggestMeta) return null;
-            const suggestBody = t("resume.langSuggestionBody")
-              .replace("{jobLang}", `${suggestMeta.flag} ${suggestMeta.native}`);
+            const suggestBody = t("resume.langSuggestionBody");
             return (
               <div style={{ background: `linear-gradient(135deg,${C.purpleLight},#fff)`, border: `1.5px solid ${C.purple}30`, borderRadius: 14, padding: "14px 16px", marginBottom: 14, animation: "summaryEntrance 0.3s ease-out" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -5530,7 +5573,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                       }}
                       style={{ fontSize: 12, padding: "7px 14px" }}
                     >
-                      {t("resume.langSuggestionBtn").replace("{jobLang}", `${suggestMeta.flag} ${suggestMeta.native}`)}
+                      {t("resume.langSuggestionBtn").replace("{flag}", suggestMeta.flag).replace("{name}", suggestMeta.native)}
                     </Btn>
                   </div>
                 </div>
