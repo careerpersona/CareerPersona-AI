@@ -10258,7 +10258,7 @@ export default function App() {
           <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: "none", border: "none", padding: "8px 12px 8px 4px", cursor: "pointer", lineHeight: 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: C.purple, flexShrink: 0, display: "block" }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.purple, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", lineHeight: 1 }}>{planName.charAt(0) + planName.slice(1).toLowerCase()}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.purple, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", lineHeight: 1 }}>{planName.charAt(0) + planName.slice(1).toLowerCase()}</span>
             </span>
           </button>
         </div>
