@@ -28,7 +28,8 @@ export function useResumes(userId) {
 
   // file is an optional browser File object (the original upload); content is the
   // extracted/pasted text that's already shown in the page's textarea.
-  const saveResume = useCallback(async (name, content, file) => {
+  // langMeta: optional { language, detected_language, language_confidence }
+  const saveResume = useCallback(async (name, content, file, langMeta) => {
     if (!userId) throw new Error("Not signed in");
 
     // Deduplicate: if the same resume content is already saved, update the name
@@ -64,9 +65,13 @@ export function useResumes(userId) {
         console.warn("Resume storage threw:", storageErr?.message, "— saving content only");
       }
     }
+    const insertRow = { user_id: userId, name: name || "My Resume", content, file_url, file_type };
+    if (langMeta?.language) insertRow.language = langMeta.language;
+    if (langMeta?.detected_language) insertRow.detected_language = langMeta.detected_language;
+    if (langMeta?.language_confidence != null) insertRow.language_confidence = langMeta.language_confidence;
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({ user_id: userId, name: name || "My Resume", content, file_url, file_type })
+      .insert(insertRow)
       .select()
       .single();
     if (error) {
@@ -149,7 +154,19 @@ export function useResumes(userId) {
     await refresh();
   }, [userId, refresh]);
 
-  return { resumes, loading, saveResume, deleteResume, downloadResume, setDefaultResume, refresh, saveAnalysis, updateVersionLabel };
+  const updateResumeLanguage = useCallback(async (resumeId, language, detectedLanguage, confidence) => {
+    if (!userId || !resumeId) return;
+    const upd = {};
+    if (language !== undefined) upd.language = language;
+    if (detectedLanguage !== undefined) upd.detected_language = detectedLanguage;
+    if (confidence !== undefined) upd.language_confidence = confidence;
+    if (!Object.keys(upd).length) return;
+    const { error } = await supabase.from(TABLE).update(upd).eq("id", resumeId).eq("user_id", userId);
+    if (error) throw error;
+    await refresh();
+  }, [userId, refresh]);
+
+  return { resumes, loading, saveResume, deleteResume, downloadResume, setDefaultResume, refresh, saveAnalysis, updateVersionLabel, updateResumeLanguage };
 }
 
 const HISTORY_TABLE = "resume_analysis_history";

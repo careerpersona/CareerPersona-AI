@@ -2143,8 +2143,9 @@ function AuthPage({ t }) {
 const isToday = (iso) => !!iso && iso.slice(0, 10) === new Date().toISOString().slice(0, 10);
 
 // ─── BRIEFING PAYLOAD BUILDER (shared by DashboardPage + BriefingPage) ──────
-async function buildBriefingPayload(ctx) {
-  const raw = await askClaude(`You are CareerPersona AI. Generate a personalized daily briefing based on this user's career data. Be specific, actionable, and encouraging. Return ONLY valid JSON, no markdown:\n{"v":2,"summary":"1-2 personalized sentences about career status today","newMatchingJobs":"1 sentence about job opportunities in their target role","highestPayingJobs":"1 sentence about highest-paying opportunities for their skills","jobsClosingSoon":"1 sentence about application urgency or follow-up timing","priorityRecommendation":"1 specific actionable task for today based on their data","companiesHiringNow":"1 sentence about active hiring in their target sector","newOpportunities":"1 sentence about emerging roles or adjacent opportunities","resumeUpdates":"1 sentence about resume quality, keyword coverage, or professional readiness — do NOT promise ATS score gains","atsScoreChanges":"1 sentence about resume strength and optimization progress","interviewInvitations":"1 sentence about interview prep or pipeline status","recruiterActivity":"1 sentence about recruiter visibility and profile tips","applicationUpdates":"1 sentence about application pipeline and follow-up strategy","salaryChanges":"1 sentence about salary trends for their role and location","marketUpdates":"1 sentence about job market conditions in their field","careerInsights":"1 strategic career insight specific to their situation","dailyHighlights":["short actionable highlight 1","short actionable highlight 2","short actionable highlight 3"]}\nUser data: ${ctx}`, 1600);
+async function buildBriefingPayload(ctx, appLanguage) {
+  const prompt = `You are CareerPersona AI. Generate a personalized daily briefing based on this user's career data. Be specific, actionable, and encouraging. Return ONLY valid JSON, no markdown:\n{"v":2,"summary":"1-2 personalized sentences about career status today","newMatchingJobs":"1 sentence about job opportunities in their target role","highestPayingJobs":"1 sentence about highest-paying opportunities for their skills","jobsClosingSoon":"1 sentence about application urgency or follow-up timing","priorityRecommendation":"1 specific actionable task for today based on their data","companiesHiringNow":"1 sentence about active hiring in their target sector","newOpportunities":"1 sentence about emerging roles or adjacent opportunities","resumeUpdates":"1 sentence about resume quality, keyword coverage, or professional readiness — do NOT promise ATS score gains","atsScoreChanges":"1 sentence about resume strength and optimization progress","interviewInvitations":"1 sentence about interview prep or pipeline status","recruiterActivity":"1 sentence about recruiter visibility and profile tips","applicationUpdates":"1 sentence about application pipeline and follow-up strategy","salaryChanges":"1 sentence about salary trends for their role and location","marketUpdates":"1 sentence about job market conditions in their field","careerInsights":"1 strategic career insight specific to their situation","dailyHighlights":["short actionable highlight 1","short actionable highlight 2","short actionable highlight 3"]}\nUser data: ${ctx}`;
+  const raw = await askClaude(withAppLanguage(prompt, appLanguage), 1600);
   let result;
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
@@ -2172,6 +2173,105 @@ async function buildBriefingPayload(ctx) {
   };
 }
 
+// ─── LANGUAGE HELPERS ────────────────────────────────────────────────────────
+
+const LANG_NAMES = {
+  en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian",
+  pt: "Portuguese", nl: "Dutch", tr: "Turkish", ar: "Arabic", ru: "Russian",
+  hi: "Hindi", zh: "Chinese", ja: "Japanese", ko: "Korean",
+};
+
+// Append App Language instruction at end of any prompt (security: always last)
+function withAppLanguage(prompt, appLanguage) {
+  if (!appLanguage || appLanguage === "en") return prompt;
+  const name = LANG_NAMES[appLanguage] || appLanguage;
+  return `${prompt}\n\nIMPORTANT: Respond entirely in ${name}. All explanations, analysis, coaching, and output must be written in ${name}.`;
+}
+
+// Dual-language: App Language for conversation, Resume Language for document content.
+// When they match, falls back to withAppLanguage.
+function withDualLanguage(prompt, appLanguage, resumeLanguage) {
+  const docLang = resumeLanguage || appLanguage || "en";
+  const appLang = appLanguage || "en";
+  if (docLang === appLang) return withAppLanguage(prompt, appLang);
+  const appName = LANG_NAMES[appLang] || appLang;
+  const docName = LANG_NAMES[docLang] || docLang;
+  let suffix = "\n\nIMPORTANT LANGUAGE RULES:";
+  suffix += `\n- Write ALL resume document content in ${docName}.`;
+  if (appLang !== "en") suffix += `\n- Write ALL explanations, coaching, and responses to the user in ${appName}.`;
+  return prompt + suffix;
+}
+
+// Lightweight language detection — no external deps, Unicode + stop-word scoring.
+// Returns { lang: string|null, confidence: number 0-1 }.
+function detectResumeLanguage(text) {
+  if (!text?.trim() || text.trim().length < 60) return { lang: null, confidence: 0 };
+  const sample = text.slice(0, 3000);
+  const nonSpace = sample.replace(/\s+/g, "").length;
+  if (nonSpace < 30) return { lang: null, confidence: 0 };
+
+  // Non-Latin scripts: character frequency is highly distinctive
+  const scriptRanges = [
+    { code: "ar", re: /[؀-ۿ]/g },
+    { code: "zh", re: /[一-鿿㐀-䶿]/g },
+    { code: "ja", re: /[぀-ヿ]/g },
+    { code: "ko", re: /[가-퟿]/g },
+    { code: "ru", re: /[Ѐ-ӿ]/g },
+    { code: "hi", re: /[ऀ-ॿ]/g },
+  ];
+  for (const { code, re } of scriptRanges) {
+    const cnt = (sample.match(re) || []).length;
+    if (cnt / nonSpace > 0.08) return { lang: code, confidence: Math.min(0.97, 0.82 + (cnt / nonSpace) * 0.8) };
+  }
+
+  // Latin-script: distinctive diacritics + stop-word scoring
+  const lower = sample.toLowerCase();
+  const words = lower.match(/\b[a-zA-ZÀ-ÿ]{2,}\b/g) || [];
+  if (words.length < 15) return { lang: "en", confidence: 0.5 };
+
+  const scores = { en: 0, es: 0, fr: 0, de: 0, it: 0, pt: 0, nl: 0, tr: 0 };
+  if (/[ßüöäÜÖÄ]/.test(sample)) scores.de += 8;
+  if (/[ğşıİĞŞ]/.test(sample)) scores.tr += 8;
+  if (/[ãõÃÕ]/.test(sample)) scores.pt += 5;
+  if (/[àâæœÀÂÆŒ]/.test(sample) && !/[ãõ]/.test(sample)) scores.fr += 4;
+  if (/[ñÑ]/.test(sample)) scores.es += 4;
+
+  const stopWords = {
+    en: ["the","and","for","with","in","at","on","my","work","skills","experience","years","company","education"],
+    es: ["que","los","las","del","una","por","con","también","experiencia","trabajo","empresa","habilidades","años","educación"],
+    fr: ["les","des","une","pour","dans","avec","sur","expérience","compétences","formation","entreprise","travail"],
+    de: ["und","der","die","das","für","mit","ich","wir","berufserfahrung","kenntnisse","fähigkeiten","unternehmen","ausbildung"],
+    it: ["che","per","con","una","delle","anche","lavoro","esperienza","competenze","anni","azienda","formazione"],
+    pt: ["que","para","com","uma","dos","das","também","experiência","empresa","habilidades","anos","trabalho","educação"],
+    nl: ["voor","van","het","een","met","ook","ervaring","vaardigheden","bedrijf","opleiding","werk"],
+    tr: ["için","bir","ile","bu","deneyim","beceriler","yetenek","şirket","eğitim","yıl","çalışma"],
+  };
+  for (const w of words) {
+    for (const [lang, wl] of Object.entries(stopWords)) {
+      if (wl.includes(w)) scores[lang]++;
+    }
+  }
+
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const [bestLang, bestScore] = sorted[0];
+  const secondScore = sorted[1]?.[1] || 0;
+  if (bestScore === 0) return { lang: "en", confidence: 0.5 };
+  const ratio = secondScore > 0 ? bestScore / secondScore : 5;
+  const conf = Math.min(0.92, 0.46 + Math.min(0.36, (ratio - 1) * 0.1) + Math.min(0.1, bestScore * 0.004));
+  return { lang: bestLang, confidence: conf };
+}
+
+// Returns the job-language code to suggest generating in, or null if no suggestion.
+// Only fires when confidence >= 0.72 and resume language ≠ job language.
+function computeLanguageSuggestion(resume, jobLanguage) {
+  if (!resume || !jobLanguage) return null;
+  if ((resume.language_confidence ?? 0) < 0.72) return null;
+  const resumeLang = resume.language || resume.detected_language;
+  if (!resumeLang) return null;
+  if (resumeLang === jobLanguage) return null;
+  return jobLanguage;
+}
+
 function tPlanCat(id, t, fallback) {
   const m = { priorities: "plan.catPriorities", applications: "plan.catApplications", resume: "plan.catResume", interview: "plan.catInterview" };
   return m[id] ? t(m[id]) : (fallback || id);
@@ -2194,8 +2294,9 @@ function tStatusVal(val, t) {
 }
 
 // ─── PLAN PAYLOAD BUILDER (shared by DashboardPage + PlanPage) ───────────────
-async function buildPlanPayload(ctx) {
-  const raw = await askClaude(`You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","certifications":"<1 sentence recommending a specific certification relevant to the user's target role and industry — be concrete (e.g. AWS Solutions Architect, PMP, Security+, ISTQB, Google Cloud, Azure, Scrum, CPA) and suggest how to take the first step today>"}\nUser data: ${ctx}`, 900);
+async function buildPlanPayload(ctx, appLanguage) {
+  const prompt = `You are CareerPersona AI. Generate today's personalized action plan for this job seeker. Be specific and data-driven. Return ONLY valid JSON, no markdown:\n{"v":2,"productivityScore":<integer 0-100 based on career activity and progress>,"categories":[{"id":"priorities","category":"Today's Priorities","task":"<one specific actionable sentence for today>","time":"<e.g. 15 min>","status":"pending"},{"id":"applications","category":"Recommended Applications","task":"<one specific sentence about which jobs to apply to today>","time":"<e.g. 30 min>","status":"pending"},{"id":"resume","category":"Resume Improvements","task":"<one specific sentence about resume quality, writing, or professional readiness — do NOT promise ATS score gains or specific point improvements>","time":"<e.g. 20 min>","status":"pending"},{"id":"interview","category":"Interview Practice","task":"<if interview data: specific prep task; if not: skill-building task>","time":"<e.g. 45 min>","status":"pending"}],"followUps":"<1 sentence about specific follow-up actions>","networking":"<1 sentence about specific networking task>","certifications":"<1 sentence recommending a specific certification relevant to the user's target role and industry — be concrete (e.g. AWS Solutions Architect, PMP, Security+, ISTQB, Google Cloud, Azure, Scrum, CPA) and suggest how to take the first step today>"}\nUser data: ${ctx}`;
+  const raw = await askClaude(withAppLanguage(prompt, appLanguage), 900);
   let result;
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
@@ -2440,7 +2541,7 @@ function MarkdownText({ text }) {
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
 function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState(null);
@@ -2612,7 +2713,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     console.log("[Briefing] Starting generation for user", profile?.id);
     try {
       const ctx = userContext.getContextString();
-      const result = await buildBriefingPayload(ctx);
+      const result = await buildBriefingPayload(ctx, language);
       if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
       setBriefing(result);
@@ -2634,7 +2735,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     console.log("[ActionPlan] Starting generation for user", profile?.id);
     try {
       const ctx = userContext.getContextString();
-      const result = await buildPlanPayload(ctx);
+      const result = await buildPlanPayload(ctx, language);
       if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
       setDailyPlan(result);
@@ -3219,7 +3320,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
 // ─── BRIEFING PAGE ──────────────────────────────────────────
 function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, networkingSession, companyWatchlist }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
@@ -3245,7 +3346,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
     setGenLoading(true);
     try {
       const ctx = userContext.getContextString();
-      const result = await buildBriefingPayload(ctx);
+      const result = await buildBriefingPayload(ctx, language);
       setBriefing(result);
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
       saveBriefing(result).catch(err => console.error("briefing save failed", err));
@@ -3388,7 +3489,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
 
 // ─── FULL ACTION PLAN PAGE ───────────────────────────────────
 function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
@@ -3436,7 +3537,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
     console.log("[PlanPage] Starting generation for user", profile?.id);
     try {
       const ctx = userContext.getContextString();
-      const result = await buildPlanPayload(ctx);
+      const result = await buildPlanPayload(ctx, language);
       console.log("[PlanPage] Generation succeeded");
       setPlan(result);
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
@@ -4351,8 +4452,8 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, analysisHistory, saveHistoryToDb, onResumeLoad, entryTarget, onConsumeEntryTarget }) {
-  const { t } = useI18n();
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage }) {
+  const { t, language } = useI18n();
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
   const [loading, setLoading] = useState(false);
@@ -4782,7 +4883,9 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
         const name = shouldSaveAsNew
           ? `Optimized${results.jobTitle ? ` — ${results.jobTitle}` : ""}${originalName ? ` (${originalName.replace(/\.[^.]+$/, "")})` : ""}`
           : uploadedFile?.name || (results.jobTitle ? `Resume — ${results.jobTitle}` : t("resume.myResumeFallback"));
-        const savedRow = await saveResume(name, resume, null);
+        const detection = detectResumeLanguage(resume);
+        const langMeta = detection.lang ? { language: detection.lang, detected_language: detection.lang, language_confidence: detection.confidence } : undefined;
+        const savedRow = await saveResume(name, resume, null, langMeta);
         if (savedRow?.id) { resumeId = savedRow.id; setLoadedResumeId(savedRow.id); }
       }
       if (resumeId && saveAnalysis) {
@@ -4798,7 +4901,16 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
     }
   };
 
-  const handleLoadResume = (r) => { setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); onResumeLoad?.(r.id); };
+  const handleLoadResume = (r) => {
+    setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); onResumeLoad?.(r.id);
+    // Backfill detection for existing resumes that were saved before this feature existed
+    if (r.content && !r.detected_language && updateResumeLanguage) {
+      const { lang, confidence } = detectResumeLanguage(r.content);
+      if (lang && confidence >= 0.72) {
+        updateResumeLanguage(r.id, r.language || lang, lang, confidence).catch(() => {});
+      }
+    }
+  };
 
   const handleGenerateResume = async () => {
     if (!profile?.id) return;
@@ -4815,7 +4927,12 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
         profile?.work_type ? `Work Type: ${profile.work_type}` : "",
       ].filter(Boolean).join("\n");
 
-      const prompt = `You are an expert resume writer. Create a professional, ATS-optimized resume in plain text format.
+      // Resume Language for this new document: use the loaded resume's language if one is
+      // loaded, otherwise fall back to job language (what the user is targeting), otherwise "en".
+      const loadedResumeLang = resumes.find(r => r.id === loadedResumeId)?.language;
+      const docLang = loadedResumeLang || jobLanguage || "en";
+
+      const basePrompt = `You are an expert resume writer. Create a professional, ATS-optimized resume in plain text format.
 
 PROFILE:
 ${identity}
@@ -4831,7 +4948,7 @@ SKILLS: ${aiForm.skills}${aiForm.certifications ? `\n\nCERTIFICATIONS: ${aiForm.
 INSTRUCTIONS:
 Write a complete, polished ATS-friendly resume in plain text. Include: Contact Information, Professional Summary, Work Experience (with bullet points and quantified achievements where possible), Skills, Education${aiForm.certifications ? ", Certifications" : ""}. Use UPPERCASE for section headers. Use action verbs. Return ONLY the resume text — no explanation, no markdown, no preamble.`;
 
-      const generated = await askClaude(prompt, 3000);
+      const generated = await askClaude(withDualLanguage(basePrompt, language, docLang), 3000);
       setResume(generated.trim());
       if (jobDesc.trim()) {
         setPendingAutoAnalyze(true);
@@ -5362,12 +5479,64 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
                         {isLoaded && !isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenLight, borderRadius: 6, padding: "2px 7px" }}>{t("resume.loaded")}</span>}
                         {isEditing && <span style={{ fontSize: 10, fontWeight: 700, color: C.purple, background: C.purpleLight, borderRadius: 6, padding: "2px 7px" }}>{t("resume.editingBadge")}</span>}
                       </div>
+                      {/* Per-resume language row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }} onClick={e => e.stopPropagation()}>
+                        <span style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{t("resume.resumeLanguageLabel")}:</span>
+                        <select
+                          value={r.language || "en"}
+                          onChange={async e => {
+                            e.stopPropagation();
+                            if (updateResumeLanguage) {
+                              try { await updateResumeLanguage(r.id, e.target.value, r.detected_language, r.language_confidence); } catch {}
+                            }
+                          }}
+                          style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#fff", color: C.text, fontFamily: "inherit", cursor: "pointer" }}
+                        >
+                          {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.flag} {l.native}</option>)}
+                        </select>
+                        {r.detected_language && r.detected_language !== (r.language || "en") && (
+                          <span style={{ fontSize: 10, color: C.textMuted }}>
+                            {t("resume.detectedLanguageLabel")}: {LANGUAGES.find(l => l.code === r.detected_language)?.flag} {LANGUAGES.find(l => l.code === r.detected_language)?.native}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             </Card>
           )}
+
+          {/* Smart AI Language Suggestion — only when a resume is loaded and job language differs */}
+          {(() => {
+            const loadedResume = resumes.find(r => r.id === loadedResumeId);
+            const effectiveJobLang = jobLanguage || "en";
+            const suggestLang = loadedResume ? computeLanguageSuggestion(loadedResume, effectiveJobLang) : null;
+            const suggestMeta = suggestLang ? LANGUAGES.find(l => l.code === suggestLang) : null;
+            if (!suggestMeta) return null;
+            const suggestBody = t("resume.langSuggestionBody")
+              .replace("{jobLang}", `${suggestMeta.flag} ${suggestMeta.native}`);
+            return (
+              <div style={{ background: `linear-gradient(135deg,${C.purpleLight},#fff)`, border: `1.5px solid ${C.purple}30`, borderRadius: 14, padding: "14px 16px", marginBottom: 14, animation: "summaryEntrance 0.3s ease-out" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>🤖</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 4 }}>{t("resume.langSuggestionTitle")}</div>
+                    <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{suggestBody}</div>
+                    <Btn
+                      onClick={async () => {
+                        if (!loadedResume || !updateResumeLanguage) return;
+                        try { await updateResumeLanguage(loadedResume.id, suggestLang, loadedResume.detected_language, loadedResume.language_confidence); } catch {}
+                      }}
+                      style={{ fontSize: 12, padding: "7px 14px" }}
+                    >
+                      {t("resume.langSuggestionBtn").replace("{jobLang}", `${suggestMeta.flag} ${suggestMeta.native}`)}
+                    </Btn>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* SECTION 2 — Resume Workspace */}
           <div id="resume-workspace">
@@ -9632,7 +9801,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 
 // ─── SETTINGS PAGE ─────────────────────────────────────────
 function SettingsPage({ profile, updateProfile, logout, setPage }) {
-  const { t } = useI18n();
+  const { t, language, setLanguage } = useI18n();
   const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
@@ -9651,6 +9820,35 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
   return (
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 24 }}>{t("settings.heading")}</h1>
+
+      {/* LANGUAGE SETTINGS */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>🌐</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.languagesHeading")}</span></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("settings.appLanguageLabel")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("settings.appLanguageHint")}</div>
+            <select
+              value={language}
+              onChange={e => { setLanguage(e.target.value); updateProfile({ preferred_language: e.target.value }); }}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}
+            >
+              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.flag} {l.native}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("settings.jobLanguageLabel")}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("settings.jobLanguageHint")}</div>
+            <select
+              value={profile?.job_language || "en"}
+              onChange={e => updateProfile({ job_language: e.target.value })}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}
+            >
+              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.flag} {l.native}</option>)}
+            </select>
+          </div>
+        </div>
+      </Card>
 
       {/* SUBSCRIPTION */}
       <Card style={{ marginBottom: 16 }}>
@@ -9840,7 +10038,7 @@ export default function App() {
 
   // Data lifted to App level so UserContext can aggregate them as the single
   // source of truth. Page-level hook instances keep their full mutation APIs.
-  const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel } = useResumes(profile?.id);
+  const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel, updateResumeLanguage: rootUpdateResumeLanguage } = useResumes(profile?.id);
   const [activeResumeId, setActiveResumeId] = useState(null);
   const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
   // Resume Intelligence navigation state machine — computed once at root so every
@@ -10063,7 +10261,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
