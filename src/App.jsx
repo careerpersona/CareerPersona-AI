@@ -10219,7 +10219,7 @@ export default function App() {
   .desktop-nav { display: none !important; }
   .mobile-logo-row { gap: 2px !important; padding: 10px 4px 0 !important; }
   .hamburger-btn { display: block !important; width: 50px !important; height: 50px !important; font-size: 35px !important; line-height: 34px !important; }
-  .subscription-badge { display: block !important; border: none !important; padding: 4px 4px !important; }
+  .subscription-badge { display: flex !important; align-items: center !important; }
   .brand-logo { width: 43px !important; height: 43px !important; border-radius: 9px !important; }
   .brand-logo-glyph { font-size: 18px !important; }
   .brand-name { font-size: 24px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; }
@@ -10255,16 +10255,11 @@ export default function App() {
           <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
-          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: planName === "FREE" ? "#fff" : C.purpleLight, border: `1.5px solid ${C.purple}`, borderRadius: 10, padding: "4px 9px", cursor: "pointer", textAlign: "center", lineHeight: 1.15 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: C.purple, whiteSpace: "nowrap", display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5 }}>
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }} aria-hidden="true"><path d="M2 11v2h12v-2l1-5-3.5 2.2L8 4 4.5 8.2 1 6z" /><circle cx="3" cy="5.3" r="1" /><circle cx="8" cy="3.2" r="1.2" /><circle cx="13" cy="5.3" r="1" /></svg>
-              <span style={{ lineHeight: 1 }}>{planName}</span>
-            </div>
-            {planName === "FREE" && (
-              <div style={{ display: "flex", justifyContent: "center", marginTop: 1 }}>
-                <span style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", letterSpacing: "normal", whiteSpace: "nowrap" }}>{t("nav.upgrade")}</span>
-              </div>
-            )}
+          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: "none", border: "none", padding: "8px 6px", cursor: "pointer", lineHeight: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: planName === "PREMIUM" ? 700 : planName === "PRO" ? 600 : 500, color: C.purple, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
+              <span style={{ fontSize: 9, lineHeight: 1 }}>✦</span>
+              <span style={{ lineHeight: 1 }}>{planName.charAt(0) + planName.slice(1).toLowerCase()}</span>
+            </span>
           </button>
         </div>
         {/* Row 2: Nav + Utility */}
