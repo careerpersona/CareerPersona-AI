@@ -171,30 +171,52 @@ async function supabaseRPC(fn, args, env) {
 // Key pattern: sub:{userId}
 
 async function getSubscription(userId, env) {
-  const cached = await env.SUBSCRIPTION_CACHE.get(`sub:${userId}`, "json");
-  if (cached) return cached;
+  // KV read wrapped in try-catch: if KV is unavailable, fall through to Supabase.
+  // Blueprint #1: KV → Supabase fallback; both failing must deny authorization safely.
+  try {
+    const cached = await env.SUBSCRIPTION_CACHE.get(`sub:${userId}`, "json");
+    if (cached) return cached;
+  } catch (_) { /* KV unavailable — fall through */ }
+
   const rows = await supabaseGet("profiles", {
     id: `eq.${userId}`,
     select: "subscription_status,trial_started_at,trial_ends_at,stripe_customer_id,stripe_subscription_id,current_period_start,current_period_end,cancel_at_period_end,grace_period_ends_at",
   }, env);
+  // If supabaseGet throws here, the error propagates to the top-level catch → 500,
+  // which denies authorization safely (no entitlements granted without verification).
   const sub = rows?.[0] ?? { subscription_status: "no_subscription" };
-  const ttl = KV_TTL[sub.subscription_status] ?? 900;
-  await env.SUBSCRIPTION_CACHE.put(`sub:${userId}`, JSON.stringify(sub), { expirationTtl: ttl });
+
+  // KV write is best-effort: failure is non-fatal (next request will re-query Supabase).
+  try {
+    const ttl = KV_TTL[sub.subscription_status] ?? 900;
+    await env.SUBSCRIPTION_CACHE.put(`sub:${userId}`, JSON.stringify(sub), { expirationTtl: ttl });
+  } catch (_) { /* non-fatal */ }
+
   return sub;
 }
 
 async function invalidateSubscription(userId, env) {
-  await env.SUBSCRIPTION_CACHE.delete(`sub:${userId}`);
+  // Non-fatal: if KV is unavailable, the stale entry will expire via TTL.
+  try {
+    await env.SUBSCRIPTION_CACHE.delete(`sub:${userId}`);
+  } catch (_) { /* non-fatal */ }
 }
 
 // ─── PLATFORM CONFIG CACHE ────────────────────────────────────────────────────
 
 async function getConfig(env) {
-  const cached = await env.SUBSCRIPTION_CACHE.get("platform_config", "json");
-  if (cached) return cached;
+  try {
+    const cached = await env.SUBSCRIPTION_CACHE.get("platform_config", "json");
+    if (cached) return cached;
+  } catch (_) { /* KV unavailable — fall through */ }
+
   const rows = await supabaseGet("platform_config", { select: "key,value" }, env);
   const config = Object.fromEntries((rows ?? []).map(r => [r.key, r.value]));
-  await env.SUBSCRIPTION_CACHE.put("platform_config", JSON.stringify(config), { expirationTtl: CONFIG_KV_TTL });
+
+  try {
+    await env.SUBSCRIPTION_CACHE.put("platform_config", JSON.stringify(config), { expirationTtl: CONFIG_KV_TTL });
+  } catch (_) { /* non-fatal */ }
+
   return config;
 }
 
