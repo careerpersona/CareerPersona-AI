@@ -25,7 +25,7 @@ GRANT SELECT ON public.platform_config TO authenticated;
 
 -- Seed: all business values
 INSERT INTO public.platform_config (key, value, description) VALUES
-  ('trial_days',                '14',  'Number of days in the trial period'),
+  ('trial_days',                '7',   'Number of days in the trial period'),
   ('trial_ai_requests',         '10',  'Total AI requests allowed during the trial period'),
   ('trial_resume_analyses',     '3',   'Resume analyses allowed during the trial period'),
   ('trial_interview_sessions',  '3',   'Interview sessions allowed during the trial period'),
