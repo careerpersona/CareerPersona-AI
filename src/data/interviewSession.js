@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 
 const TABLE = "interview_sessions";
 
-const toRow = (userId, s) => ({
+const toRow = (userId, s, extra = {}) => ({
   user_id: userId,
   job_description: s.jobDesc || null,
   questions: s.questions || [],
@@ -20,6 +20,7 @@ const toRow = (userId, s) => ({
     activeQ: s.activeQ || null,
     showReview: s.showReview || false,
   },
+  ...extra,
 });
 
 const fromRow = (r) => ({
@@ -37,14 +38,11 @@ const fromRow = (r) => ({
   showReview: r.session_state?.showReview || false,
 });
 
-// The existing UI only ever has one active interview session per user, so
-// this loads the most recent row and updates it in place rather than
-// modeling a list — mirrors the prior single-slot localStorage behavior.
-// `loadedFor` tracks which userId the current session/loading actually
-// belong to. Without it, a consumer gating on "loading just became false"
-// can be fooled by a stale render where the previous (e.g. undefined)
-// user's effect already cleared loading right as the prop flips to the
-// real userId, before that user's own fetch has even started.
+// Loads the single active session for this user.
+// Only one active session can exist per user (enforced by a partial unique index
+// on interview_sessions where status = 'active').
+// `loadedFor` tracks which userId the current session belongs to so consumers
+// can distinguish a stale render from a genuine "no session" state.
 export function useInterviewSession(userId) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +53,7 @@ export function useInterviewSession(userId) {
     let active = true;
     if (!userId) { setSession(null); setLoadedFor(userId); setLoading(false); rowIdRef.current = null; return; }
     setLoading(true);
-    supabase.from(TABLE).select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1)
+    supabase.from(TABLE).select("*").eq("user_id", userId).eq("status", "active").limit(1)
       .then(({ data, error }) => {
         if (!active) return;
         if (!error && data && data.length) {
@@ -71,6 +69,8 @@ export function useInterviewSession(userId) {
     return () => { active = false; };
   }, [userId]);
 
+  // Updates the active session in place. If no active row exists yet (e.g. after
+  // complete() was called), inserts a new one with status='active'.
   const save = useCallback(async (s) => {
     if (!userId) return;
     const row = toRow(userId, s);
@@ -78,12 +78,26 @@ export function useInterviewSession(userId) {
       const { error } = await supabase.from(TABLE).update(row).eq("id", rowIdRef.current);
       if (error) throw error;
     } else {
-      const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+      const { data, error } = await supabase.from(TABLE).insert({ ...row, status: "active" }).select().single();
       if (error) throw error;
       rowIdRef.current = data.id;
     }
   }, [userId]);
 
+  // Marks the active session as permanently completed with its final data.
+  // After this, rowIdRef is cleared so any future save() call inserts a new
+  // active session rather than touching the completed record.
+  const complete = useCallback(async (s) => {
+    if (!userId || !rowIdRef.current) return;
+    const row = toRow(userId, s, { status: "completed" });
+    const { error } = await supabase.from(TABLE).update(row).eq("id", rowIdRef.current);
+    if (error) throw error;
+    rowIdRef.current = null;
+  }, [userId]);
+
+  // Deletes the active session. Used when the user explicitly discards an
+  // unfinished interview to start fresh. Safe to call after complete() —
+  // rowIdRef is already null so the delete is skipped.
   const clear = useCallback(async () => {
     if (rowIdRef.current) {
       await supabase.from(TABLE).delete().eq("id", rowIdRef.current);
@@ -92,20 +106,42 @@ export function useInterviewSession(userId) {
     setSession(null);
   }, []);
 
-  // Re-fetches the latest row from Supabase and updates local state. Call this
-  // whenever a different hook instance may have written to the same row (e.g.
-  // when the user navigates from InterviewPage back to DashboardPage).
   const refresh = useCallback(async () => {
     if (!userId) return;
-    const { data, error } = await supabase.from(TABLE).select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1);
+    const { data, error } = await supabase.from(TABLE).select("*").eq("user_id", userId).eq("status", "active").limit(1);
     if (error) return;
     if (data && data.length) {
       rowIdRef.current = data[0].id;
       setSession(fromRow(data[0]));
     } else {
+      rowIdRef.current = null;
       setSession(null);
     }
   }, [userId]);
 
-  return { session, loading, loadedFor, save, clear, refresh };
+  return { session, loading, loadedFor, save, clear, complete, refresh };
+}
+
+// Returns all completed interview sessions for a user, newest first.
+// Used to render the interview history list below the active session.
+export function useInterviewHistory(userId) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) { setHistory([]); setLoading(false); return; }
+    setLoading(true);
+    supabase
+      .from(TABLE)
+      .select("id, job_description, readiness_score, updated_at")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .order("updated_at", { ascending: false })
+      .then(({ data, error }) => {
+        setHistory((!error && data) ? data : []);
+        setLoading(false);
+      });
+  }, [userId]);
+
+  return { history, loading };
 }

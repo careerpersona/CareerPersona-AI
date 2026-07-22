@@ -5,7 +5,7 @@ import { useApplications, insertApplicationRow, deleteApplicationRow, upsertAppl
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
 import { useSmartApplyQueue } from "./data/smartApply";
-import { useInterviewSession } from "./data/interviewSession";
+import { useInterviewSession, useInterviewHistory } from "./data/interviewSession";
 import { useSalaryResearch } from "./data/salaryResearch";
 import { useNetworkingContacts } from "./data/networkingContacts";
 import { useNetworkingSession } from "./data/networkingSession";
@@ -7405,10 +7405,15 @@ function InterviewPage({ profile, applications, savedJobs }) {
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
   const userContext = useUserContext({ profile, applications, savedJobs });
 
-  const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, save: saveSession, clear: clearSessionRow } = useInterviewSession(profile?.id);
+  const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, save: saveSession, clear: clearSessionRow, complete: completeSession } = useInterviewSession(profile?.id);
+  const { history: interviewHistory } = useInterviewHistory(profile?.id);
   const [loadApplied, setLoadApplied] = useState(false);
   const appliedForRef = useRef(undefined);
   const saveTimerRef = useRef(null);
+  // Suppresses the debounced save after a session is completed so the completed
+  // record is never overwritten by a trailing state-change write.
+  const sessionCompletedRef = useRef(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   // ── Session persistence: load once the Supabase fetch for this user resolves ──
   // Gated on `sessionLoadedFor === profile?.id` (not just `!sessionLoading`) so a
@@ -7439,7 +7444,7 @@ function InterviewPage({ profile, applications, savedJobs }) {
 
   // ── Session persistence: save on change (debounced to avoid a write per keystroke) ──
   useEffect(() => {
-    if (!loadApplied || !questions.length) return;
+    if (!loadApplied || !questions.length || sessionCompletedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview }).catch(() => {});
@@ -7447,11 +7452,28 @@ function InterviewPage({ profile, applications, savedJobs }) {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [loadApplied, questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, saveSession]);
 
-  const clearSession = () => {
-    clearSessionRow().catch(() => {});
+  const resetLocalSession = () => {
+    sessionCompletedRef.current = false;
+    setConfirmDiscard(false);
     setQuestions([]); setJobDesc(""); setActiveQ(null); setFeedback(null);
     setSavedFeedback({}); setMockAnswers({}); setMockSummary(null); setMode("browse"); setShowReview(false);
     setMockIdx(0); setRestored(false); setError("");
+  };
+
+  const clearSession = () => {
+    if (sessionCompletedRef.current) {
+      // Completed sessions have no active DB row (complete() already cleared rowIdRef),
+      // so there is nothing to delete — just reset the local display state.
+      resetLocalSession();
+    } else {
+      // Active (unfinished) sessions need a confirmation before discarding.
+      setConfirmDiscard(true);
+    }
+  };
+
+  const doDiscard = () => {
+    clearSessionRow().catch(() => {});
+    resetLocalSession();
   };
 
   // ── Resume upload (PDF/DOCX/TXT) — local to Interview page ──
@@ -7600,9 +7622,8 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
     const baseSummary = { answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null };
     setMockSummary(baseSummary);
     insertNotification(profile?.id, { type: "interview", title: "Mock interview complete.", body: "AI Score: " + avg + "/10 — your interview feedback is ready." });
-    // Persist immediately (don't rely on the 600ms debounce) so the dashboard
-    // always sees the score even if the user navigates away right after finishing.
-    saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers: answersMap, mockSummary: baseSummary, mode: "mock", mockIdx, mockAnswerDraft: "", activeQ, showReview: false }).catch(() => {});
+
+    let finalSummary = baseSummary;
     if (answeredCount > 0) {
       try {
         const details = mockQuestions.filter(q => answersMap[q.id]).map(q => `${q.category} (${answersMap[q.id].feedback?.score ?? "?"}/10): strengths: ${(answersMap[q.id].feedback?.strengths || []).join("; ")} | improvements: ${(answersMap[q.id].feedback?.improvements || []).join("; ")}`).join("\n");
@@ -7615,9 +7636,18 @@ ${details}
 Return ONLY this JSON (no markdown):
 {"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350);
         const parsed = safeParse(raw);
-        if (parsed) setMockSummary(prev => ({ ...prev, aiSummary: parsed }));
+        if (parsed) {
+          finalSummary = { ...baseSummary, aiSummary: parsed };
+          setMockSummary(finalSummary);
+        }
       } catch {}
     }
+
+    // Mark session as completed with the full final data. This writes the
+    // completed record once and clears rowIdRef so no subsequent debounce
+    // write can overwrite it.
+    sessionCompletedRef.current = true;
+    completeSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers: answersMap, mockSummary: finalSummary, mode: "mock", mockIdx, mockAnswerDraft: "", activeQ, showReview: false }).catch(() => {});
   };
 
   const cats = ["All","Behavioral","Technical","Situational","Culture Fit"];
@@ -7654,8 +7684,40 @@ Return ONLY this JSON (no markdown):
           <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("interview.title")} <span style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>v11</span></h1>
           <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("interview.subtitle")}</p>
         </div>
-        {questions.length > 0 && <Btn variant="secondary" onClick={clearSession}>{t("interview.clearSession")}</Btn>}
+        {questions.length > 0 && !confirmDiscard && <Btn variant="secondary" onClick={clearSession}>{t("interview.clearSession")}</Btn>}
       </div>
+
+      {/* Discard confirmation — shown instead of the Clear Session button */}
+      {confirmDiscard && (
+        <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: C.text, flex: 1 }}>{t("interview.discardConfirmMsg")}</span>
+          <Btn variant="danger" onClick={doDiscard} style={{ padding: "7px 16px", fontSize: 13 }}>{t("interview.discardConfirm")}</Btn>
+          <Btn variant="secondary" onClick={() => setConfirmDiscard(false)} style={{ padding: "7px 16px", fontSize: 13 }}>{t("interview.discardCancel")}</Btn>
+        </div>
+      )}
+
+      {/* Interview history — completed sessions, shown when no active session is loaded */}
+      {!questions.length && interviewHistory.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>{t("interview.historyTitle")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {interviewHistory.map((row) => {
+              const label = (row.job_description || "").trim().slice(0, 64) + ((row.job_description || "").length > 64 ? "…" : "");
+              const score = row.readiness_score != null ? (row.readiness_score / 10).toFixed(1) : null;
+              const dateStr = row.updated_at ? new Date(row.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+              return (
+                <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 12, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "11px 16px" }}>
+                  <span style={{ color: C.green, fontWeight: 800, fontSize: 15, flexShrink: 0 }}>✓</span>
+                  <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1, lineHeight: 1.4, minWidth: 0 }}>{label || t("interview.historyUnlabeled")}</span>
+                  {score && <span style={{ fontSize: 13, fontWeight: 700, color: parseFloat(score) >= 8 ? C.green : parseFloat(score) >= 6 ? C.yellow : C.red, flexShrink: 0 }}>{score}/10</span>}
+                  <span style={{ fontSize: 12, color: C.textMuted, flexShrink: 0 }}>{dateStr}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ height: 1, background: C.border, margin: "20px 0" }} />
+        </div>
+      )}
 
       {restored && questions.length > 0 && (
         <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 9, padding: "10px 14px", color: C.purple, fontSize: 13, marginBottom: 16 }}>
@@ -7792,7 +7854,7 @@ Return ONLY this JSON (no markdown):
 
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                 <Btn onClick={() => setShowReview(true)}>{t("interview.reviewAnswers")}</Btn>
-                <Btn variant="secondary" onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
+                <Btn variant="secondary" onClick={() => { sessionCompletedRef.current = false; setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
               </div>
             </Card>
           )}
@@ -7862,7 +7924,7 @@ Return ONLY this JSON (no markdown):
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
                 <Btn variant="secondary" onClick={() => { setMode("browse"); setMockSummary(null); setShowReview(false); }}>{t("interview.backToList")}</Btn>
-                <Btn onClick={() => { setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
+                <Btn onClick={() => { sessionCompletedRef.current = false; setMockIdx(0); setMockSummary(null); setMockAnswers({}); setShowReview(false); }}>{t("interview.retryMock")}</Btn>
               </div>
             </div>
           )}
