@@ -6,6 +6,7 @@ import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
 import { useSmartApplyQueue } from "./data/smartApply";
 import { useInterviewSession, useInterviewHistory } from "./data/interviewSession";
+import { useVoiceInput, voiceSupported } from "./hooks/useVoiceInput";
 import { useSalaryResearch } from "./data/salaryResearch";
 import { useNetworkingContacts } from "./data/networkingContacts";
 import { useNetworkingSession } from "./data/networkingSession";
@@ -7380,9 +7381,66 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
   );
 }
 
+// Voice input button — renders only when the Web Speech API is available.
+// `onTranscript` receives the full accumulated string (existing text + voice).
+// `currentText`  is the textarea value at the moment recording starts so
+//                typed content is preserved and the voice portion is appended.
+// `key` the parent should pass `key={activeQ?.id}` or `key={mockIdx}` so the
+//       hook resets between questions and any in-progress recording is stopped.
+function VoiceInputBtn({ onTranscript, currentText, language }) {
+  const { t } = useI18n();
+  const { status, errorCode, start, stop } = useVoiceInput({ lang: language, onTranscript });
+
+  if (!voiceSupported()) return null;
+
+  const isRecording = status === "recording";
+  const errMsg = {
+    "permission-denied": t("interview.voiceErrPermission"),
+    "no-microphone": t("interview.voiceErrNoMic"),
+    "no-speech": t("interview.voiceErrNoSpeech"),
+    "not-supported": t("interview.voiceErrUnsupported"),
+  }[errorCode] || (errorCode ? t("interview.voiceErrDefault") : null);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={isRecording ? stop : () => start(currentText)}
+        aria-label={isRecording ? t("interview.voiceStop") : t("interview.voiceStart")}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "10px 16px",
+          background: isRecording ? C.redLight : C.bgSoft,
+          border: `1.5px solid ${isRecording ? C.red + "60" : C.border}`,
+          borderRadius: 9,
+          color: isRecording ? C.red : C.textMid,
+          fontSize: 13, fontWeight: 600,
+          cursor: "pointer", fontFamily: "inherit",
+          whiteSpace: "nowrap", lineHeight: 1,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
+            background: isRecording ? C.red : C.textMid,
+            boxShadow: isRecording ? `0 0 0 3px ${C.red}30` : "none",
+          }}
+        />
+        {isRecording ? t("interview.voiceStop") : t("interview.voiceStart")}
+      </button>
+      {errMsg && (
+        <div style={{ fontSize: 12, color: C.red, marginTop: 6, lineHeight: 1.5, maxWidth: 320 }}>
+          {errMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── INTERVIEW PAGE ────────────────────────────────────────
 function InterviewPage({ profile, applications, savedJobs }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
   const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useSessionState("cp_interview_filter", "All");
@@ -7709,7 +7767,7 @@ Return ONLY this JSON (no markdown):
               const scoreNum = score != null ? parseFloat(score) : null;
               const scoreColor = scoreNum == null ? C.textMuted : scoreNum >= 8 ? C.green : scoreNum >= 6 ? C.yellow : C.red;
               const dateStr = row.updated_at ? new Date(row.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
-              const modeKey = row.mode === "mock" ? "interview.historyModeMock" : "interview.historyModePractice";
+              const modeKey = row.mode === "mock" ? "interview.historyModeMock" : row.mode === "voice" ? "interview.historyModeVoice" : "interview.historyModePractice";
               const modeLabel = t(modeKey);
               const modeColor = row.mode === "mock" ? C.purple : C.blue;
               const modeBg = row.mode === "mock" ? C.purpleLight : C.blueLight;
@@ -7817,9 +7875,10 @@ Return ONLY this JSON (no markdown):
               <div style={{ height: 6, background: C.bgSoft, borderRadius: 4, marginBottom: 20, overflow: "hidden" }}><div style={{ width: `${((mockIdx) / mockQuestions.length) * 100}%`, height: "100%", background: C.purple }} /></div>
               {isBehavioral(mockQuestions[mockIdx]) && <StarCard />}
               <Textarea label={t("interview.yourAnswer")} placeholder={t("interview.yourAnswerPlaceholder")} value={mockAnswerDraft} onChange={e => setMockAnswerDraft(e.target.value)} style={{ minHeight: 160, width: "100%", marginBottom: 14 }} />
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
                 <Btn onClick={submitMockAnswer} disabled={!mockAnswerDraft.trim()} loading={mockLoading}>{mockLoading ? t("interview.scoringBtn") : (mockIdx + 1 < mockQuestions.length ? t("interview.submitNext") : t("interview.submitFinish"))}</Btn>
                 <Btn variant="secondary" onClick={skipMock} disabled={mockLoading}>{t("interview.skipBtn")}</Btn>
+                <VoiceInputBtn key={mockIdx} onTranscript={setMockAnswerDraft} currentText={mockAnswerDraft} language={language} />
               </div>
             </Card>
           )}
@@ -7976,7 +8035,10 @@ Return ONLY this JSON (no markdown):
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("interview.practiceLabel")}</div>
               <Textarea label={t("interview.typeAnswerLabel")} placeholder={t("interview.typeAnswerPlaceholder")} value={answer} onChange={e => setAnswer(e.target.value)} style={{ minHeight: 180, marginBottom: 16, width: "100%" }} />
-              <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? t("interview.analyzing") : t("interview.getFeedback")}</Btn>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <Btn onClick={getFeedback} disabled={!answer.trim()} loading={fbLoading}>{fbLoading ? t("interview.analyzing") : t("interview.getFeedback")}</Btn>
+                <VoiceInputBtn key={activeQ?.id} onTranscript={setAnswer} currentText={answer} language={language} />
+              </div>
             </div>
 
             {fbLoading && <Spinner steps={[t("interview.feedbackSpinner1"),t("interview.feedbackSpinner2"),t("interview.feedbackSpinner3")]} currentStep={1} />}
