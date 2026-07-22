@@ -2,3 +2,36 @@ name = "proxy"
 main = "worker.js"
 compatibility_date = "2026-06-26"
 account_id = "637fa7d8ceb1610ccb368c96de2c0f3e"
+
+[[kv_namespaces]]
+binding = "SUBSCRIPTION_CACHE"
+id = "8f98abdf7c1542d0bd561635d66c17f6"
+
+[vars]
+SUPABASE_URL = "https://cbzebqxbohgkgcqfgmdm.supabase.co"
+
+# Secrets (set via: npx wrangler secret put <NAME>)
+# ANTHROPIC_API_KEY         — already set
+# ADZUNA_APP_ID             — already set
+# ADZUNA_APP_KEY            — already set
+# RAPIDAPI_KEY              — already set
+# SUPABASE_SERVICE_ROLE_KEY — set in Phase 2
+# SUPABASE_JWT_SECRET       — set in Phase 2 (from dashboard: Settings → API → JWT Secret)
+# STRIPE_SECRET_KEY         — set before enabling Stripe routes
+# STRIPE_WEBHOOK_SECRET     — set when registering Stripe webhook endpoint
+
+[env.staging]
+name = "proxy-staging"
+vars = { SUPABASE_URL = "https://cbzebqxbohgkgcqfgmdm.supabase.co" }
+
+[[env.staging.kv_namespaces]]
+binding = "SUBSCRIPTION_CACHE"
+id = "8f98abdf7c1542d0bd561635d66c17f6"
+
+[env.production]
+name = "proxy"
+vars = { SUPABASE_URL = "https://cbzebqxbohgkgcqfgmdm.supabase.co" }
+
+[[env.production.kv_namespaces]]
+binding = "SUBSCRIPTION_CACHE"
+id = "8f98abdf7c1542d0bd561635d66c17f6"
