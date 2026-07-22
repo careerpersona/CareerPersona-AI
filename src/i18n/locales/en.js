@@ -1008,6 +1008,8 @@ export default {
     discardCancel: "Resume Interview",
     historyTitle: "Past Interviews",
     historyUnlabeled: "Interview",
+    historyModePractice: "Practice",
+    historyModeMock: "Mock Interview",
     jobDescLabel: "Job Description *",
     jobDescPlaceholder: "Paste the full job description here to generate tailored interview questions…",
     addResume: "Add Resume (optional, personalizes questions)",

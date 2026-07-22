@@ -133,7 +133,7 @@ export function useInterviewHistory(userId) {
     setLoading(true);
     supabase
       .from(TABLE)
-      .select("id, job_description, readiness_score, updated_at")
+      .select("id, company, job_title, mode, readiness_score, updated_at, job_description")
       .eq("user_id", userId)
       .eq("status", "completed")
       .order("updated_at", { ascending: false })

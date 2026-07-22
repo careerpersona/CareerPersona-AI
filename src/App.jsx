@@ -7702,15 +7702,32 @@ Return ONLY this JSON (no markdown):
           <div style={{ fontSize: 11, fontWeight: 800, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>{t("interview.historyTitle")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {interviewHistory.map((row) => {
-              const label = (row.job_description || "").trim().slice(0, 64) + ((row.job_description || "").length > 64 ? "…" : "");
+              // Title priority: job_title → first non-empty line of job_description → fallback key
+              const rawTitle = row.job_title || (row.job_description || "").split("\n").map(l => l.trim()).find(l => l.length > 0) || "";
+              const title = rawTitle.length > 62 ? rawTitle.slice(0, 62) + "…" : rawTitle || t("interview.historyUnlabeled");
               const score = row.readiness_score != null ? (row.readiness_score / 10).toFixed(1) : null;
+              const scoreNum = score != null ? parseFloat(score) : null;
+              const scoreColor = scoreNum == null ? C.textMuted : scoreNum >= 8 ? C.green : scoreNum >= 6 ? C.yellow : C.red;
               const dateStr = row.updated_at ? new Date(row.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+              const modeKey = row.mode === "mock" ? "interview.historyModeMock" : "interview.historyModePractice";
+              const modeLabel = t(modeKey);
+              const modeColor = row.mode === "mock" ? C.purple : C.blue;
+              const modeBg = row.mode === "mock" ? C.purpleLight : C.blueLight;
               return (
-                <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 12, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "11px 16px" }}>
-                  <span style={{ color: C.green, fontWeight: 800, fontSize: 15, flexShrink: 0 }}>✓</span>
-                  <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1, lineHeight: 1.4, minWidth: 0 }}>{label || t("interview.historyUnlabeled")}</span>
-                  {score && <span style={{ fontSize: 13, fontWeight: 700, color: parseFloat(score) >= 8 ? C.green : parseFloat(score) >= 6 ? C.yellow : C.red, flexShrink: 0 }}>{score}/10</span>}
-                  <span style={{ fontSize: 12, color: C.textMuted, flexShrink: 0 }}>{dateStr}</span>
+                <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 14, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "13px 16px" }}>
+                  <span style={{ color: C.green, fontWeight: 800, fontSize: 15, flexShrink: 0, lineHeight: 1 }}>✓</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: C.text, fontWeight: 700, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                      {row.company && <span style={{ fontSize: 12, color: C.textMid, fontWeight: 500 }}>{row.company}</span>}
+                      {row.company && <span style={{ fontSize: 11, color: C.textMuted, lineHeight: 1, userSelect: "none" }}>·</span>}
+                      <span style={{ fontSize: 11, fontWeight: 700, color: modeColor, background: modeBg, padding: "2px 8px", borderRadius: 20, lineHeight: 1.5 }}>{modeLabel}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    {score != null && <div style={{ fontSize: 15, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}<span style={{ fontSize: 11, fontWeight: 500, color: C.textMuted }}>/10</span></div>}
+                    {dateStr && <div style={{ fontSize: 11, color: C.textMuted, marginTop: score != null ? 4 : 0 }}>{dateStr}</div>}
+                  </div>
                 </div>
               );
             })}
