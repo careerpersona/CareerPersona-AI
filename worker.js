@@ -63,8 +63,37 @@ function corsResponse(request, body, status = 200) {
   });
 }
 
+// ─── JWKS CACHE ───────────────────────────────────────────────────────────────
+// Supabase user JWTs use ES256 (ECDSA P-256 asymmetric). The JWKS endpoint
+// provides the EC public key needed for verification. Cached in KV 1 hour —
+// Supabase rotates keys rarely and announces rotation in advance.
+
+const JWKS_KV_KEY = "supabase_jwks";
+const JWKS_TTL = 3600;
+
+async function getJWKS(env) {
+  try {
+    const cached = await env.SUBSCRIPTION_CACHE.get(JWKS_KV_KEY, "json");
+    if (cached) return cached;
+  } catch (_) {}
+
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`);
+  if (!r.ok) throw new Error("jwks_fetch_failed");
+  const jwks = await r.json();
+
+  try {
+    await env.SUBSCRIPTION_CACHE.put(JWKS_KV_KEY, JSON.stringify(jwks), {
+      expirationTtl: JWKS_TTL,
+    });
+  } catch (_) {}
+
+  return jwks;
+}
+
 // ─── JWT VERIFICATION ─────────────────────────────────────────────────────────
-// HS256 verification using Web Crypto API (no npm — Workers native only).
+// Supports ES256 (Supabase user tokens, verified via JWKS) and HS256 (legacy,
+// verified via SUPABASE_JWT_SECRET). Header alg field determines the path.
+// JWT ECDSA signatures are P1363 format (r||s, 64 bytes) — matches crypto.subtle directly.
 
 function b64urlToBuffer(str) {
   const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
@@ -75,34 +104,56 @@ function b64urlToBuffer(str) {
   return buf.buffer;
 }
 
-async function verifyJWT(token, secret) {
+async function verifyJWT(token, env) {
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("invalid_token_format");
   const [hdr, pay, sig] = parts;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw", enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false, ["verify"]
-  );
-  const valid = await crypto.subtle.verify("HMAC", key, b64urlToBuffer(sig), enc.encode(`${hdr}.${pay}`));
-  if (!valid) throw new Error("invalid_signature");
-  const payload = JSON.parse(new TextDecoder().decode(b64urlToBuffer(pay)));
-  if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) throw new Error("token_expired");
+  const dec = new TextDecoder();
+
+  const header  = JSON.parse(dec.decode(b64urlToBuffer(hdr)));
+  const payload = JSON.parse(dec.decode(b64urlToBuffer(pay)));
+  const signedData = new TextEncoder().encode(`${hdr}.${pay}`);
+  const { alg, kid } = header;
+
+  if (alg === "ES256") {
+    const jwks = await getJWKS(env);
+    const jwk = jwks.keys?.find(k => !kid || k.kid === kid);
+    if (!jwk) throw new Error("jwk_not_found");
+    const key = await crypto.subtle.importKey(
+      "jwk", jwk,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false, ["verify"]
+    );
+    const valid = await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" }, key, b64urlToBuffer(sig), signedData
+    );
+    if (!valid) throw new Error("invalid_signature");
+  } else if (alg === "HS256") {
+    if (!env.SUPABASE_JWT_SECRET) throw new Error("hs256_secret_not_configured");
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(env.SUPABASE_JWT_SECRET),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    );
+    const valid = await crypto.subtle.verify("HMAC", key, b64urlToBuffer(sig), signedData);
+    if (!valid) throw new Error("invalid_signature");
+  } else {
+    throw new Error("unsupported_algorithm");
+  }
+
+  if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+    throw new Error("token_expired");
+  }
   return payload;
 }
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 
 async function requireAuth(request, env) {
-  if (!env.SUPABASE_JWT_SECRET) {
-    return { ok: false, error: "auth_not_configured", status: 503 };
-  }
   const bearer = request.headers.get("Authorization") || "";
   const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : null;
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
   try {
-    const payload = await verifyJWT(token, env.SUPABASE_JWT_SECRET);
+    const payload = await verifyJWT(token, env);
     const userId = payload.sub;
     if (!userId) return { ok: false, error: "unauthorized", status: 401 };
     return { ok: true, userId };
