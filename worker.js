@@ -356,6 +356,66 @@ function getFeatureLimit(feature, caps) {
   }
 }
 
+// ─── CANONICAL BILLING STATE ─────────────────────────────────────────────────
+// Single source of truth. Frontend renders billing UI exclusively from this
+// enum + the accompanying billing state object — no scattered sub-field checks.
+
+function computeBillingState(sub) {
+  const status = sub.subscription_status ?? "no_subscription";
+  const cancelAtPeriodEnd = sub.cancel_at_period_end ?? false;
+  const now = Date.now();
+  const trialEnd  = sub.trial_ends_at        ? new Date(sub.trial_ends_at).getTime()        : 0;
+  const periodEnd = sub.current_period_end   ? new Date(sub.current_period_end).getTime()   : 0;
+  const graceEnd  = sub.grace_period_ends_at ? new Date(sub.grace_period_ends_at).getTime() : 0;
+  switch (status) {
+    case "trial_active":   return trialEnd > now ? "TRIAL" : "PRO_EXPIRED";
+    case "trial_expired":  return "PRO_EXPIRED";
+    case "pro_active":     return cancelAtPeriodEnd ? "PRO_CANCELING" : "PRO_ACTIVE";
+    case "pro_past_due":   return graceEnd > now ? "PRO_PAST_DUE" : "PRO_EXPIRED";
+    case "pro_cancelled":  return periodEnd > now ? "PRO_CANCELING" : "PRO_EXPIRED";
+    case "premium_active": return cancelAtPeriodEnd ? "PREMIUM_CANCELING" : "PREMIUM_ACTIVE";
+    case "admin":          return "ADMIN";
+    default:               return "FREE";
+  }
+}
+
+async function getUsage(userId, periodKey, env) {
+  try {
+    const rows = await supabaseGet("feature_usage", {
+      user_id: `eq.${userId}`,
+      period_key: `eq.${periodKey}`,
+      select: "feature,usage_count",
+    }, env);
+    const map = {};
+    for (const row of rows ?? []) map[row.feature] = row.usage_count;
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function computeQuotas(caps, usage) {
+  const features = [
+    { key: "ai_request",      limit: caps.aiRequestLimit },
+    { key: "resume_analysis", limit: caps.resumeAnalysisLimit },
+    { key: "interview_prep",  limit: caps.interviewSessionLimit },
+    { key: "salary_analysis", limit: caps.salaryAnalysisLimit },
+  ];
+  const quotas = {};
+  for (const { key, limit } of features) {
+    const used = usage[key] ?? 0;
+    const unlimited = limit === Infinity;
+    quotas[key] = { used, limit: unlimited ? null : limit, remaining: unlimited ? null : Math.max(0, limit - used), unlimited };
+  }
+  return quotas;
+}
+
+const BILLING_STATE_PLAN = {
+  FREE: "Free", TRIAL: "Free Trial",
+  PRO_ACTIVE: "Pro", PRO_CANCELING: "Pro", PRO_PAST_DUE: "Pro", PRO_EXPIRED: "Pro",
+  PREMIUM_ACTIVE: "Premium", PREMIUM_CANCELING: "Premium", ADMIN: "Admin",
+};
+
 // ─── STRIPE REST HELPERS ──────────────────────────────────────────────────────
 // No SDK — native fetch() only. Stripe REST uses form-encoded bodies.
 
@@ -846,6 +906,36 @@ async function handlePortalSession(request, env) {
   return corsResponse(request, { url: session.url });
 }
 
+// Blueprint #3 extension: single billing state endpoint — Worker is the sole
+// source of truth for billing data. Returns canonical state + quotas so the
+// frontend never queries billing-related Supabase tables directly.
+async function handleBillingState(request, env) {
+  const auth = await requireAuth(request, env);
+  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
+  const { userId } = auth;
+  const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
+  const caps = getCapabilities(sub, config);
+  const periodKey = getPeriodKey(sub);
+  const usage = await getUsage(userId, periodKey, env);
+  const billingState = computeBillingState(sub);
+  const now = Date.now();
+  const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
+  const daysRemaining = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - now) / 86400000)) : null;
+  return corsResponse(request, {
+    billingState,
+    subscriptionStatus: sub.subscription_status ?? "no_subscription",
+    planDisplayName: BILLING_STATE_PLAN[billingState] ?? "Free",
+    canUseAI: caps.canUseAI,
+    canUseJobs: caps.canUseJobs,
+    trialEndsAt: sub.trial_ends_at ?? null,
+    daysRemaining,
+    periodEnd: sub.current_period_end ?? null,
+    cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+    paymentMethodOnFile: !!sub.stripe_customer_id,
+    quotas: computeQuotas(caps, usage),
+  });
+}
+
 // ─── STRIPE WEBHOOK ───────────────────────────────────────────────────────────
 // Blueprint #4: HMAC verify → idempotency dedup → process → invalidate KV.
 // Returns 200 to Stripe in all cases (after dedup) to prevent re-delivery.
@@ -968,7 +1058,8 @@ export default {
         return new Response(null, { status: 204, headers: getCorsHeaders(request) });
       }
 
-      if (method === "GET" && path === "/health") return handleHealth(request, env);
+      if (method === "GET" && path === "/health")             return handleHealth(request, env);
+      if (method === "GET" && path === "/api/billing/state") return handleBillingState(request, env);
 
       if (method === "POST") {
         if (path === "/api/jobs")                    return handleJobSearch(request, env);

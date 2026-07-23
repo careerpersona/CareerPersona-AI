@@ -112,16 +112,27 @@ const useAuth = () => {
   useEffect(() => {
     const syncFromSession = async (session) => {
       if (!session?.user) return;
-      // Activate trial on first login (idempotent — safe on every session).
-      // Awaited so fetchProfile reads the updated subscription_status.
       if (session.access_token) {
+        // 1. Activate trial (idempotent — safe every login)
         try {
           await fetch(`${WORKER_URL}/api/trial/activate`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
           });
         } catch (_) {}
+        // 2. Fetch canonical billing state (Worker is single source of truth)
+        try {
+          const stateRes = await fetch(`${WORKER_URL}/api/billing/state`, {
+            headers: { "Authorization": `Bearer ${session.access_token}` },
+          });
+          if (stateRes.ok) {
+            const state = await stateRes.json();
+            setBillingState(state);
+            window.dispatchEvent(new CustomEvent("billing:updated", { detail: state }));
+          }
+        } catch (_) {}
       }
+      // 3. Fetch profile (non-billing fields: name, email, language, etc.)
       const merged = await fetchProfile(session.user.id, session.user.email);
       login(merged);
     };
@@ -9256,15 +9267,16 @@ Company: ${item.company}`, 8000);
 }
 
 // ─── PRICING PAGE ──────────────────────────────────────────
-function PricingPage({ profile, setPage, refreshProfile }) {
+function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
   const { t } = useI18n();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [confirmError, setConfirmError] = useState("");
-  const subStatus = profile?.subscription_status || "no_subscription";
-  const isAlreadyPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+  const [successPlanName, setSuccessPlanName] = useState("");
+  const bs = billingState?.billingState || (profile?.subscription_status === "trial_active" ? "TRIAL" : "FREE");
+  const isAlreadyPro = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
 
   // Checkout return: detect session_id in URL hash after Stripe redirect
   useEffect(() => {
@@ -9278,7 +9290,8 @@ function PricingPage({ profile, setPage, refreshProfile }) {
     workerBillingPost("/api/billing/confirm-session", { session_id: sessionId })
       .then(async (data) => {
         if (data.success) {
-          if (refreshProfile) await refreshProfile();
+          const newState = refreshBillingState ? await refreshBillingState() : null;
+          setSuccessPlanName(newState?.planDisplayName || "Pro");
           setCheckoutSuccess(true);
         } else {
           setConfirmError(t("pricing.checkoutFailed"));
@@ -9323,7 +9336,7 @@ function PricingPage({ profile, setPage, refreshProfile }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, background: C.greenLight, border: `1.5px solid ${C.green}`, borderRadius: 12, padding: "16px 20px", marginBottom: 24 }}>
           <span style={{ fontSize: 20, flexShrink: 0 }}>🎉</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, color: C.green, fontSize: 15 }}>{t("pricing.checkoutSuccess")}</div>
+            <div style={{ fontWeight: 700, color: C.green, fontSize: 15 }}>{t("pricing.checkoutSuccess").replace("{plan}", successPlanName || "Pro")}</div>
           </div>
           <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.green, padding: 0, lineHeight: 1 }} onClick={() => setCheckoutSuccess(false)}>✕</button>
         </div>
@@ -10097,49 +10110,34 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 }
 
 // ─── SETTINGS PAGE ─────────────────────────────────────────
-function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile }) {
+function SettingsPage({ profile, updateProfile, logout, setPage, billingState, refreshBillingState }) {
   const { t, language, setLanguage } = useI18n();
   const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
-
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [usage, setUsage] = useState({});
-  const [usageLimits, setUsageLimits] = useState({});
-  const [usageLoading, setUsageLoading] = useState(true);
-
-  const subStatus = profile?.subscription_status || "no_subscription";
-  const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro (Past Due)", pro_cancelled: "Pro (Cancelling)", premium_active: "Premium", admin: "Admin" };
-  const planName = SUB_LABEL[subStatus] || "Free";
-  const isPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
-  const isTrial = subStatus === "trial_active";
   const deleteConfirmPhrase = t("settings.deleteConfirmPhrase");
 
-  const trialEndsAt = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
-  const daysRemaining = trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86400000)) : null;
-  const periodEnd = profile?.current_period_end ? new Date(profile.current_period_end) : null;
+  // Canonical billing state from Worker — all UI decisions derive from here
+  const bs = billingState?.billingState || "FREE";
+  const isActive = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
+  const isTrial = bs === "TRIAL";
+  const isCanceling = bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING";
+  const isPastDue = bs === "PRO_PAST_DUE";
+  const isExpired = bs === "PRO_EXPIRED";
+  const planDisplayName = billingState?.planDisplayName || (isTrial ? t("settings.trialActive") : "Free");
+  const daysRemaining = billingState?.daysRemaining ?? null;
+  const trialEndsAt = billingState?.trialEndsAt ? new Date(billingState.trialEndsAt) : null;
+  const periodEnd = billingState?.periodEnd ? new Date(billingState.periodEnd) : null;
+  const cancelAtPeriodEnd = billingState?.cancelAtPeriodEnd ?? false;
+  const paymentMethodOnFile = billingState?.paymentMethodOnFile ?? false;
+  const quotas = billingState?.quotas ?? {};
   const formatDate = (d) => d ? d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-  useEffect(() => {
-    const isTrialPeriod = ["trial_active", "trial_expired", "no_subscription"].includes(subStatus);
-    const periodKey = isTrialPeriod
-      ? "trial"
-      : `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
-    Promise.all([
-      supabase.from("feature_usage").select("feature, usage_count").eq("period_key", periodKey),
-      supabase.from("platform_config").select("key, value"),
-    ]).then(([usageRes, configRes]) => {
-      const usageMap = {};
-      for (const row of (usageRes.data || [])) usageMap[row.feature] = row.usage_count;
-      const configMap = {};
-      for (const row of (configRes.data || [])) configMap[row.key] = row.value;
-      setUsage(usageMap);
-      setUsageLimits(configMap);
-      setUsageLoading(false);
-    }).catch(() => setUsageLoading(false));
-  }, [subStatus]);
+  // Refresh billing state on mount (ensures fresh data after portal return or any external change)
+  useEffect(() => { if (refreshBillingState) refreshBillingState(); }, []);
 
   const openPortal = async () => {
     setBillingLoading(true); setBillingError("");
@@ -10155,8 +10153,8 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
     setBillingLoading(true); setBillingError("");
     try {
       await workerBillingPost("/api/billing/cancel");
-      updateProfile({ cancel_at_period_end: true });
       setShowCancelConfirm(false);
+      if (refreshBillingState) await refreshBillingState();
     } catch (e) {
       setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
     } finally { setBillingLoading(false); }
@@ -10166,7 +10164,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
     setBillingLoading(true); setBillingError("");
     try {
       await workerBillingPost("/api/billing/resume");
-      updateProfile({ cancel_at_period_end: false });
+      if (refreshBillingState) await refreshBillingState();
     } catch (e) {
       setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
     } finally { setBillingLoading(false); }
@@ -10179,12 +10177,11 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
     }
   };
 
-  const isProPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
   const USAGE_FEATURES = [
-    { key: "ai_request", label: t("settings.usageFeatureAI"), limit: isProPlan ? parseInt(usageLimits.pro_ai_requests_monthly || "500") : parseInt(usageLimits.trial_ai_requests || "10"), unlimited: subStatus === "admin" },
-    { key: "resume_analysis", label: t("settings.usageFeatureResume"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_resume_analyses || "3"), unlimited: isProPlan },
-    { key: "interview_prep", label: t("settings.usageFeatureInterview"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_interview_sessions || "3"), unlimited: isProPlan },
-    { key: "salary_analysis", label: t("settings.usageFeatureSalary"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_salary_analyses || "2"), unlimited: isProPlan },
+    { key: "ai_request",      label: t("settings.usageFeatureAI"),        quota: quotas.ai_request },
+    { key: "resume_analysis", label: t("settings.usageFeatureResume"),     quota: quotas.resume_analysis },
+    { key: "interview_prep",  label: t("settings.usageFeatureInterview"),  quota: quotas.interview_prep },
+    { key: "salary_analysis", label: t("settings.usageFeatureSalary"),     quota: quotas.salary_analysis },
   ];
 
   return (
@@ -10228,7 +10225,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
           {/* Plan name */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.currentPlan")}</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: isPro ? C.purple : isTrial ? C.orange : C.text }}>{planName}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: isActive ? C.purple : isTrial ? C.orange : C.text }}>{planDisplayName}</div>
           </div>
 
           {/* Status */}
@@ -10239,25 +10236,19 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
                 {t("settings.trialDaysRemaining").replace("{n}", daysRemaining)}
               </div>
             )}
-            {subStatus === "trial_expired" && (
+            {bs === "PRO_EXPIRED" && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.trialExpiredStatus")}</div>
             )}
-            {subStatus === "pro_active" && !profile?.cancel_at_period_end && (
+            {(bs === "PRO_ACTIVE" || bs === "PREMIUM_ACTIVE" || bs === "ADMIN") && !cancelAtPeriodEnd && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
             )}
-            {subStatus === "pro_active" && profile?.cancel_at_period_end && (
+            {(bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING") && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.orange }}>{t("settings.cancelsOn").replace("{date}", formatDate(periodEnd))}</div>
             )}
-            {subStatus === "pro_past_due" && (
+            {bs === "PRO_PAST_DUE" && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.pastDue")}</div>
             )}
-            {subStatus === "pro_cancelled" && (
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.textMuted }}>{t("settings.trialExpiredStatus")}</div>
-            )}
-            {(subStatus === "premium_active" || subStatus === "admin") && (
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
-            )}
-            {(subStatus === "no_subscription") && (
+            {bs === "FREE" && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.textMuted }}>—</div>
             )}
           </div>
@@ -10269,13 +10260,13 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{formatDate(trialEndsAt)}</div>
             </div>
           )}
-          {isPro && periodEnd && !profile?.cancel_at_period_end && (
+          {isActive && periodEnd && !cancelAtPeriodEnd && (
             <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{formatDate(periodEnd)}</div>
             </div>
           )}
-          {isPro && periodEnd && profile?.cancel_at_period_end && (
+          {isActive && periodEnd && cancelAtPeriodEnd && (
             <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.cancelsOn").replace("{date}", "")}</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: C.orange }}>{formatDate(periodEnd)}</div>
@@ -10298,15 +10289,14 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {!isPro && !isTrial && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
-          {isTrial && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
-          {isPro && !showCancelConfirm && !profile?.cancel_at_period_end && (
+          {!isActive && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
+          {isActive && !showCancelConfirm && !cancelAtPeriodEnd && (
             <Btn variant="secondary" disabled={billingLoading} onClick={() => setShowCancelConfirm(true)}>{t("settings.cancelSubscription")}</Btn>
           )}
-          {isPro && profile?.cancel_at_period_end && (
+          {isActive && cancelAtPeriodEnd && (
             <Btn variant="secondary" disabled={billingLoading} onClick={resumeSub}>{billingLoading ? "…" : t("settings.resumeSub")}</Btn>
           )}
-          {isPro && (
+          {isActive && (
             <Btn variant="secondary" disabled={billingLoading} onClick={openPortal}>{billingLoading ? "…" : t("settings.manageSub")}</Btn>
           )}
         </div>
@@ -10315,23 +10305,23 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
       {/* USAGE */}
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>📊</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.usageHeading")}</span></div>
-        {usageLoading ? (
+        {!billingState ? (
           <div style={{ color: C.textMuted, fontSize: 14, padding: "4px 0" }}>…</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {USAGE_FEATURES.map(({ key, label, limit, unlimited }) => {
-              const used = usage[key] || 0;
-              const pct = unlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+            {USAGE_FEATURES.map(({ key, label, quota }) => {
+              const q = quota || { used: 0, limit: 0, remaining: 0, unlimited: false };
+              const pct = q.unlimited ? 0 : q.limit ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0;
               const barColor = pct >= 90 ? C.red : pct >= 70 ? C.yellow : C.purple;
               return (
                 <div key={key}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{label}</span>
-                    <span style={{ fontSize: 12, color: unlimited ? C.green : pct >= 90 ? C.red : C.textMuted, fontWeight: unlimited ? 600 : 400 }}>
-                      {unlimited ? t("settings.usageUnlimited") : t("settings.usageUsedOf").replace("{used}", used).replace("{limit}", limit)}
+                    <span style={{ fontSize: 12, color: q.unlimited ? C.green : pct >= 90 ? C.red : C.textMuted, fontWeight: q.unlimited ? 600 : 400 }}>
+                      {q.unlimited ? t("settings.usageUnlimited") : t("settings.usageUsedOf").replace("{used}", q.used).replace("{limit}", q.limit ?? "?")}
                     </span>
                   </div>
-                  {!unlimited && (
+                  {!q.unlimited && (
                     <div style={{ height: 5, background: C.border, borderRadius: 3, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
                     </div>
@@ -10350,20 +10340,20 @@ function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile 
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.paymentMethod")}</div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div style={{ color: C.textMuted, fontSize: 14 }}>
-              {profile?.stripe_customer_id ? t("settings.changeCard") : t("settings.noPaymentMethod")}
+              {paymentMethodOnFile ? t("settings.changeCard") : t("settings.noPaymentMethod")}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!profile?.stripe_customer_id && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.addCard")}</Btn>}
-              {profile?.stripe_customer_id && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.changeCard")}</Btn>}
+              {!paymentMethodOnFile && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.addCard")}</Btn>}
+              {paymentMethodOnFile && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.changeCard")}</Btn>}
             </div>
           </div>
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.billingHistory")}</div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16 }}>
-            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{isPro ? t("settings.noBillingHistory") : t("settings.invoicesWillAppear")}</div>
+            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{isActive ? t("settings.noBillingHistory") : t("settings.invoicesWillAppear")}</div>
           </div>
-          {isPro && (
+          {isActive && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.viewInvoice")}</Btn>
               <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.downloadPdf")}</Btn>
@@ -10420,6 +10410,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
+  const [billingState, setBillingState] = useState(null);
   const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity","jobintel"]);
 
   // Read initial page from URL hash, then localStorage fallback
@@ -10490,13 +10481,27 @@ export default function App() {
     if (updated.id) upsertProfile(updated.id, updates).catch(() => {});
   };
 
-  const refreshProfile = async () => {
+  // Single billing refresh entry point. Every billing action funnels through here.
+  // Fires "billing:updated" so any future subscriber can react without a rewrite.
+  const refreshBillingState = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return;
-    const merged = await fetchProfile(session.user.id, session.user.email);
-    setProfile(merged);
-    localStorage.setItem("cp_user", JSON.stringify(merged));
-    saveAccount(merged);
+    if (!session?.access_token) return null;
+    try {
+      const res = await fetch(`${WORKER_URL}/api/billing/state`, {
+        headers: { "Authorization": `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return null;
+      const state = await res.json();
+      setBillingState(state);
+      const merged = await fetchProfile(session.user.id, session.user.email);
+      setProfile(merged);
+      localStorage.setItem("cp_user", JSON.stringify(merged));
+      saveAccount(merged);
+      window.dispatchEvent(new CustomEvent("billing:updated", { detail: state }));
+      return state;
+    } catch {
+      return null;
+    }
   };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => { setPage("dashboard"); window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
@@ -10748,10 +10753,10 @@ export default function App() {
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "pricing" && <PricingPage profile={profile} setPage={setPage} refreshProfile={refreshProfile} />}
+        {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} refreshProfile={refreshProfile} />}
+        {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
     </div>

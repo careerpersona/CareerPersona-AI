@@ -264,7 +264,7 @@ export default {
     proCta: "Start Pro Free Trial",
     currentPlan: "✓ Current Plan",
     connectStripe: "Connect Stripe to enable {name} payments",
-    checkoutSuccess: "Welcome to CareerPersona AI Pro! Your subscription is now active.",
+    checkoutSuccess: "Welcome to CareerPersona AI {plan}! Your subscription is now active.",
     checkoutVerifying: "Verifying payment…",
     checkoutFailed: "Payment could not be verified. Please contact support if this persists.",
   },
