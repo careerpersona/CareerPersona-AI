@@ -21,6 +21,8 @@ export async function fetchProfile(userId, email) {
     subscription_status: base?.subscription_status || "no_subscription",
     stripe_customer_id: base?.stripe_customer_id || null,
     trial_ends_at: base?.trial_ends_at || null,
+    current_period_end: base?.current_period_end || null,
+    cancel_at_period_end: base?.cancel_at_period_end ?? false,
     email_address: details?.email_address || "",
     preferred_job_title: details?.preferred_job_title || "",
     preferred_industry: details?.preferred_industry || "",

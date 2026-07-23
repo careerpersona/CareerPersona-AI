@@ -224,13 +224,14 @@ async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
 }
 
-async function workerBillingPost(path) {
+async function workerBillingPost(path, payload = null) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw Object.assign(new Error("not_signed_in"), { status: 401 });
   const res = await fetch(`${WORKER_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body.error || `worker_${res.status}`), { workerError: body.error, status: res.status });
@@ -9255,12 +9256,43 @@ Company: ${item.company}`, 8000);
 }
 
 // ─── PRICING PAGE ──────────────────────────────────────────
-function PricingPage({ profile, setPage }) {
+function PricingPage({ profile, setPage, refreshProfile }) {
   const { t } = useI18n();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const subStatus = profile?.subscription_status || "no_subscription";
   const isAlreadyPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+
+  // Checkout return: detect session_id in URL hash after Stripe redirect
+  useEffect(() => {
+    const hashParts = window.location.hash.split("?");
+    if (hashParts.length < 2) return;
+    const params = new URLSearchParams(hashParts[1]);
+    const sessionId = params.get("session_id");
+    if (!sessionId) return;
+    window.history.replaceState({ page: "pricing" }, "", "#pricing");
+    setConfirmLoading(true);
+    workerBillingPost("/api/billing/confirm-session", { session_id: sessionId })
+      .then(async (data) => {
+        if (data.success) {
+          if (refreshProfile) await refreshProfile();
+          setCheckoutSuccess(true);
+        } else {
+          setConfirmError(t("pricing.checkoutFailed"));
+        }
+      })
+      .catch((e) => {
+        setConfirmError(
+          e.workerError === "stripe_not_configured"
+            ? t("pricing.connectStripe").replace("{name}", "Pro")
+            : t("pricing.checkoutFailed")
+        );
+      })
+      .finally(() => setConfirmLoading(false));
+  }, []);
 
   const handleCheckout = async () => {
     setCheckoutLoading(true); setCheckoutError("");
@@ -9279,6 +9311,31 @@ function PricingPage({ profile, setPage }) {
 
   return (
     <div>
+      {/* Checkout return — verifying */}
+      {confirmLoading && (
+        <div style={{ textAlign: "center", padding: "12px 16px", marginBottom: 24, background: C.bgSoft, borderRadius: 12, fontSize: 14, color: C.textMuted }}>
+          {t("pricing.checkoutVerifying")}
+        </div>
+      )}
+
+      {/* Checkout return — success */}
+      {checkoutSuccess && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, background: C.greenLight, border: `1.5px solid ${C.green}`, borderRadius: 12, padding: "16px 20px", marginBottom: 24 }}>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>🎉</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: C.green, fontSize: 15 }}>{t("pricing.checkoutSuccess")}</div>
+          </div>
+          <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.green, padding: 0, lineHeight: 1 }} onClick={() => setCheckoutSuccess(false)}>✕</button>
+        </div>
+      )}
+
+      {/* Checkout return — error */}
+      {confirmError && (
+        <div style={{ background: C.redLight, border: `1.5px solid ${C.red}`, borderRadius: 12, padding: "14px 18px", marginBottom: 24, fontSize: 14, color: C.red }}>
+          {confirmError}
+        </div>
+      )}
+
       <div style={{ textAlign: "center", marginBottom: 36 }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("pricing.heading")}</h1>
         <p style={{ color: C.textMuted, fontSize: 15 }}>{t("pricing.subheading")}</p>
@@ -9292,7 +9349,7 @@ function PricingPage({ profile, setPage }) {
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
-              {checkoutError && plan.id === "pro" && <div style={{ color: "#c00", fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
+              {checkoutError && plan.id === "pro" && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
               <Btn
                 variant={plan.id === "free" ? "secondary" : "primary"}
                 style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || (plan.id === "pro" && isAlreadyPro)) ? 0.5 : 1 }}
@@ -10040,7 +10097,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
 }
 
 // ─── SETTINGS PAGE ─────────────────────────────────────────
-function SettingsPage({ profile, updateProfile, logout, setPage }) {
+function SettingsPage({ profile, updateProfile, logout, setPage, refreshProfile }) {
   const { t, language, setLanguage } = useI18n();
   const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -10048,11 +10105,41 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
 
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [usage, setUsage] = useState({});
+  const [usageLimits, setUsageLimits] = useState({});
+  const [usageLoading, setUsageLoading] = useState(true);
+
   const subStatus = profile?.subscription_status || "no_subscription";
   const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro (Past Due)", pro_cancelled: "Pro (Cancelling)", premium_active: "Premium", admin: "Admin" };
   const planName = SUB_LABEL[subStatus] || "Free";
   const isPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+  const isTrial = subStatus === "trial_active";
   const deleteConfirmPhrase = t("settings.deleteConfirmPhrase");
+
+  const trialEndsAt = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+  const daysRemaining = trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / 86400000)) : null;
+  const periodEnd = profile?.current_period_end ? new Date(profile.current_period_end) : null;
+  const formatDate = (d) => d ? d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+  useEffect(() => {
+    const isTrialPeriod = ["trial_active", "trial_expired", "no_subscription"].includes(subStatus);
+    const periodKey = isTrialPeriod
+      ? "trial"
+      : `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
+    Promise.all([
+      supabase.from("feature_usage").select("feature, usage_count").eq("period_key", periodKey),
+      supabase.from("platform_config").select("key, value"),
+    ]).then(([usageRes, configRes]) => {
+      const usageMap = {};
+      for (const row of (usageRes.data || [])) usageMap[row.feature] = row.usage_count;
+      const configMap = {};
+      for (const row of (configRes.data || [])) configMap[row.key] = row.value;
+      setUsage(usageMap);
+      setUsageLimits(configMap);
+      setUsageLoading(false);
+    }).catch(() => setUsageLoading(false));
+  }, [subStatus]);
 
   const openPortal = async () => {
     setBillingLoading(true); setBillingError("");
@@ -10065,11 +10152,21 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
   };
 
   const cancelSub = async () => {
-    if (!window.confirm(t("settings.cancelConfirm") || "Cancel your subscription at period end?")) return;
     setBillingLoading(true); setBillingError("");
     try {
       await workerBillingPost("/api/billing/cancel");
-      setBillingError(""); // success — subscription will cancel at period end
+      updateProfile({ cancel_at_period_end: true });
+      setShowCancelConfirm(false);
+    } catch (e) {
+      setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
+    } finally { setBillingLoading(false); }
+  };
+
+  const resumeSub = async () => {
+    setBillingLoading(true); setBillingError("");
+    try {
+      await workerBillingPost("/api/billing/resume");
+      updateProfile({ cancel_at_period_end: false });
     } catch (e) {
       setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
     } finally { setBillingLoading(false); }
@@ -10081,6 +10178,14 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
       logout();
     }
   };
+
+  const isProPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+  const USAGE_FEATURES = [
+    { key: "ai_request", label: t("settings.usageFeatureAI"), limit: isProPlan ? parseInt(usageLimits.pro_ai_requests_monthly || "500") : parseInt(usageLimits.trial_ai_requests || "10"), unlimited: subStatus === "admin" },
+    { key: "resume_analysis", label: t("settings.usageFeatureResume"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_resume_analyses || "3"), unlimited: isProPlan },
+    { key: "interview_prep", label: t("settings.usageFeatureInterview"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_interview_sessions || "3"), unlimited: isProPlan },
+    { key: "salary_analysis", label: t("settings.usageFeatureSalary"), limit: isProPlan ? Infinity : parseInt(usageLimits.trial_salary_analyses || "2"), unlimited: isProPlan },
+  ];
 
   return (
     <div>
@@ -10118,25 +10223,124 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
       {/* SUBSCRIPTION */}
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💳</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.subscription")}</span></div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
+          {/* Plan name */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.currentPlan")}</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: isPro ? C.purple : C.text }}>{planName}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: isPro ? C.purple : isTrial ? C.orange : C.text }}>{planName}</div>
           </div>
+
+          {/* Status */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.status")}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
+            {isTrial && daysRemaining !== null && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: daysRemaining > 2 ? C.green : C.orange }}>
+                {t("settings.trialDaysRemaining").replace("{n}", daysRemaining)}
+              </div>
+            )}
+            {subStatus === "trial_expired" && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.trialExpiredStatus")}</div>
+            )}
+            {subStatus === "pro_active" && !profile?.cancel_at_period_end && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
+            )}
+            {subStatus === "pro_active" && profile?.cancel_at_period_end && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.orange }}>{t("settings.cancelsOn").replace("{date}", formatDate(periodEnd))}</div>
+            )}
+            {subStatus === "pro_past_due" && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.pastDue")}</div>
+            )}
+            {subStatus === "pro_cancelled" && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textMuted }}>{t("settings.trialExpiredStatus")}</div>
+            )}
+            {(subStatus === "premium_active" || subStatus === "admin") && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
+            )}
+            {(subStatus === "no_subscription") && (
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textMuted }}>—</div>
+            )}
           </div>
-          {isPro && profile?.trial_ends_at == null && <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>—</div>
-          </div>}
+
+          {/* Renewal / expiry date */}
+          {isTrial && trialEndsAt && (
+            <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.trialEnds")}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{formatDate(trialEndsAt)}</div>
+            </div>
+          )}
+          {isPro && periodEnd && !profile?.cancel_at_period_end && (
+            <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{formatDate(periodEnd)}</div>
+            </div>
+          )}
+          {isPro && periodEnd && profile?.cancel_at_period_end && (
+            <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.cancelsOn").replace("{date}", "")}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.orange }}>{formatDate(periodEnd)}</div>
+            </div>
+          )}
         </div>
-        {billingError && <div style={{ color: "#c00", fontSize: 13, marginBottom: 10 }}>{billingError}</div>}
+
+        {billingError && <div style={{ color: C.red, fontSize: 13, marginBottom: 10 }}>{billingError}</div>}
+
+        {/* Inline cancel confirm */}
+        {showCancelConfirm && (
+          <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 10, padding: 16, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.red, marginBottom: 6 }}>{t("settings.cancelConfirm")}</div>
+            <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>{t("settings.cancelConfirmBody")}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Btn variant="danger" disabled={billingLoading} onClick={cancelSub}>{billingLoading ? "…" : t("settings.cancelConfirmYes")}</Btn>
+              <Btn variant="secondary" disabled={billingLoading} onClick={() => setShowCancelConfirm(false)}>{t("settings.cancelConfirmNo")}</Btn>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {!isPro && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
-          {isPro && <Btn variant="secondary" disabled={billingLoading} onClick={cancelSub}>{t("settings.cancelSubscription")}</Btn>}
+          {!isPro && !isTrial && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
+          {isTrial && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
+          {isPro && !showCancelConfirm && !profile?.cancel_at_period_end && (
+            <Btn variant="secondary" disabled={billingLoading} onClick={() => setShowCancelConfirm(true)}>{t("settings.cancelSubscription")}</Btn>
+          )}
+          {isPro && profile?.cancel_at_period_end && (
+            <Btn variant="secondary" disabled={billingLoading} onClick={resumeSub}>{billingLoading ? "…" : t("settings.resumeSub")}</Btn>
+          )}
+          {isPro && (
+            <Btn variant="secondary" disabled={billingLoading} onClick={openPortal}>{billingLoading ? "…" : t("settings.manageSub")}</Btn>
+          )}
         </div>
+      </Card>
+
+      {/* USAGE */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>📊</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.usageHeading")}</span></div>
+        {usageLoading ? (
+          <div style={{ color: C.textMuted, fontSize: 14, padding: "4px 0" }}>…</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {USAGE_FEATURES.map(({ key, label, limit, unlimited }) => {
+              const used = usage[key] || 0;
+              const pct = unlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+              const barColor = pct >= 90 ? C.red : pct >= 70 ? C.yellow : C.purple;
+              return (
+                <div key={key}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{label}</span>
+                    <span style={{ fontSize: 12, color: unlimited ? C.green : pct >= 90 ? C.red : C.textMuted, fontWeight: unlimited ? 600 : 400 }}>
+                      {unlimited ? t("settings.usageUnlimited") : t("settings.usageUsedOf").replace("{used}", used).replace("{limit}", limit)}
+                    </span>
+                  </div>
+                  {!unlimited && (
+                    <div style={{ height: 5, background: C.border, borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {/* BILLING */}
@@ -10144,25 +10348,28 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>💰</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.billing")}</span></div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.paymentMethod")}</div>
-          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ color: C.textMuted, fontSize: 14 }}>{t("settings.noPaymentMethod")}</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.addCard")}</Btn>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.changeCard")}</Btn>
+          <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ color: C.textMuted, fontSize: 14 }}>
+              {profile?.stripe_customer_id ? t("settings.changeCard") : t("settings.noPaymentMethod")}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!profile?.stripe_customer_id && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.addCard")}</Btn>}
+              {profile?.stripe_customer_id && <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.changeCard")}</Btn>}
             </div>
           </div>
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 8 }}>{t("settings.billingHistory")}</div>
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16 }}>
-            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{t("settings.noBillingHistory")}</div>
+            <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{isPro ? t("settings.noBillingHistory") : t("settings.invoicesWillAppear")}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.viewInvoice")}</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.downloadPdf")}</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.printInvoice")}</Btn>
-          </div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>{t("settings.invoicesWillAppear")}</div>
+          {isPro && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.viewInvoice")}</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.downloadPdf")}</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.printInvoice")}</Btn>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -10217,7 +10424,7 @@ export default function App() {
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
-    const hash = window.location.hash.replace("#", "");
+    const hash = window.location.hash.replace("#", "").split("?")[0];
     if (hash && validPages.has(hash)) return hash;
     try { const stored = localStorage.getItem("cp_active_page"); if (stored) { const p = JSON.parse(stored); if (validPages.has(p)) return p; } } catch {}
     return "dashboard";
@@ -10281,6 +10488,15 @@ export default function App() {
     localStorage.setItem("cp_user", JSON.stringify(updated));
     saveAccount(updated);
     if (updated.id) upsertProfile(updated.id, updates).catch(() => {});
+  };
+
+  const refreshProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const merged = await fetchProfile(session.user.id, session.user.email);
+    setProfile(merged);
+    localStorage.setItem("cp_user", JSON.stringify(merged));
+    saveAccount(merged);
   };
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => { setPage("dashboard"); window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
@@ -10532,10 +10748,10 @@ export default function App() {
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "pricing" && <PricingPage profile={profile} setPage={setPage} />}
+        {page === "pricing" && <PricingPage profile={profile} setPage={setPage} refreshProfile={refreshProfile} />}
         {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
-        {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
+        {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} refreshProfile={refreshProfile} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
     </div>
