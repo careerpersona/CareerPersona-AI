@@ -507,7 +507,6 @@ function normalizeAdzuna(job) {
     applyUrl: job.redirect_url || "#",
     datePosted: job.created || null,
     skills: extractSkills(job.description || ""),
-    matchScore: 70,
   };
 }
 
@@ -532,7 +531,6 @@ function normalizeRapid(job) {
     applyUrl: job.job_apply_link || job.job_google_link || "#",
     datePosted: job.job_posted_at_datetime_utc || null,
     skills: job.job_required_skills || extractSkills(job.job_description || ""),
-    matchScore: 70,
   };
 }
 
