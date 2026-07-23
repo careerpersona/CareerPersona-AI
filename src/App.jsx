@@ -3120,7 +3120,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {topOpportunities.map((j, i) => (
                   <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8, minWidth: 0 }}>{j.title || j.jobTitle} — {j.company}</span>
-                    {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: j.matchScore >= 80 ? C.green : j.matchScore >= 60 ? C.yellow : C.red, flexShrink: 0 }}>{j.matchScore}%</span>}
+                    {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: matchScoreColor(j.matchScore), flexShrink: 0 }}>{j.matchScore}%</span>}
                   </div>
                 ))}
               </div>
@@ -6715,6 +6715,41 @@ JOB:
 Title: ${job.title}
 Company: ${job.company}${job.description ? `\nDescription: ${job.description.slice(0, 1200)}` : ""}`;
 
+// Calibrated match scoring — uses larger context windows and an explicit rubric
+// so scores spread meaningfully across the 0–100 range instead of clustering at 70.
+const buildMatchPrompt = (ctx, resume, job) =>
+  `${ctx ? ctx + "\n\n" : ""}You are a strict, calibrated resume-to-job match evaluator. Score honestly — most candidates are NOT a strong match for most jobs. Use the full 0–100 range based on evidence, not assumptions.
+
+SCORING RUBRIC — apply all criteria before assigning a number:
+90–100 EXCELLENT: 85%+ of required skills present with direct experience in this exact role type at comparable seniority and scope.
+80–89 STRONG: 70–84% of requirements met; seniority matches; 1–2 gaps are minor and easily bridged.
+65–79 GOOD: 55–69% of requirements met; relevant background but meaningful skill or seniority gaps exist.
+50–64 MODERATE: 35–54% of requirements met; transferable skills present but significant gaps in core areas.
+Below 50 WEAK: Under 35% of requirements met, wrong seniority level, or fundamental domain mismatch.
+
+Score LOW when: critical required skills are absent, seniority mismatches (junior resume, senior role or vice versa), industry knowledge is required but absent, role domain differs significantly from candidate's background.
+Score HIGH only when: candidate has direct prior experience in this exact role type, tech stack overlaps precisely, seniority and scope match, and quantified achievements align with what the job expects.
+
+Return ONLY valid JSON, no markdown:
+{"matchScore":<integer 0-100>,"atsScore":<integer 0-100>,"interviewProbability":<integer 0-100>,"matchingSkills":["<skill>"],"missingSkills":["<skill>"],"summary":"<1 honest sentence about the actual fit level>"}
+
+atsScore = how well this specific resume would pass ATS keyword filters for this job (keyword alignment).
+interviewProbability = realistic probability of receiving an interview invite given this match level.
+matchingSkills = up to 5 specific skills from the job requirements found in the resume.
+missingSkills = up to 5 important required skills that are absent from the resume.
+
+RESUME:
+${resume.slice(0, 1500)}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}${job.experienceLevel ? `\nExperience Level: ${job.experienceLevel}` : ""}${job.employmentType && job.employmentType !== "Any" ? `\nEmployment Type: ${job.employmentType}` : ""}
+Description: ${(job.description || "").slice(0, 1200)}${(job.skills || []).length ? `\nSkills Required: ${job.skills.join(", ")}` : ""}`;
+
+// Single matchScore color function — used by JobSearchPage, OpportunityPage, and Dashboard.
+// Thresholds: 80+ green (strong/excellent), 65–79 yellow (good), below 65 red (moderate/weak).
+const matchScoreColor = v => v == null ? C.textMuted : v >= 80 ? C.green : v >= 65 ? C.yellow : C.red;
+
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate, billingState }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
@@ -6814,6 +6849,37 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, profile?.id, savedJobs, queue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back-fill: when auto-analyze scores arrive, write them to any already-saved jobs that
+  // have no matchScore yet. This propagates scores to Dashboard / SavedJobs / Opportunity
+  // Intelligence without requiring the user to re-save the job.
+  useEffect(() => {
+    const keys = Object.keys(matchResults);
+    if (!keys.length) return;
+    setSavedJobs(prev => {
+      let changed = false;
+      const next = prev.map(j => {
+        const mr = matchResults[j.job_id];
+        if (mr && j.matchScore == null) {
+          changed = true;
+          return { ...j, matchScore: mr.matchScore, atsScore: mr.atsScore };
+        }
+        return j;
+      });
+      return changed ? next : prev;
+    });
+  }, [matchResults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Invalidation: when the user switches resumes, clear all session match scores so
+  // stale scores from the previous resume are never shown on a different resume's results.
+  const prevResumeIdRef = useRef(selectedResumeId);
+  useEffect(() => {
+    if (prevResumeIdRef.current !== selectedResumeId) {
+      prevResumeIdRef.current = selectedResumeId;
+      setMatchResults({});
+      ++analyzeRunRef.current; // cancel any in-flight auto-analyze run
+    }
+  }, [selectedResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -6932,10 +6998,13 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         });
       }
 
-      // Auto AI-match + auto Smart Apply on initial searches when resume is present
+      // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
+      // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
+      if (resume.trim() && newJobs.length > 0) {
+        autoAnalyzeAll(newJobs); // scores job cards — skips already-scored jobs (fire and forget)
+      }
       if (!loadMore && resume.trim() && newJobs.length > 0) {
-        autoAnalyzeAll(newJobs); // scores job cards (fire and forget)
-        autoSmartApply(newJobs); // generates full packages for top 3 (fire and forget)
+        autoSmartApply(newJobs); // generates full packages for top 5 (fire and forget)
       }
     } catch (e) {
       setError(t("jobSearch.searchFailed").replace("{message}", e.message));
@@ -6944,24 +7013,15 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
   };
 
-  // AI match a single job against resume
+  // AI match a single job against resume (manual trigger via "AI Match" button)
   const analyzeMatch = async (job) => {
     if (!resume.trim()) { setShowResume(true); return; }
     setAnalyzing(job.id);
     try {
       const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Analyze resume-job match. Return ONLY valid JSON, no markdown:
-{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
-
-RESUME (first 600 chars):
-${resume.slice(0, 600)}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${(job.description || "").slice(0, 400)}
-Skills required: ${(job.skills || []).join(", ")}`, 600);
-      setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
+      const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
+      const result = JSON.parse(raw);
+      setMatchResults(prev => ({ ...prev, [job.id]: result }));
     } catch (e) {
       console.error("AI match failed:", e);
     } finally {
@@ -6976,7 +7036,9 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
   const smartApply = async (job) => {
     if (!resume.trim()) { setShowResume(true); return; }
     if (!profile?.id) { setError(t("jobSearch.signInForSmartApply")); return; }
-    setSavedJobs(p => p.some(j => j.job_id === job.id) ? p : [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]);
+    const _mr = matchResults[job.id];
+    const _enriched = _mr ? { ...job, matchScore: _mr.matchScore, atsScore: _mr.atsScore } : job;
+    setSavedJobs(p => p.some(j => j.job_id === job.id) ? p : [{ job_id: job.id, ..._enriched, saved_at: new Date().toISOString() }, ...p]);
     setSmartApplying(job.id);
     let queued;
     try {
@@ -7022,34 +7084,33 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
     }
   };
 
-  // Auto-analyze all jobs silently using the same engine as manual AI Match
+  // Auto-analyze all jobs silently using the same engine as manual AI Match.
+  // Fires for both initial search results and Load More so every displayed job gets a score.
   const autoAnalyzeAll = async (newJobs) => {
     if (!resume.trim()) return;
+    const quota = billingState?.quotas?.ai_request;
+    if (quota && !quota.unlimited && quota.remaining <= 0) {
+      console.log("[AIMatch] Quota exhausted — skipping auto-analyze");
+      return;
+    }
+    // Skip jobs already scored in this session to avoid redundant AI calls on load more.
+    const unscored = newJobs.filter(j => !matchResults[j.id]);
+    if (!unscored.length) return;
     const runId = ++analyzeRunRef.current;
-    setAnalyzeStatus({ state: "scoring", done: 0, total: newJobs.length });
+    setAnalyzeStatus({ state: "scoring", done: 0, total: unscored.length });
     const ctx = userContext.getContextString({ identity: true });
-    for (const job of newJobs) {
+    for (const job of unscored) {
       if (analyzeRunRef.current !== runId) return;
       try {
-        const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Analyze resume-job match. Return ONLY valid JSON, no markdown:
-{"matchScore":<0-100>,"atsScore":<0-100>,"interviewProbability":<0-100>,"matchingSkills":["<s1>","<s2>","<s3>"],"missingSkills":["<m1>","<m2>","<m3>"],"summary":"<1 concise sentence about fit>"}
-
-RESUME (first 600 chars):
-${resume.slice(0, 600)}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${(job.description || "").slice(0, 400)}
-Skills required: ${(job.skills || []).join(", ")}`, 600);
+        const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
         if (analyzeRunRef.current !== runId) return;
         setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
-      } catch { /* silent fail per job */ }
+      } catch { /* silent fail per job — partial results are fine */ }
       if (analyzeRunRef.current !== runId) return;
       setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: prev.done + 1 } : prev);
     }
     if (analyzeRunRef.current !== runId) return;
-    setAnalyzeStatus({ state: "complete", total: newJobs.length });
+    setAnalyzeStatus({ state: "complete", total: unscored.length });
     setTimeout(() => { if (analyzeRunRef.current === runId) setAnalyzeStatus(null); }, 3000);
   };
 
@@ -7126,10 +7187,13 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
     const s = savedJobs.find(j => j.job_id === job.id);
     if (s) {
       setSavedJobs(p => p.filter(j => j.job_id !== job.id));
-      purgeQueueByJobId(job.id); // remove stale queue entry so it doesn't linger in Saved Jobs
+      purgeQueueByJobId(job.id);
     } else {
-      setSavedJobs(p => [{ job_id: job.id, ...job, saved_at: new Date().toISOString() }, ...p]);
-      if (resume.trim() && profile?.id) autoSmartApply([job]); // generate package immediately (fire and forget)
+      // Merge in any match score already computed this session so it persists to the DB.
+      const mr = matchResults[job.id];
+      const enriched = mr ? { ...job, matchScore: mr.matchScore, atsScore: mr.atsScore } : job;
+      setSavedJobs(p => [{ job_id: job.id, ...enriched, saved_at: new Date().toISOString() }, ...p]);
+      if (resume.trim() && profile?.id) autoSmartApply([job]);
     }
   };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
@@ -7139,7 +7203,6 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
     setApplications(p => [newApp, ...p]);
   };
   const fmtSalary = (min, max) => { if (!min && !max) return t("jobSearch.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("jobSearch.upTo").replace("{v}", f(max)); };
-  const matchColor = s => s >= 85 ? C.green : s >= 70 ? C.yellow : C.red;
 
   return (
     <div>
@@ -7286,7 +7349,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
               if (isMobile || isTablet) {
                 const compact = isMobile;
                 return (
-                  <Card key={job.id} style={{ padding: compact ? "10px 12px" : "14px 18px", ...(mr ? { border: `1.5px solid ${matchColor(mr.matchScore)}30` } : {}) }}>
+                  <Card key={job.id} style={{ padding: compact ? "10px 12px" : "14px 18px", ...(mr ? { border: `1.5px solid ${matchScoreColor(mr.matchScore)}30` } : {}) }}>
                     {/* Badges + match score */}
                     <div style={{ display: "flex", gap: 4, marginBottom: 5, flexWrap: "wrap", alignItems: "center" }}>
                       <span style={{ background: `${C.blue}15`, color: C.blue, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{job.source}</span>
@@ -7295,7 +7358,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
                       {job.experienceLevel && <span style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.experienceLevel}</span>}
                       {isNewJob(job) && <span style={{ background: C.green, color: "#fff", borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.newBadge")}</span>}
                       {dupeSet.has(job.id) && <span style={{ background: `${C.yellow}25`, color: C.yellow, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.dupBadge")}</span>}
-                      <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
+                      {displayMatch != null && <span style={{ marginLeft: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
                     </div>
                     {/* Title */}
                     <div style={{ fontSize: compact ? 14 : 15, fontWeight: 800, color: C.text, marginBottom: 2, lineHeight: 1.3 }}>{job.title}</div>
@@ -7339,8 +7402,8 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
                         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                           {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
                             <div key={l} style={{ flex: 1 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
-                              <PBar val={v} color={matchColor(v)} />
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchScoreColor(v), fontWeight: 700 }}>{v}%</span></div>
+                              <PBar val={v} color={matchScoreColor(v)} />
                             </div>
                           ))}
                         </div>
@@ -7362,7 +7425,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
 
               // Desktop
               return (
-                <Card key={job.id} style={{ ...(mr ? { border: `1.5px solid ${matchColor(mr.matchScore)}30` } : {}) }}>
+                <Card key={job.id} style={{ ...(mr ? { border: `1.5px solid ${matchScoreColor(mr.matchScore)}30` } : {}) }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -7372,7 +7435,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
                         {job.experienceLevel && <Badge color={C.purple}>{job.experienceLevel}</Badge>}
                         {isNewJob(job) && <Badge color={C.green}>{t("jobSearch.newBadge")}</Badge>}
                         {dupeSet.has(job.id) && <Badge color={C.yellow}>{t("jobSearch.dupBadge")}</Badge>}
-                        <span style={{ marginLeft: "auto", background: `${matchColor(displayMatch)}15`, color: matchColor(displayMatch), border: `1px solid ${matchColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>
+                        {displayMatch != null && <span style={{ marginLeft: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
                       <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 6 }}>{job.company} · {job.location}</div>
@@ -7402,8 +7465,8 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
                       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                         {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
                           <div key={l} style={{ flex: 1, minWidth: 80 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchColor(v), fontWeight: 700 }}>{v}%</span></div>
-                            <PBar val={v} color={matchColor(v)} />
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchScoreColor(v), fontWeight: 700 }}>{v}%</span></div>
+                            <PBar val={v} color={matchScoreColor(v)} />
                           </div>
                         ))}
                       </div>
@@ -9523,7 +9586,7 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   }));
 
   const userContext = useUserContext({ profile, applications, savedJobs, networkContacts: contacts, companyWatchlist: wl });
-  const matchColor = v => !v ? C.textMuted : v >= 80 ? C.green : v >= 60 ? C.yellow : C.red;
+  const matchColor = matchScoreColor;
   const fmtSal = (min, max) => {
     if (!min && !max) return null;
     const f = n => `$${Math.round(n / 1000)}K`;
