@@ -4892,7 +4892,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
 RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`, 4000);
+JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setResults(parsed); setTab("resume");
       insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: "Your resume has been analyzed. View your ATS score and improvement tips." });
@@ -4914,7 +4914,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000);
       askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
 {"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
 RESUME:${capturedResume}
-JOB DESCRIPTION:${capturedJobDesc}`, 900).then(insightRaw => {
+JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => {
         try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
       }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
     } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
@@ -5023,7 +5023,7 @@ SKILLS: ${aiForm.skills}${aiForm.certifications ? `\n\nCERTIFICATIONS: ${aiForm.
 INSTRUCTIONS:
 Write a complete, polished ATS-friendly resume in plain text. Include: Contact Information, Professional Summary, Work Experience (with bullet points and quantified achievements where possible), Skills, Education${aiForm.certifications ? ", Certifications" : ""}. Use UPPERCASE for section headers. Use action verbs. Return ONLY the resume text — no explanation, no markdown, no preamble.`;
 
-      const generated = await askClaude(withDualLanguage(basePrompt, language, docLang), 3000);
+      const generated = await askClaude(withDualLanguage(basePrompt, language, docLang), 3000, "resume_analysis");
       setResume(generated.trim());
       if (jobDesc.trim()) {
         setPendingAutoAnalyze(true);
@@ -5045,7 +5045,7 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
       const currentScore = results?.atsScore ?? null;
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and recruitment analyst. Analyze this resume and return ONLY a JSON object with realistic market benchmark data, no markdown, no explanation:
 {"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"industryAverage":<realistic industry average 52-68>,"topCandidateAverage":<realistic top 25% average 80-92>,"percentile":<what percentile this resume is at 1-99>,"percentileLabel":"<e.g. Top 15%>","keywordCoverage":<0-100>,"formattingScore":<0-100>,"experienceScore":<0-100>,"skillsScore":<0-100>,"educationScore":<0-100>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent>","industryLabel":"<inferred industry>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
-RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000);
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setBenchmarkData(parsed);
       if (profile?.id && saveHistoryToDb) {
@@ -5065,7 +5065,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000);
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert recruiter and career coach. Analyze how well this resume matches the job description. Return ONLY a JSON object, no markdown, no explanation:
 {"overallMatch":<0-100>,"matchLabel":"<Strong Match/Good Match/Moderate Match/Weak Match>","requiredSkillsMatch":[{"skill":"<skill>","found":<true or false>,"evidence":"<brief quote from resume or null>"}],"preferredSkillsMatch":[{"skill":"<skill>","found":<true or false>}],"missingSkills":["<skill>","<skill>","<skill>"],"keywordMatchScore":<0-100>,"experienceMatch":{"score":<0-100>,"status":"<Over-qualified/Well-matched/Under-qualified>","detail":"<one sentence>"},"educationMatch":{"score":<0-100>,"status":"<Exceeds/Meets/Below requirement>","detail":"<one sentence>"},"seniorityMatch":{"score":<0-100>,"status":"<Well-matched/Junior for role/Senior for role>","detail":"<one sentence>"},"applicationReadiness":"<Ready to Apply/Almost Ready/Needs Work>","topRecommendations":["<action 1>","<action 2>","<action 3>"],"coverLetterTip":"<one specific cover letter tip for this role>"}
 RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`, 2500);
+JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
       const parsed = JSON.parse(raw);
       setJobFitData(parsed);
       if (profile?.id && saveHistoryToDb) {
@@ -5084,7 +5084,7 @@ JOB DESCRIPTION:${jobDesc}`, 2500);
       const ctx = userContext.getContextString({ identity: true });
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a LinkedIn profile expert and personal branding coach. ${linkedinProfile.trim() ? "Analyze and optimize this LinkedIn profile." : "Generate LinkedIn profile content from this resume."} Return ONLY a JSON object, no markdown, no explanation:
 {"headline":"<optimized LinkedIn headline max 120 chars>","aboutSection":"<optimized About section 200-250 words, first person, engaging, keyword-rich>","experienceOptimizations":[{"company":"<company name>","title":"<job title>","optimizedBullets":["<impactful bullet 1>","<impactful bullet 2>","<impactful bullet 3>"]}],"topSkillsToAdd":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>","<skill 6>","<skill 7>","<skill 8>"],"keywordsToFeature":["<keyword 1>","<keyword 2>","<keyword 3>","<keyword 4>","<keyword 5>","<keyword 6>"],"recruiterVisibilityTips":["<tip 1>","<tip 2>","<tip 3>"],"atsAlignmentScore":<0-100>,"profileCompleteness":<0-100>,"headlineScore":<0-100>}
-RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + linkedinProfile : ""}${jobDesc.trim() ? "\nTARGET JOB:\n" + jobDesc : ""}`, 3000);
+RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + linkedinProfile : ""}${jobDesc.trim() ? "\nTARGET JOB:\n" + jobDesc : ""}`, 3000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setLinkedinOptData(parsed);
       if (profile?.id && saveHistoryToDb) {
@@ -5110,7 +5110,7 @@ RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + l
 {"professional":"<formal 3-paragraph professional cover letter>","friendly":"<warm conversational 3-paragraph cover letter, same substance different tone>","executive":"<confident executive-level cover letter emphasizing strategic leadership value>","ats":"<ATS-optimized cover letter that naturally incorporates all job keywords, structured for ATS parsing>"}
 RESUME:${resumeContent}
 JOB DESCRIPTION:${jobDesc || "General professional role"}
-BASE COVER LETTER:${results?.coverLetter || ""}`, 4000);
+BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setCoverVersions(parsed);
     } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError(t("resume.coverVersionsError")); }
@@ -5125,7 +5125,7 @@ BASE COVER LETTER:${results?.coverLetter || ""}`, 4000);
       const ctx = userContext.getContextString({ identity: true });
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert resume quality analyst. Perform deep analysis of this resume. Return ONLY a JSON object, no markdown, no explanation:
 {"grammarScore":<0-100>,"readabilityScore":<0-100>,"formattingScore":<0-100>,"keywordDensity":<0-100>,"actionVerbScore":<0-100>,"overallQualityScore":<0-100>,"issues":[{"category":"<Grammar/Formatting/Readability/ATS/Action Verbs/Structure>","problem":"<specific problem found>","reason":"<why this hurts resume quality and recruiter appeal — do NOT promise ATS score gains>","fix":"<specific actionable fix>","severity":"<high/medium/low>"}],"weakBullets":[{"original":"<weak bullet from resume>","improved":"<stronger rewritten version>"}],"weakActionVerbs":[{"original":"<weak verb>","stronger":"<powerful action verb>"}],"missingSections":["<missing section name>"],"resumeLengthStatus":"<Optimal/Too Short/Too Long>","contactInfoStatus":"<Complete/Incomplete>","sectionOrderIssue":"<description or null>"}
-RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, "resume_analysis");
       const parsed = JSON.parse(raw);
       setDeepInsights(parsed);
       if (profile?.id && saveHistoryToDb) {
@@ -5154,7 +5154,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
   const applyIssueFix = async (issue) => {
     setApplyingIssueFix(issue.problem);
     try {
-      const fixed = await askClaude(`You are a professional resume editor. Apply exactly this fix to the resume: "${issue.fix}". Return ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${resume}`, 3000);
+      const fixed = await askClaude(`You are a professional resume editor. Apply exactly this fix to the resume: "${issue.fix}". Return ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${resume}`, 3000, "resume_analysis");
       setResume(fixed.trim());
       setDeepInsights(prev => prev ? { ...prev, issues: prev.issues?.filter(i => i.problem !== issue.problem) } : prev);
     } catch (e) { console.error("[IssueFix]", e); }
@@ -5182,7 +5182,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500);
       // Apply all issues in a single Claude call
       if (deepInsights.issues?.length) {
         const fixList = deepInsights.issues.map(i => `- ${i.fix}`).join('\n');
-        const fixed = await askClaude(`You are a professional resume editor. Apply ALL of the following improvements to the resume:\n${fixList}\n\nReturn ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${current}`, 3500);
+        const fixed = await askClaude(`You are a professional resume editor. Apply ALL of the following improvements to the resume:\n${fixList}\n\nReturn ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${current}`, 3500, "resume_analysis");
         current = fixed.trim();
       }
       setResume(current);
@@ -5217,7 +5217,7 @@ RULES:
 
 CURRENT RESUME:
 ${resume}`;
-      const improved = await askClaude(improvePrompt, 3500);
+      const improved = await askClaude(improvePrompt, 3500, "resume_analysis");
       clearTimeout(stepTimer);
       const improvedText = improved.trim();
       const addedCount = selectedKeywords.length;
@@ -5231,7 +5231,7 @@ ${resume}`;
 Note: This resume was just improved by naturally incorporating the following keywords: ${kwList}. Score it accurately and fairly based on the current content — the ATS score should reflect the improvement.
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
 RESUME:${improvedText}
-JOB DESCRIPTION:${jobDesc}`, 4000);
+JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
         setImproveStep(t("resume.improveStepRefreshing"));
         const parsed = JSON.parse(raw);
         // One improvement cycle → always complete. Move added keywords into Found,
