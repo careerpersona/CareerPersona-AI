@@ -911,6 +911,10 @@ async function handleBillingState(request, env) {
   const auth = await requireAuth(request, env);
   if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
   const { userId } = auth;
+  // Always invalidate the per-user KV cache before reading so any DB change
+  // (e.g. admin promotion, trial activation) is visible immediately rather
+  // than after the KV TTL expires.
+  await invalidateSubscription(userId, env);
   const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
   const caps = getCapabilities(sub, config);
   const periodKey = getPeriodKey(sub);
