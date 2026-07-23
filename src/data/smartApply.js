@@ -61,7 +61,7 @@ export function useSmartApplyQueue(userId) {
     }
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({ user_id: userId, job_id: job.id || job.job_id, job_title: job.title, company: job.company, resume_id: resumeId || null, status: "queued" })
+      .insert({ user_id: userId, job_id: job.id || job.job_id, job_title: job.title, company: job.company, job_description: (job.description || "").slice(0, 1200), resume_id: resumeId || null, status: "queued" })
       .select().single();
     if (error) {
       console.error("smart_apply_queue insert failed:", error.code, error.message, { userId, job_id: job.id || job.job_id });
@@ -115,12 +115,6 @@ export function useSmartApplyQueue(userId) {
     await refresh();
   }, [refresh]);
 
-  const skip = useCallback(async (id) => {
-    const { error } = await supabase.from(TABLE).update({ status: "skipped" }).eq("id", id);
-    if (error) throw error;
-    await refresh();
-  }, [refresh]);
-
   // Permanently delete all non-applied queue entries for a given job_id.
   // Called when the user removes a saved job so stale queue cards don't linger.
   const purgeByJobId = useCallback(async (jobId) => {
@@ -135,5 +129,5 @@ export function useSmartApplyQueue(userId) {
     await refresh();
   }, [userId, refresh]);
 
-  return { queue, loading, enqueue, markReady, markFailed, resetToQueued, markApplied, skip, purgeByJobId, refresh };
+  return { queue, loading, enqueue, markReady, markFailed, resetToQueued, markApplied, purgeByJobId, refresh };
 }

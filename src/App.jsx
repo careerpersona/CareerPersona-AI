@@ -6702,7 +6702,20 @@ const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employment
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate }) {
+const SMART_APPLY_AUTO_LIMIT = 3;
+
+const buildSmartApplyPrompt = (ctx, resume, job) =>
+  `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
+
+RESUME:
+${resume}
+
+JOB:
+Title: ${job.title}
+Company: ${job.company}${job.description ? `\nDescription: ${job.description.slice(0, 1200)}` : ""}`;
+
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate, billingState }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
@@ -6786,6 +6799,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // that don't already have a queued/ready package. enqueueSmartApply handles dedup
   // so jobs with existing packages are skipped instantly with one DB round-trip.
   const autoApplySavedRef = useRef(null);
+  const autoApplyRunRef = useRef(0);
   useEffect(() => {
     if (!resume.trim() || !profile?.id) return;
     if (autoApplySavedRef.current === profile.id) return; // already fired this session
@@ -6979,16 +6993,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
       console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
 
       console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
-{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
-
-RESUME:
-${resume}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${(job.description || "").slice(0, 1200)}`, 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
       console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
 
       console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
@@ -7054,16 +7059,22 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
   // enqueueSmartApply handles dedup: already-queued/ready jobs are skipped instantly.
   const autoSmartApply = async (newJobs) => {
     if (!profile?.id || !resume.trim()) return;
-
-    console.log(`[SmartApply] 🚀 AUTO — starting for ${newJobs.length} job(s)`);
-    setAutoApplyingCount(newJobs.length);
+    const quota = billingState?.quotas?.ai_request;
+    if (quota && !quota.unlimited && quota.remaining <= 0) {
+      console.log("[SmartApply] Quota exhausted — skipping auto generation");
+      return;
+    }
+    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
+    const runId = ++autoApplyRunRef.current;
+    console.log(`[SmartApply] AUTO run#${runId} — processing ${limited.length}/${newJobs.length} job(s)`);
+    setAutoApplyingCount(limited.length);
     let succeeded = 0;
-    for (const job of newJobs) {
+    for (const job of limited) {
+      if (autoApplyRunRef.current !== runId) { setAutoApplyingCount(0); return; }
       let queued;
       try {
         console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id || job.job_id})`);
         queued = await enqueue(profile.id, job, selectedResumeId);
-        // Dedup: row already queued/ready — skip AI generation; finally still decrements counter.
         if (!queued) {
           console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
           succeeded++;
@@ -7076,16 +7087,7 @@ Skills required: ${(job.skills || []).join(", ")}`, 600);
         console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
 
         console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
-        const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
-{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
-
-RESUME:
-${resume}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${(job.description || "").slice(0, 1200)}`, 8000);
+        const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
         console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
 
         console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
@@ -7108,16 +7110,16 @@ Description: ${(job.description || "").slice(0, 1200)}`, 8000);
         console.error(`[SmartApply] ❌ AUTO failed for "${job.title}":`, e?.code, e?.message, e);
         if (queued) await markFailed(queued.id);
       } finally {
-        setAutoApplyingCount(c => Math.max(0, c - 1));
-        onQueueChange?.(); // refresh Dashboard + SavedJobs after each job completes
+        if (autoApplyRunRef.current === runId) {
+          setAutoApplyingCount(c => Math.max(0, c - 1));
+          onQueueChange?.();
+        }
       }
     }
-    console.log(`[SmartApply] 🏁 AUTO complete: ${succeeded}/${newJobs.length} succeeded`);
+    if (autoApplyRunRef.current !== runId) return;
+    console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
     if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
-    // If every job failed, surface a visible error so the user isn't left confused
-    if (succeeded === 0 && newJobs.length > 0) {
-      setError(t("jobSearch.smartApplyFailed"));
-    }
+    if (succeeded === 0 && limited.length > 0) setError(t("jobSearch.smartApplyFailed"));
   };
 
   const toggleSave = (job) => {
@@ -8864,8 +8866,8 @@ function PackageView({ item, resumes }) {
           </div>
         </div>
       )}
-      {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /></div>}
-      {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /></div>}
+      {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /><div style={{ marginTop: 6 }}><CopyBtn text={item.recruiter_message} label={t("savedJobs.copy")} /></div></div>}
+      {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /><div style={{ marginTop: 6 }}><CopyBtn text={item.networking_message} label={t("savedJobs.copy")} /></div></div>}
       {item.application_questions?.length > 0 && (
         <div>
           <Label>{t("savedJobs.likelyQuestions")}</Label>
@@ -9062,8 +9064,9 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, skip, purgeQueueByJobId, enqueue }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue }) {
   const { t, language } = useI18n();
+  const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
   const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
 
@@ -9126,15 +9129,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, profile, resu
     try {
       console.log(`[SmartApply] 🔄 RETRY — "${item.job_title}" at ${item.company} (queue_id: ${item.id})`);
       await resetToQueued(item.id);
-      const raw = await askClaude(`You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
-{"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
-
-RESUME:
-${resumeText}
-
-JOB:
-Title: ${item.job_title}
-Company: ${item.company}`, 8000);
+      const ctx = userContext.getContextString({ identity: true });
+      const job = { title: item.job_title, company: item.company, description: item.job_description || "" };
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job), 8000);
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
@@ -10570,7 +10567,7 @@ export default function App() {
     });
     console.log(`[Tracker] State updated — id=${app.id} saved`);
   };
-  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, skip: rootSkip, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
+  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
   // Lifted to App root so Dashboard always sees current values without remounting.
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
   const { session: rootInterviewSession, refresh: refreshRootInterviewSession } = useInterviewSession(profile?.id);
@@ -10747,8 +10744,8 @@ export default function App() {
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} skip={rootSkip} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
