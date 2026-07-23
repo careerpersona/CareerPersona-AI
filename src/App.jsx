@@ -6702,7 +6702,7 @@ const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employment
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
-const SMART_APPLY_AUTO_LIMIT = 3;
+const SMART_APPLY_AUTO_LIMIT = 5;
 
 const buildSmartApplyPrompt = (ctx, resume, job) =>
   `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
