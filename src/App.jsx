@@ -112,6 +112,16 @@ const useAuth = () => {
   useEffect(() => {
     const syncFromSession = async (session) => {
       if (!session?.user) return;
+      // Activate trial on first login (idempotent — safe on every session).
+      // Awaited so fetchProfile reads the updated subscription_status.
+      if (session.access_token) {
+        try {
+          await fetch(`${WORKER_URL}/api/trial/activate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+          });
+        } catch (_) {}
+      }
       const merged = await fetchProfile(session.user.id, session.user.email);
       login(merged);
     };
@@ -188,22 +198,43 @@ const useAuth = () => {
 //   DEV_MODE = false → real Claude API via Cloudflare Worker (production behavior)
 const DEV_MODE = import.meta.env.DEV;
 
-async function askClaude(prompt, maxTokens = 2500) {
+const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
+
+async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
   if (DEV_MODE) {
     // Simulate realistic network latency so all loading states, progress bars,
     // banners, and animations behave exactly as they do in production.
     await new Promise(r => setTimeout(r, 850 + Math.random() * 400));
     return _devMockRoute(prompt);
   }
-  const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(WORKER_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
+    headers,
+    body: JSON.stringify({ feature, model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(err.error || `worker_${res.status}`), { workerError: err.error, status: res.status });
+  }
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "API error");
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
+}
+
+async function workerBillingPost(path) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw Object.assign(new Error("not_signed_in"), { status: 401 });
+  const res = await fetch(`${WORKER_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error || `worker_${res.status}`), { workerError: body.error, status: res.status });
+  return body;
 }
 
 // Routes every askClaude prompt to the appropriate mock response.
@@ -4699,11 +4730,15 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
         try {
           const base64 = ev.target.result.split(',')[1];
           const mediaType = file.type || 'image/jpeg';
-          const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
+          const { data: { session: imgSession } } = await supabase.auth.getSession();
+          const imgToken = imgSession?.access_token;
+          const imgHeaders = { "Content-Type": "application/json" };
+          if (imgToken) imgHeaders["Authorization"] = `Bearer ${imgToken}`;
           const res = await fetch(WORKER_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: imgHeaders,
             body: JSON.stringify({
+              feature: "resume_analysis",
               model: "claude-sonnet-4-6",
               max_tokens: 2000,
               messages: [{
@@ -7604,7 +7639,7 @@ function InterviewPage({ profile, applications, savedJobs }) {
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert interview coach. Generate 8 interview questions for the job below. Mix Behavioral, Technical, Situational, and Culture Fit. For Behavioral, tipToAnswer must reference STAR (Situation, Task, Action, Result). Keep every answer field to 2-3 sentences MAX to stay concise. Return ONLY a JSON array, no markdown:
 [{"id":1,"category":"Behavioral|Technical|Situational|Culture Fit","difficulty":"Easy|Medium|Hard","question":"<question>","whyAsked":"<1 sentence>","tipToAnswer":"<1-2 sentences; STAR for behavioral>","strongAnswer":"<2-3 sentences>","weakAnswer":"<1-2 sentences>","aiRecommendedAnswer":"<2-3 sentences>","star":true}]
 JOB:
-${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
+${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000, "interview_prep");
       const parsed = safeParse(raw);
       if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
         setError(t("interview.parseError"));
@@ -7628,7 +7663,7 @@ ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000);
     const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an interview coach. Rate this practice answer for the given question and role. Return ONLY JSON:
 {"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<stronger version using STAR if behavioral>","scoreExplanation":"<1 sentence: why this specific score was given>"}
 QUESTION:${question.question}${jdBlock}${resumeBlock}
-CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200);
+CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200, "interview_prep");
     const parsed = safeParse(raw);
     if (!parsed) throw new Error("invalid feedback");
     return parsed;
@@ -7692,7 +7727,7 @@ PER-QUESTION PERFORMANCE:
 ${details}
 
 Return ONLY this JSON (no markdown):
-{"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350);
+{"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350, "interview_prep");
         const parsed = safeParse(raw);
         if (parsed) {
           finalSummary = { ...baseSummary, aiSummary: parsed };
@@ -8296,7 +8331,7 @@ function SalaryPage({ profile, applications, savedJobs }) {
       const companyBlock = form.company ? `, company type: ${form.company}` : "";
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}2026 salary data. Return ONLY JSON, no markdown:
 {"salaryRange":{"low":<n>,"median":<n>,"high":<n>},"totalComp":{"median":<n>},"equityRange":"<range>","bonusRange":"<range>","topPayingCompanies":[{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"},{"name":"<co>","avgComp":"<c>"}],"salaryByExperience":[{"level":"Entry","salary":<n>},{"level":"Mid","salary":<n>},{"level":"Senior","salary":<n>}],"negotiationTips":["<t1>","<t2>","<t3>"],"marketOutlook":"<2 sentence outlook>","skillPremiums":[{"skill":"<s>","premium":"<p>"},{"skill":"<s>","premium":"<p>"}],"benchmarkInsight":"<1 sentence>","demandLevel":"<High|Medium|Low>","jobOpenings":"<estimate>"}
-${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: ${form.skills || "general"}${companyBlock}`, 2500);
+${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: ${form.skills || "general"}${companyBlock}`, 2500, "salary_analysis");
       const parsed = safeParse(raw);
       if (!parsed || !parsed.salaryRange) {
         setError(t("salary.incompleteData"));
@@ -9220,8 +9255,23 @@ Company: ${item.company}`, 8000);
 }
 
 // ─── PRICING PAGE ──────────────────────────────────────────
-function PricingPage({ profile }) {
+function PricingPage({ profile, setPage }) {
   const { t } = useI18n();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const subStatus = profile?.subscription_status || "no_subscription";
+  const isAlreadyPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+
+  const handleCheckout = async () => {
+    setCheckoutLoading(true); setCheckoutError("");
+    try {
+      const { url } = await workerBillingPost("/api/billing/checkout-session");
+      window.location.href = url;
+    } catch (e) {
+      setCheckoutError(e.workerError === "stripe_not_configured" ? t("pricing.connectStripe").replace("{name}", "Pro") : e.message);
+    } finally { setCheckoutLoading(false); }
+  };
+
   const plans = [
     { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true },
     { id: "pro", name: t("pricing.proName"), price: "$19", sub: t("pricing.proSub"), color: C.purple, popular: true, features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7"), t("pricing.proFeature8")], cta: t("pricing.proCta"), disabled: false },
@@ -9242,8 +9292,14 @@ function PricingPage({ profile }) {
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
-              <Btn variant={plan.id === "free" ? "secondary" : "primary"} style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: plan.disabled ? 0.5 : 1 }} disabled={plan.disabled} onClick={() => { if (!plan.disabled) alert(t("pricing.connectStripe").replace("{name}", plan.name)); }}>
-                {profile?.plan === plan.id ? t("pricing.currentPlan") : plan.cta}
+              {checkoutError && plan.id === "pro" && <div style={{ color: "#c00", fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
+              <Btn
+                variant={plan.id === "free" ? "secondary" : "primary"}
+                style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || (plan.id === "pro" && isAlreadyPro)) ? 0.5 : 1 }}
+                disabled={plan.disabled || (plan.id === "pro" && isAlreadyPro) || checkoutLoading}
+                onClick={plan.id === "pro" && !isAlreadyPro ? handleCheckout : undefined}
+              >
+                {plan.id === "pro" && isAlreadyPro ? t("pricing.currentPlan") : (checkoutLoading && plan.id === "pro" ? "…" : plan.cta)}
               </Btn>
             </div>
           </Card>
@@ -9990,9 +10046,34 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
 
-  const planName = (profile?.plan || "free").toUpperCase();
-  const isPro = planName === "PRO";
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
+  const subStatus = profile?.subscription_status || "no_subscription";
+  const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro (Past Due)", pro_cancelled: "Pro (Cancelling)", premium_active: "Premium", admin: "Admin" };
+  const planName = SUB_LABEL[subStatus] || "Free";
+  const isPro = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
   const deleteConfirmPhrase = t("settings.deleteConfirmPhrase");
+
+  const openPortal = async () => {
+    setBillingLoading(true); setBillingError("");
+    try {
+      const { url } = await workerBillingPost("/api/billing/portal-session");
+      window.location.href = url;
+    } catch (e) {
+      setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
+    } finally { setBillingLoading(false); }
+  };
+
+  const cancelSub = async () => {
+    if (!window.confirm(t("settings.cancelConfirm") || "Cancel your subscription at period end?")) return;
+    setBillingLoading(true); setBillingError("");
+    try {
+      await workerBillingPost("/api/billing/cancel");
+      setBillingError(""); // success — subscription will cancel at period end
+    } catch (e) {
+      setBillingError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
+    } finally { setBillingLoading(false); }
+  };
 
   const handleDelete = () => {
     if (deleteText.toLowerCase() === deleteConfirmPhrase.toLowerCase()) {
@@ -10046,14 +10127,15 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.status")}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
           </div>
-          {isPro && <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
+          {isPro && profile?.trial_ends_at == null && <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>—</div>
           </div>}
         </div>
+        {billingError && <div style={{ color: "#c00", fontSize: 13, marginBottom: 10 }}>{billingError}</div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {!isPro && <Btn onClick={() => setPage("pricing")}>{t("settings.upgradeToPro")}</Btn>}
-          {isPro && <Btn variant="secondary" onClick={() => alert(t("settings.stripeManageSoon"))}>{t("settings.cancelSubscription")}</Btn>}
+          {isPro && <Btn variant="secondary" disabled={billingLoading} onClick={cancelSub}>{t("settings.cancelSubscription")}</Btn>}
         </div>
       </Card>
 
@@ -10065,8 +10147,8 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ color: C.textMuted, fontSize: 14 }}>{t("settings.noPaymentMethod")}</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.stripeIntegrationSoon"))}>{t("settings.addCard")}</Btn>
-              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.stripeIntegrationSoon"))}>{t("settings.changeCard")}</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.addCard")}</Btn>
+              <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.changeCard")}</Btn>
             </div>
           </div>
         </div>
@@ -10076,9 +10158,9 @@ function SettingsPage({ profile, updateProfile, logout, setPage }) {
             <div style={{ color: C.textMuted, fontSize: 14, textAlign: "center", padding: "20px 0" }}>{t("settings.noBillingHistory")}</div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.viewInvoice")}</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.downloadPdf")}</Btn>
-            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => alert(t("settings.noInvoicesYet"))}>{t("settings.printInvoice")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.viewInvoice")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.downloadPdf")}</Btn>
+            <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12 }} disabled={billingLoading} onClick={openPortal}>{t("settings.printInvoice")}</Btn>
           </div>
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>{t("settings.invoicesWillAppear")}</div>
         </div>
@@ -10216,7 +10298,10 @@ export default function App() {
     { id: "network", icon: "🤝", label: t("nav.network") },
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
-  const planName = (profile?.plan || "free").toUpperCase();
+  const subStatus = profile?.subscription_status || "no_subscription";
+  const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro", pro_cancelled: "Pro", premium_active: "Premium", admin: "Admin" };
+  const planName = SUB_LABEL[subStatus] || "Free";
+  const isPaidPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -10396,10 +10481,10 @@ export default function App() {
           <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
-          <button className="subscription-badge" onClick={() => setPage(planName === "FREE" ? "pricing" : "settings")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: "none", border: "none", padding: "8px 12px 8px 4px", cursor: "pointer", lineHeight: 1 }}>
+          <button className="subscription-badge" onClick={() => setPage(isPaidPlan ? "settings" : "pricing")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: "none", border: "none", padding: "8px 12px 8px 4px", cursor: "pointer", lineHeight: 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: C.purple, flexShrink: 0, display: "block" }} />
-              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "-0.5px", color: C.purple, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", lineHeight: 1 }}>{planName.charAt(0) + planName.slice(1).toLowerCase()}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "-0.5px", color: C.purple, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", lineHeight: 1 }}>{planName}</span>
             </span>
           </button>
         </div>
@@ -10447,7 +10532,7 @@ export default function App() {
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "pricing" && <PricingPage profile={profile} />}
+        {page === "pricing" && <PricingPage profile={profile} setPage={setPage} />}
         {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} />}
