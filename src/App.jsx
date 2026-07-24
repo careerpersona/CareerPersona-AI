@@ -9196,6 +9196,27 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
   );
 }
 
+function SavedJobDetailsView({ job }) {
+  const { t } = useI18n();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 6 }}>{t("savedJobs.jobDescriptionLabel")}</div>
+        {job.description ? (
+          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 320, overflowY: "auto" }}>{job.description}</div>
+        ) : (
+          <div style={{ fontSize: 13, color: C.textMuted }}>{t("savedJobs.noDescriptionAvailable")}</div>
+        )}
+      </div>
+      {job.applyUrl && (
+        <a href={job.applyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: C.purple, fontWeight: 600, textDecoration: "none" }}>
+          {t("savedJobs.viewJobPosting")}
+        </a>
+      )}
+    </div>
+  );
+}
+
 function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId }) {
   const { t, language } = useI18n();
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
@@ -9387,7 +9408,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                    {readyEntry && (
+                    {!isApplied && (
                       <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => toggleJobExpanded(job.job_id)}>
                         {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
                       </Btn>
@@ -9413,9 +9434,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                     ))}
                   </div>
                 </div>
-                {isExpanded && readyEntry && (
+                {isExpanded && (
                   <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                    <PackageView item={readyEntry} resumes={resumes} />
+                    {readyEntry ? <PackageView item={readyEntry} resumes={resumes} /> : <SavedJobDetailsView job={job} />}
                   </div>
                 )}
               </Card>
