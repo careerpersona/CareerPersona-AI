@@ -6835,25 +6835,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   }, [resumes]);
 
   // Once per session: when resume becomes available, auto-process any saved jobs
-  // that don't already have a queued/ready package. enqueueSmartApply handles dedup
-  // so jobs with existing packages are skipped instantly with one DB round-trip.
-  const autoApplySavedRef = useRef(null);
   const autoApplyRunRef = useRef(0);
   const pendingApplyJobsRef = useRef(null);
-  useEffect(() => {
-    if (!resume.trim() || !profile?.id) return;
-    if (autoApplySavedRef.current === profile.id) return; // already fired this session
-    if (!savedJobs.length) return;
-    autoApplySavedRef.current = profile.id;
-    const unprocessed = savedJobs.filter(j =>
-      !queue.some(q => q.job_id === j.job_id && (q.status === "queued" || q.status === "ready"))
-    );
-    if (unprocessed.length > 0) {
-      console.log(`[SmartApply] 🔄 Auto-processing ${unprocessed.length} saved job(s) with no package`);
-      autoSmartApply(unprocessed);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, profile?.id, savedJobs, queue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back-fill: when auto-analyze scores arrive, write them to any already-saved jobs that
   // have no matchScore yet. This propagates scores to Dashboard / SavedJobs / Opportunity
@@ -7147,9 +7130,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   };
 
 
-  // Auto-generate full Smart Apply packages for all provided jobs after search or save.
+  // Auto-generate full Smart Apply packages for AI-discovered jobs after search.
+  // Skips jobs the user has explicitly saved — those are managed from Saved Jobs.
   // Runs in the background — queue cards appear in Saved Jobs as each completes.
-  // enqueueSmartApply handles dedup: already-queued/ready jobs are skipped instantly.
   const autoSmartApply = async (newJobs) => {
     if (!profile?.id || !resume.trim()) return;
     const quota = billingState?.quotas?.ai_request;
@@ -7157,7 +7140,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log("[SmartApply] Quota exhausted — skipping auto generation");
       return;
     }
-    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
+    const savedJobIds = new Set(savedJobs.map(j => j.job_id));
+    const unsaved = newJobs.filter(j => !savedJobIds.has(j.id));
+    const limited = unsaved.slice(0, SMART_APPLY_AUTO_LIMIT);
     const runId = ++autoApplyRunRef.current;
     console.log(`[SmartApply] AUTO run#${runId} — processing ${limited.length}/${newJobs.length} job(s)`);
     setAutoApplyingCount(limited.length);
@@ -7225,7 +7210,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       const mr = matchResults[job.id];
       const enriched = mr ? { ...job, matchScore: mr.matchScore, atsScore: mr.atsScore } : job;
       setSavedJobs(p => [{ job_id: job.id, ...enriched, saved_at: new Date().toISOString() }, ...p]);
-      if (resume.trim() && profile?.id) autoSmartApply([job]);
     }
   };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
@@ -9159,7 +9143,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId }) {
   const { t, language } = useI18n();
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
@@ -9168,6 +9152,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [applyingId, setApplyingId] = useState(null);
   const [appliedId, setAppliedId] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
+  const [preparingIds, setPreparingIds] = useState(new Set());
   const [expandedJobs, setExpandedJobs] = useState(new Set());
   const [queueError, setQueueError] = useState("");
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
@@ -9183,7 +9168,11 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
   const getAppliedEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status === "applied");
   const getReadyEntry = (job) => queue.find(q => q.job_id === (job.job_id || job.id) && q.status === "ready");
 
-  const visibleQueue = queue.filter(q => (q.status !== "applied" && q.status !== "skipped") || q.id === appliedId);
+  const savedJobIds = new Set((savedJobs || []).map(j => j.job_id));
+  const visibleQueue = queue.filter(q =>
+    !savedJobIds.has(q.job_id) &&
+    ((q.status !== "applied" && q.status !== "skipped") || q.id === appliedId)
+  );
 
   const handleMarkApplied = async (item) => {
     setApplyingId(item.id);
@@ -9245,6 +9234,40 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
   };
 
+  const handlePrepareSmartApply = async (job) => {
+    if (!profile?.id) return;
+    const resumeText =
+      (resumes || []).find(r => r.id === activeResumeId)?.content ||
+      (resumes || [])[0]?.content ||
+      (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("cp_jobs_resume") || "" : "");
+    if (!resumeText.trim()) { setQueueError(t("savedJobs.retryNoResume")); return; }
+    const resumeId = activeResumeId || (resumes || [])[0]?.id || null;
+    setPreparingIds(prev => new Set([...prev, job.job_id]));
+    setQueueError("");
+    let queued;
+    try {
+      const jobForQueue = { id: job.job_id, title: job.title, company: job.company, description: job.job_description || job.description || "" };
+      queued = await enqueue(profile.id, jobForQueue, resumeId);
+      if (!queued) { onQueueChange?.(); return; } // already queued/ready
+      const ctx = userContext.getContextString({ identity: true, applications: true });
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, jobForQueue), 8000);
+      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+      const result = JSON.parse(cleanRaw);
+      const trLen = (result.tailoredResume || "").trim().length;
+      const clLen = (result.coverLetter || "").trim().length;
+      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+      await markReady(queued.id, result);
+    } catch (e) {
+      console.error(`[SmartApply] ❌ Prepare failed for "${job.title}":`, e?.message || e);
+      if (queued) await markFailed(queued.id);
+      setQueueError(t("savedJobs.retryError"));
+    } finally {
+      setPreparingIds(prev => { const next = new Set(prev); next.delete(job.job_id); return next; });
+      onQueueChange?.();
+    }
+  };
+
   const removeSavedJob = (jobId) => {
     setSavedJobs(p => p.filter(j => j.job_id !== jobId));
     purgeQueueByJobId?.(jobId);
@@ -9267,7 +9290,8 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
 
       {/* ── Section 1: Your Saved Jobs ─────────────────────────── */}
       <div style={{ marginBottom: 36 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 14 }}>{t("savedJobs.sectionTitle")}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.sectionTitle")}</div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 14 }}>{t("savedJobs.smartApplyHelperText")}</div>
         {savedJobs.length === 0 && (
           <Card style={{ textAlign: "center", padding: 64 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>♡</div>
@@ -9285,11 +9309,12 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
             const isExpanded = expandedJobs.has(job.job_id);
 
             // Status badge
+            const isPreparing = preparingIds.has(job.job_id);
             let statusColor = C.textMuted;
             let statusLabel = t("savedJobs.statusSaved");
             if (isApplied) { statusColor = C.blue; statusLabel = t("savedJobs.statusApplied"); }
             else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = t("savedJobs.statusAiReady"); }
-            else if (activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = t("savedJobs.statusInQueue"); }
+            else if (isPreparing || activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = t("savedJobs.statusInQueue"); }
             else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = t("savedJobs.statusGenFailed"); }
 
             return (
@@ -9308,13 +9333,22 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                       <MissingSkillsBadges skills={readyEntry?.missing_skills} />
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: "nowrap" }}>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap" }}>
                     {readyEntry && (
                       <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => toggleJobExpanded(job.job_id)}>
                         {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
                       </Btn>
                     )}
-                    <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
+                    {!isApplied && !readyEntry && (
+                      isPreparing || activeEntry?.status === "queued" ? (
+                        <Btn disabled style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }}>{t("savedJobs.preparingSmartApply")}</Btn>
+                      ) : activeEntry?.status === "failed" ? (
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.retryGeneration")}</Btn>
+                      ) : (
+                        <Btn style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.prepareSmartApply")}</Btn>
+                      )
+                    )}
+                    <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} disabled={isPreparing} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
                     {readyEntry && (isMobile ? (
                       <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
                     ) : appliedId === readyEntry.id ? (
@@ -10840,7 +10874,7 @@ export default function App() {
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
