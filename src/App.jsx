@@ -9408,12 +9408,12 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                     </div>
                   </div>
                   {(() => {
-                    // On mobile with no AI package: tighten the 3-button row to fit on one line.
-                    // gap/padding only shrink for this specific case; desktop and ready states unchanged.
-                    const compact = isMobile && !readyEntry && !isApplied;
+                    // compact = true on all mobile cards so every state uses identical
+                    // row sizing: tighter gap, reduced horizontal padding, primary action flex:1.
+                    const compact = isMobile;
                     const secPad = compact ? "9px 10px" : "9px 14px";
                     return (
-                    <div style={{ display: "flex", gap: compact ? 6 : 8, flexShrink: 0, alignItems: "center", flexWrap: (isMobile && (readyEntry || isApplied)) ? "wrap" : "nowrap" }}>
+                    <div style={{ display: "flex", gap: compact ? 6 : 8, flexShrink: 0, alignItems: "center", flexWrap: "nowrap" }}>
                       {!isApplied && (
                         <Btn variant="ghost" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => toggleJobExpanded(job.job_id)}>
                           {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
@@ -9432,9 +9432,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                       {readyEntry && (isMobile ? (
                         <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
                       ) : appliedId === readyEntry.id ? (
-                        <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
+                        <Btn variant="green" disabled style={{ fontSize: 13, padding: secPad }}>{t("savedJobs.appliedConfirm")}</Btn>
                       ) : (
-                        <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
+                        <Btn style={{ fontSize: 13, padding: secPad, ...(compact ? { flex: 1, minWidth: 0 } : {}) }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
                           {applyingId === readyEntry.id ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
                         </Btn>
                       ))}
