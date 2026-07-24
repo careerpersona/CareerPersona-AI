@@ -20,6 +20,8 @@ const toRow = (j, userId) => {
     date_posted: j.datePosted || null,
     match_score: j.matchScore != null ? Number(j.matchScore) : null,
     ats_score: j.atsScore != null ? Number(j.atsScore) : null,
+    previous_description: j.previous_description ?? null,
+    last_synced_at: j.last_synced_at ?? null,
   };
   // Include the database UUID when available so upsert targets the existing row
   // (UPDATE) rather than always inserting a new one.
@@ -45,6 +47,8 @@ const fromRow = (r) => ({
   matchScore: r.match_score,
   atsScore: r.ats_score,
   saved_at: r.created_at,
+  previous_description: r.previous_description ?? null,
+  last_synced_at: r.last_synced_at ?? null,
 });
 
 export function useSavedJobs(userId) {

@@ -6838,9 +6838,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const autoApplyRunRef = useRef(0);
   const pendingApplyJobsRef = useRef(null);
 
-  // Back-fill: when auto-analyze scores arrive, write them to any already-saved jobs that
-  // have no matchScore yet. This propagates scores to Dashboard / SavedJobs / Opportunity
-  // Intelligence without requiring the user to re-save the job.
+  // Back-fill: when auto-analyze scores arrive, write them to any already-saved jobs
+  // whose score is absent or has changed. Fires on every new search so re-scores from
+  // updated job descriptions propagate to Dashboard / SavedJobs / Opportunity Intelligence.
   useEffect(() => {
     const keys = Object.keys(matchResults);
     if (!keys.length) return;
@@ -6848,7 +6848,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       let changed = false;
       const next = prev.map(j => {
         const mr = matchResults[j.job_id];
-        if (mr && j.matchScore == null) {
+        if (mr && mr.matchScore != null && mr.matchScore !== j.matchScore) {
           changed = true;
           return { ...j, matchScore: mr.matchScore, atsScore: mr.atsScore };
         }
@@ -6997,6 +6997,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         });
       }
 
+      // Sync saved job data from fresh API results before AI Match runs.
+      if (newJobs.length > 0) syncSavedJobData(newJobs);
+
       // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
       // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
       if (resume.trim() && newJobs.length > 0) {
@@ -7084,6 +7087,56 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       setSmartApplying(null);
       onQueueChange?.(); // keep root-level queue and Dashboard in sync
     }
+  };
+
+  // Sync lightweight employer/job fields for any saved job that appears in fresh search results.
+  // Called after every successful search — initial and load-more.
+  // Captures the previous description before overwriting so Employer Change Intelligence
+  // (next phase) can detect meaningful changes without additional API calls.
+  // Never touches any AI package field — those live in smart_apply_queue, not saved_jobs.
+  const syncSavedJobData = (freshJobs) => {
+    const freshById = new Map(freshJobs.map(j => [j.id, j]));
+    setSavedJobs(prev => {
+      let changed = false;
+      const now = new Date().toISOString();
+      const next = prev.map(saved => {
+        const fresh = freshById.get(saved.job_id);
+        if (!fresh) return saved;
+
+        const descriptionChanged = (fresh.description || "") !== (saved.description || "");
+        const fieldsChanged =
+          fresh.title !== saved.title ||
+          fresh.company !== saved.company ||
+          (fresh.location || "") !== (saved.location || "") ||
+          (fresh.salaryMin ?? null) !== saved.salaryMin ||
+          (fresh.salaryMax ?? null) !== saved.salaryMax ||
+          (fresh.employmentType || "") !== (saved.employmentType || "") ||
+          !!fresh.remote !== !!saved.remote ||
+          descriptionChanged ||
+          (fresh.applyUrl || "") !== (saved.applyUrl || "") ||
+          (fresh.datePosted || "") !== (saved.datePosted || "");
+
+        if (!fieldsChanged) return saved;
+        changed = true;
+
+        return {
+          ...saved,
+          title: fresh.title,
+          company: fresh.company,
+          location: fresh.location || "",
+          salaryMin: fresh.salaryMin ?? null,
+          salaryMax: fresh.salaryMax ?? null,
+          employmentType: fresh.employmentType || "",
+          remote: !!fresh.remote,
+          description: fresh.description || "",
+          applyUrl: fresh.applyUrl || "",
+          datePosted: fresh.datePosted || "",
+          previous_description: descriptionChanged ? (saved.description || "") : saved.previous_description,
+          last_synced_at: now,
+        };
+      });
+      return changed ? next : prev;
+    });
   };
 
   // Auto-analyze all jobs silently using the same engine as manual AI Match.
