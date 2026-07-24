@@ -7013,7 +7013,10 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
       // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
       if (resume.trim() && newJobs.length > 0) {
+        console.log(`[AIMatch] Search returned ${newJobs.length} jobs, resume ${resume.trim().length}c — starting autoAnalyzeAll`);
         autoAnalyzeAll(newJobs, !loadMore); // forceAll on initial search to bypass stale closure
+      } else {
+        console.log(`[AIMatch] autoAnalyzeAll skipped — jobs=${newJobs.length}, hasResume=${!!resume.trim()}`);
       }
       if (!loadMore && resume.trim() && newJobs.length > 0) {
         pendingApplyJobsRef.current = newJobs; // Smart Apply fires after scoring completes with top-scored jobs
@@ -7099,32 +7102,42 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // Auto-analyze all jobs silently using the same engine as manual AI Match.
   // Fires for both initial search results and Load More so every displayed job gets a score.
   const autoAnalyzeAll = async (newJobs, forceAll = false) => {
-    if (!resume.trim()) return;
+    if (!resume.trim()) { console.log("[AIMatch] autoAnalyzeAll: no resume — abort"); return; }
     const quota = billingState?.quotas?.ai_request;
+    const quotaDesc = quota ? (quota.unlimited ? "unlimited" : `${quota.remaining}/${quota.limit} remaining`) : "no billing data";
     if (quota && !quota.unlimited && quota.remaining <= 0) {
-      console.log("[AIMatch] Quota exhausted — skipping auto-analyze");
+      console.log(`[AIMatch] Quota exhausted (${quotaDesc}) — skipping auto-analyze`);
       return;
     }
+    console.log(`[AIMatch] Quota: ${quotaDesc}`);
     // forceAll=true on initial search so stale closure matchResults don't filter out
     // jobs that appeared in a previous search — the state clear (setMatchResults({}))
     // is batched and may not be reflected in this closure yet.
     const unscored = forceAll ? newJobs : newJobs.filter(j => !matchResults[j.id]);
-    if (!unscored.length) return;
+    if (!unscored.length) { console.log("[AIMatch] All jobs already scored — nothing to do"); return; }
     const runId = ++analyzeRunRef.current;
+    console.log(`[AIMatch] Scoring ${unscored.length} job(s) (runId=${runId})`);
     setAnalyzeStatus({ state: "scoring", done: 0, total: unscored.length });
     const ctx = userContext.getContextString({ identity: true });
-    for (const job of unscored) {
-      if (analyzeRunRef.current !== runId) return;
+    console.log(`[AIMatch] Context: ${ctx.length} chars`);
+    for (let i = 0; i < unscored.length; i++) {
+      const job = unscored[i];
+      if (analyzeRunRef.current !== runId) { console.log(`[AIMatch] Run cancelled at job ${i + 1} — new search started`); return; }
       try {
+        console.log(`[AIMatch] ⏳ [${i + 1}/${unscored.length}] Calling Claude for "${job.title}" (${job.id})`);
         const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
         if (analyzeRunRef.current !== runId) return;
         const parsed = JSON.parse(raw);
+        console.log(`[AIMatch] ✅ [${i + 1}/${unscored.length}] "${job.title}" → matchScore=${parsed?.matchScore}`);
         setMatchResults(prev => ({ ...prev, [job.id]: parsed }));
-      } catch { /* silent fail per job — partial results are fine */ }
+      } catch (e) {
+        console.error(`[AIMatch] ❌ [${i + 1}/${unscored.length}] "${job.title}" failed:`, e?.message || e);
+      }
       if (analyzeRunRef.current !== runId) return;
       setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: prev.done + 1 } : prev);
     }
     if (analyzeRunRef.current !== runId) return;
+    console.log(`[AIMatch] All ${unscored.length} job(s) complete (runId=${runId})`);
     setAnalyzeStatus({ state: "complete", total: unscored.length });
     setTimeout(() => { if (analyzeRunRef.current === runId) setAnalyzeStatus(null); }, 3000);
   };
