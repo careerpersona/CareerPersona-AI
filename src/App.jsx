@@ -229,7 +229,11 @@ async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(err.error || `worker_${res.status}`), { workerError: err.error, status: res.status });
+    const errMsg = (typeof err.error === 'object' && err.error !== null)
+      ? (err.error?.message || JSON.stringify(err.error))
+      : String(err.error || `worker_${res.status}`);
+    console.error('[askClaude] HTTP', res.status, 'body:', JSON.stringify(err));
+    throw Object.assign(new Error(errMsg), { workerError: err.error, status: res.status });
   }
   const data = await res.json();
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();

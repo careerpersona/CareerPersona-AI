@@ -781,6 +781,10 @@ async function handleClaude(request, env, ctx) {
   });
   const d = await r.json();
 
+  if (!r.ok) {
+    console.error('[handleClaude] Anthropic error', r.status, JSON.stringify(d));
+  }
+
   if (r.ok && ctx?.waitUntil) {
     ctx.waitUntil(logAIRequest(userId, feature, period, d.usage?.input_tokens, d.usage?.output_tokens, env));
   }
