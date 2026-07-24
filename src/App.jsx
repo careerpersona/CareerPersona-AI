@@ -9407,32 +9407,40 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                       <MissingSkillsBadges skills={readyEntry?.missing_skills} />
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                    {!isApplied && (
-                      <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => toggleJobExpanded(job.job_id)}>
-                        {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
-                      </Btn>
-                    )}
-                    {!isApplied && !readyEntry && (
-                      isPreparing || activeEntry?.status === "queued" ? (
-                        <Btn disabled style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }}>{t("savedJobs.preparingSmartApply")}</Btn>
-                      ) : activeEntry?.status === "failed" ? (
-                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.retryGeneration")}</Btn>
+                  {(() => {
+                    // On mobile with no AI package: tighten the 3-button row to fit on one line.
+                    // gap/padding only shrink for this specific case; desktop and ready states unchanged.
+                    const compact = isMobile && !readyEntry && !isApplied;
+                    const secPad = compact ? "9px 10px" : "9px 14px";
+                    return (
+                    <div style={{ display: "flex", gap: compact ? 6 : 8, flexShrink: 0, alignItems: "center", flexWrap: (isMobile && (readyEntry || isApplied)) ? "wrap" : "nowrap" }}>
+                      {!isApplied && (
+                        <Btn variant="ghost" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => toggleJobExpanded(job.job_id)}>
+                          {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}
+                        </Btn>
+                      )}
+                      {!isApplied && !readyEntry && (
+                        isPreparing || activeEntry?.status === "queued" ? (
+                          <Btn disabled style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>{t("savedJobs.preparingSmartApply")}</Btn>
+                        ) : activeEntry?.status === "failed" ? (
+                          <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.retryGeneration")}</Btn>
+                        ) : (
+                          <Btn style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.prepareSmartApply")}</Btn>
+                        )
+                      )}
+                      <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", flexShrink: 0 }} disabled={isPreparing} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
+                      {readyEntry && (isMobile ? (
+                        <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
+                      ) : appliedId === readyEntry.id ? (
+                        <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
                       ) : (
-                        <Btn style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.prepareSmartApply")}</Btn>
-                      )
-                    )}
-                    <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", whiteSpace: "nowrap" }} disabled={isPreparing} onClick={() => removeSavedJob(job.job_id)}>{t("savedJobs.remove")}</Btn>
-                    {readyEntry && (isMobile ? (
-                      <SwipeToApply onApply={() => handleMarkApplied(readyEntry)} applying={applyingId === readyEntry.id} justApplied={appliedId === readyEntry.id} containerStyle={{ flex: 1 }} />
-                    ) : appliedId === readyEntry.id ? (
-                      <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
-                    ) : (
-                      <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
-                        {applyingId === readyEntry.id ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
-                      </Btn>
-                    ))}
-                  </div>
+                        <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applyingId === readyEntry.id} onClick={() => handleMarkApplied(readyEntry)}>
+                          {applyingId === readyEntry.id ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
+                        </Btn>
+                      ))}
+                    </div>
+                  );
+                  })()}
                 </div>
                 {isExpanded && (
                   <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
