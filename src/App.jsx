@@ -7001,7 +7001,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
       // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
       if (resume.trim() && newJobs.length > 0) {
-        autoAnalyzeAll(newJobs); // scores job cards — skips already-scored jobs (fire and forget)
+        autoAnalyzeAll(newJobs, !loadMore); // forceAll on initial search to bypass stale closure
       }
       if (!loadMore && resume.trim() && newJobs.length > 0) {
         autoSmartApply(newJobs); // generates full packages for top 5 (fire and forget)
@@ -7086,15 +7086,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
   // Auto-analyze all jobs silently using the same engine as manual AI Match.
   // Fires for both initial search results and Load More so every displayed job gets a score.
-  const autoAnalyzeAll = async (newJobs) => {
+  const autoAnalyzeAll = async (newJobs, forceAll = false) => {
     if (!resume.trim()) return;
     const quota = billingState?.quotas?.ai_request;
     if (quota && !quota.unlimited && quota.remaining <= 0) {
       console.log("[AIMatch] Quota exhausted — skipping auto-analyze");
       return;
     }
-    // Skip jobs already scored in this session to avoid redundant AI calls on load more.
-    const unscored = newJobs.filter(j => !matchResults[j.id]);
+    // forceAll=true on initial search so stale closure matchResults don't filter out
+    // jobs that appeared in a previous search — the state clear (setMatchResults({}))
+    // is batched and may not be reflected in this closure yet.
+    const unscored = forceAll ? newJobs : newJobs.filter(j => !matchResults[j.id]);
     if (!unscored.length) return;
     const runId = ++analyzeRunRef.current;
     setAnalyzeStatus({ state: "scoring", done: 0, total: unscored.length });
@@ -7104,7 +7106,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       try {
         const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
         if (analyzeRunRef.current !== runId) return;
-        setMatchResults(prev => ({ ...prev, [job.id]: JSON.parse(raw) }));
+        const parsed = JSON.parse(raw);
+        setMatchResults(prev => ({ ...prev, [job.id]: parsed }));
       } catch { /* silent fail per job — partial results are fine */ }
       if (analyzeRunRef.current !== runId) return;
       setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: prev.done + 1 } : prev);
