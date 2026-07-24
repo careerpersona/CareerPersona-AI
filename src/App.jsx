@@ -6835,6 +6835,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // so jobs with existing packages are skipped instantly with one DB round-trip.
   const autoApplySavedRef = useRef(null);
   const autoApplyRunRef = useRef(0);
+  const pendingApplyJobsRef = useRef(null);
   useEffect(() => {
     if (!resume.trim() || !profile?.id) return;
     if (autoApplySavedRef.current === profile.id) return; // already fired this session
@@ -6869,6 +6870,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       return changed ? next : prev;
     });
   }, [matchResults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Run Smart Apply after AI Match scoring completes, using the top-scored jobs.
+  // This serializes the two AI workloads so they don't race each other for API quota.
+  useEffect(() => {
+    if (analyzeStatus?.state !== "complete") return;
+    const jobs = pendingApplyJobsRef.current;
+    if (!jobs || !profile?.id || !resume.trim()) return;
+    pendingApplyJobsRef.current = null;
+    const sorted = [...jobs].sort((a, b) => (matchResults[b.id]?.matchScore ?? 0) - (matchResults[a.id]?.matchScore ?? 0));
+    autoSmartApply(sorted.slice(0, SMART_APPLY_AUTO_LIMIT));
+  }, [analyzeStatus?.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Invalidation: when the user switches resumes, clear all session match scores so
   // stale scores from the previous resume are never shown on a different resume's results.
@@ -7004,7 +7016,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         autoAnalyzeAll(newJobs, !loadMore); // forceAll on initial search to bypass stale closure
       }
       if (!loadMore && resume.trim() && newJobs.length > 0) {
-        autoSmartApply(newJobs); // generates full packages for top 5 (fire and forget)
+        pendingApplyJobsRef.current = newJobs; // Smart Apply fires after scoring completes with top-scored jobs
       }
     } catch (e) {
       setError(t("jobSearch.searchFailed").replace("{message}", e.message));
