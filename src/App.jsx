@@ -8978,6 +8978,13 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = e => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied") }[item.status] || item.status;
   const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
@@ -9015,21 +9022,25 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
 
   const renderDocButtons = (field, storedValue, showDownload, fileName) => {
     const isEditing = editingField === field;
+    const btnStyle = isMobile ? { padding: "6px 14px", fontSize: 12, width: "100%" } : { padding: "6px 14px", fontSize: 12 };
+    const containerStyle = isMobile
+      ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }
+      : { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" };
     return (
-      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+      <div style={containerStyle}>
         {patchQueueItem && (isEditing ? (
-          <Btn style={{ padding: "6px 14px", fontSize: 12 }} loading={saving} onClick={() => handleSaveEdit(field)}>
+          <Btn style={btnStyle} loading={saving} onClick={() => handleSaveEdit(field)}>
             {saving ? t("savedJobs.savingEdit") : t("savedJobs.doneEditing")}
           </Btn>
         ) : (
-          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => handleStartEdit(field, storedValue)}>
+          <Btn variant="ghost" style={btnStyle} onClick={() => handleStartEdit(field, storedValue)}>
             {t("savedJobs.editDocument")}
           </Btn>
         ))}
-        <CopyBtn text={isEditing ? editText : storedValue} label={t("savedJobs.copy")} />
+        <CopyBtn text={isEditing ? editText : storedValue} label={t("savedJobs.copy")} style={isMobile ? { width: "100%" } : undefined} />
         {showDownload && <>
-          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(storedValue, fileName)}>{t("savedJobs.downloadPdf")}</Btn>
-          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(storedValue, fileName)}>{t("savedJobs.downloadDocx")}</Btn>
+          <Btn variant="ghost" style={btnStyle} onClick={() => downloadPDF(storedValue, fileName)}>{t("savedJobs.downloadPdf")}</Btn>
+          <Btn variant="ghost" style={btnStyle} onClick={() => downloadDOCX(storedValue, fileName)}>{t("savedJobs.downloadDocx")}</Btn>
         </>}
       </div>
     );
