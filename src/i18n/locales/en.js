@@ -351,7 +351,7 @@ export default {
     jobChangedNotice: "Job posting has changed since you saved it. Please view details.",
     jobChangedDetailUnprepared: "This job posting has changed since you saved it. Review the latest job posting before preparing your application.",
     jobPostingChanges: "Job Posting Changes",
-    jobPostingChangesIntro: "Your application package was prepared before the employer updated this posting. Review the changes below to decide whether your documents need updating.",
+    jobPostingChangesIntro: "The employer has updated this job posting. Review the changes below to decide whether your application materials need updating before applying.",
     analyzingChanges: "Analyzing changes…",
     changeAnalysisFailed: "Could not analyze changes.",
     changeSummaryLabel: "SUMMARY",
