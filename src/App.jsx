@@ -6712,7 +6712,8 @@ const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
 const SMART_APPLY_AUTO_LIMIT = 5;
-const MATCH_CONCURRENCY = 5; // parallel Claude calls per scoring batch
+const MATCH_CONCURRENCY = 5;        // parallel Claude calls per scoring batch
+const SMART_APPLY_CONCURRENCY = 2;  // concurrent Smart Apply packages — bounded to stay within Anthropic ~50K TPM limit
 
 const buildSmartApplyPrompt = (ctx, resume, job) =>
   `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
@@ -7222,37 +7223,45 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     let succeeded = 0;
     // Build context once — shared across all concurrent package preparations.
     const ctx = userContext.getContextString({ identity: true, applications: true });
-    await Promise.all(limited.map(async (job) => {
-      if (autoApplyRunRef.current !== runId) return;
-      let queued;
-      try {
-        queued = await enqueue(profile.id, job, selectedResumeId);
-        if (!queued) {
-          console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
+    // Bounded concurrency pool: SMART_APPLY_CONCURRENCY workers share a queue.
+    // Each worker picks the next job as soon as it finishes the current one,
+    // so there is no idle time (unlike fixed batching) while staying within
+    // the Anthropic token-per-minute rate limit.
+    const remaining = [...limited];
+    const worker = async () => {
+      while (remaining.length > 0) {
+        if (autoApplyRunRef.current !== runId) return;
+        const job = remaining.shift();
+        if (!job) return;
+        let queued;
+        try {
+          queued = await enqueue(profile.id, job, selectedResumeId);
+          if (!queued) {
+            console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
+            succeeded++;
+            continue;
+          }
+          console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
+          const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
+          const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+          const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+          const result = JSON.parse(cleanRaw);
+          const trLen = (result.tailoredResume || "").trim().length;
+          const clLen = (result.coverLetter || "").trim().length;
+          if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+          await markReady(queued.id, result);
+          console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
           succeeded++;
-          return;
+        } catch (e) {
+          console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
+          if (queued) await markFailed(queued.id);
+        } finally {
+          setAutoApplyingCount(c => Math.max(0, c - 1));
+          onQueueChange?.();
         }
-        console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
-        const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
-        const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
-        const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-        const result = JSON.parse(cleanRaw);
-        const trLen = (result.tailoredResume || "").trim().length;
-        const clLen = (result.coverLetter || "").trim().length;
-        if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-        await markReady(queued.id, result);
-        console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
-        succeeded++;
-      } catch (e) {
-        console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
-        if (queued) await markFailed(queued.id);
-      } finally {
-        // Always decrement and refresh so the counter reaches 0 and the queue
-        // updates in the UI as each package completes, not all at the end.
-        setAutoApplyingCount(c => Math.max(0, c - 1));
-        onQueueChange?.();
       }
-    }));
+    };
+    await Promise.all(Array.from({ length: Math.min(SMART_APPLY_CONCURRENCY, limited.length) }, worker));
     if (autoApplyRunRef.current !== runId) return;
     console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
     if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
