@@ -9011,9 +9011,17 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
       {hasJobChanges && (
         <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "14px 16px" }}>
           <div style={{ fontSize: 10, fontWeight: 800, color: C.yellow, letterSpacing: 1, marginBottom: 6 }}>{t("savedJobs.jobPostingChanges")}</div>
-          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, marginBottom: 10 }}>{t("savedJobs.jobPostingChangesIntro")}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 6 }}>{t("savedJobs.updatedDescription")}</div>
-          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto" }}>{savedJob.description}</div>
+          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, marginBottom: 12 }}>{t("savedJobs.jobPostingChangesIntro")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.previousDescription")}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 160, overflowY: "auto", background: C.bg, borderRadius: 6, padding: "8px 12px", border: `1px solid ${C.border}` }}>{savedJob.previous_description}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.yellow, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.updatedDescription")}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 160, overflowY: "auto", background: C.bg, borderRadius: 6, padding: "8px 12px", border: `1px solid ${C.yellow}30` }}>{savedJob.description}</div>
+            </div>
+          </div>
         </div>
       )}
       {item.missing_skills?.length > 0 && (
@@ -9283,7 +9291,7 @@ function SavedJobDetailsView({ job }) {
         )}
       </div>
       {hasJobChanges && (
-        <div style={{ padding: "10px 14px", background: C.yellowLight, border: `1px solid ${C.yellow}40`, borderRadius: 8, fontSize: 13, color: C.yellow, fontWeight: 600, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13, color: C.yellow, fontWeight: 600, lineHeight: 1.5 }}>
           {t("savedJobs.jobChangedDetailUnprepared")}
         </div>
       )}
