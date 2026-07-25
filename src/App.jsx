@@ -9022,9 +9022,11 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
 
   const renderDocButtons = (field, storedValue, showDownload, fileName) => {
     const isEditing = editingField === field;
-    const btnStyle = isMobile ? { padding: "6px 14px", fontSize: 12, width: "100%" } : { padding: "6px 14px", fontSize: 12 };
+    const mobileBtnStyle = { flex: "1 1 0", minWidth: 0, height: 44, padding: "0 8px", fontSize: 12, whiteSpace: "nowrap", overflow: "hidden" };
+    const desktopBtnStyle = { padding: "6px 14px", fontSize: 12 };
+    const btnStyle = isMobile ? mobileBtnStyle : desktopBtnStyle;
     const containerStyle = isMobile
-      ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }
+      ? { display: "flex", gap: 6, marginTop: 8 }
       : { display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" };
     return (
       <div style={containerStyle}>
@@ -9037,10 +9039,14 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
             {t("savedJobs.editDocument")}
           </Btn>
         ))}
-        <CopyBtn text={isEditing ? editText : storedValue} label={t("savedJobs.copy")} style={isMobile ? { width: "100%" } : undefined} />
+        <CopyBtn text={isEditing ? editText : storedValue} label={t("savedJobs.copy")} style={isMobile ? mobileBtnStyle : undefined} />
         {showDownload && <>
-          <Btn variant="ghost" style={btnStyle} onClick={() => downloadPDF(storedValue, fileName)}>{t("savedJobs.downloadPdf")}</Btn>
-          <Btn variant="ghost" style={btnStyle} onClick={() => downloadDOCX(storedValue, fileName)}>{t("savedJobs.downloadDocx")}</Btn>
+          <Btn variant="ghost" style={btnStyle} onClick={() => downloadPDF(storedValue, fileName)}>
+            {isMobile ? t("savedJobs.downloadPdfMobile") : t("savedJobs.downloadPdf")}
+          </Btn>
+          <Btn variant="ghost" style={btnStyle} onClick={() => downloadDOCX(storedValue, fileName)}>
+            {isMobile ? t("savedJobs.downloadDocxMobile") : t("savedJobs.downloadDocx")}
+          </Btn>
         </>}
       </div>
     );

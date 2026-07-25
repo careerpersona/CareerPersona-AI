@@ -328,6 +328,8 @@ export default {
     copy: "Copy",
     downloadPdf: "Download PDF",
     downloadDocx: "Download DOCX",
+    downloadPdfMobile: "PDF",
+    downloadDocxMobile: "DOCX",
     salaryInsightLabel: "💰 Salary Insight",
     marketRange: "MARKET RANGE",
     salaryLow: "Low",
