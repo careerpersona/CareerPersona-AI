@@ -7206,6 +7206,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
   // Auto-generate full Smart Apply packages for the top-scored jobs after AI Match completes.
   // Caller passes jobs already sorted and sliced to SMART_APPLY_AUTO_LIMIT by match score.
+  // All packages are prepared concurrently — each job gets its own Claude call in parallel.
   // enqueue() handles deduplication — already-queued or ready rows are skipped automatically.
   const autoSmartApply = async (newJobs) => {
     if (!profile?.id || !resume.trim()) return;
@@ -7216,56 +7217,42 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
     const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
     const runId = ++autoApplyRunRef.current;
-    console.log(`[SmartApply] AUTO run#${runId} — processing ${limited.length}/${newJobs.length} job(s)`);
+    console.log(`[SmartApply] AUTO run#${runId} — preparing ${limited.length} package(s) concurrently`);
     setAutoApplyingCount(limited.length);
     let succeeded = 0;
-    for (const job of limited) {
-      if (autoApplyRunRef.current !== runId) { setAutoApplyingCount(0); return; }
+    // Build context once — shared across all concurrent package preparations.
+    const ctx = userContext.getContextString({ identity: true, applications: true });
+    await Promise.all(limited.map(async (job) => {
+      if (autoApplyRunRef.current !== runId) return;
       let queued;
       try {
-        console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id || job.job_id})`);
         queued = await enqueue(profile.id, job, selectedResumeId);
         if (!queued) {
-          console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
+          console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
           succeeded++;
-          continue;
+          return;
         }
-        console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}, status=${queued.status}`);
-
-        console.log(`[SmartApply] ⏳ [2/6] Building context for "${job.title}"`);
-        const ctx = userContext.getContextString({ identity: true, applications: true });
-        console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
-
-        console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
+        console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
         const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
-        console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
-
-        console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
         const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
         const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
         const result = JSON.parse(cleanRaw);
-        console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
-
-        console.log(`[SmartApply] ⏳ [5/6] Validating fields for "${job.title}"`);
         const trLen = (result.tailoredResume || "").trim().length;
         const clLen = (result.coverLetter || "").trim().length;
-        console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c, interviewProb=${result.interviewProbability}, hiringProb=${result.hiringProbability}`);
         if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-
-        console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
         await markReady(queued.id, result);
-        console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
+        console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
         succeeded++;
       } catch (e) {
-        console.error(`[SmartApply] ❌ AUTO failed for "${job.title}":`, e?.code, e?.message, e);
+        console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
         if (queued) await markFailed(queued.id);
       } finally {
-        if (autoApplyRunRef.current === runId) {
-          setAutoApplyingCount(c => Math.max(0, c - 1));
-          onQueueChange?.();
-        }
+        // Always decrement and refresh so the counter reaches 0 and the queue
+        // updates in the UI as each package completes, not all at the end.
+        setAutoApplyingCount(c => Math.max(0, c - 1));
+        onQueueChange?.();
       }
-    }
+    }));
     if (autoApplyRunRef.current !== runId) return;
     console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
     if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
