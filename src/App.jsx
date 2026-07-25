@@ -8954,10 +8954,48 @@ function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
   );
 }
 
-function PackageView({ item, resumes }) {
+function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   const { t } = useI18n();
+  const [editingField, setEditingField] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [saving, setSaving] = useState(false);
   const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied") }[item.status] || item.status;
+  const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
+
+  const handleStartEdit = (field, currentValue) => { setEditingField(field); setEditText(currentValue || ""); };
+  const handleSaveEdit = async (field) => {
+    if (!patchQueueItem) return;
+    setSaving(true);
+    try { await patchQueueItem(item.id, { [field]: editText }); setEditingField(null); }
+    catch { /* keep editing mode on error so user can retry */ }
+    finally { setSaving(false); }
+  };
+
+  const taStyle = { width: "100%", fontSize: 13, lineHeight: 1.75, color: C.text, background: C.bg, border: `1px solid ${C.borderStrong}`, borderRadius: 8, padding: "10px 12px", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" };
+
+  const renderDocButtons = (field, storedValue, showDownload, fileName) => {
+    const isEditing = editingField === field;
+    return (
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        {patchQueueItem && (isEditing ? (
+          <Btn style={{ padding: "6px 14px", fontSize: 12 }} loading={saving} onClick={() => handleSaveEdit(field)}>
+            {saving ? t("savedJobs.savingEdit") : t("savedJobs.doneEditing")}
+          </Btn>
+        ) : (
+          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => handleStartEdit(field, storedValue)}>
+            {t("savedJobs.editDocument")}
+          </Btn>
+        ))}
+        <CopyBtn text={isEditing ? editText : storedValue} label={t("savedJobs.copy")} />
+        {showDownload && <>
+          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(storedValue, fileName)}>{t("savedJobs.downloadPdf")}</Btn>
+          <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(storedValue, fileName)}>{t("savedJobs.downloadDocx")}</Btn>
+        </>}
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
@@ -8970,6 +9008,14 @@ function PackageView({ item, resumes }) {
           {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
         </div>
       </div>
+      {hasJobChanges && (
+        <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: C.yellow, letterSpacing: 1, marginBottom: 6 }}>{t("savedJobs.jobPostingChanges")}</div>
+          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, marginBottom: 10 }}>{t("savedJobs.jobPostingChangesIntro")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 6 }}>{t("savedJobs.updatedDescription")}</div>
+          <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto" }}>{savedJob.description}</div>
+        </div>
+      )}
       {item.missing_skills?.length > 0 && (
         <div>
           <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
@@ -8979,27 +9025,47 @@ function PackageView({ item, resumes }) {
       {item.cover_letter && (
         <div>
           <Label>{t("savedJobs.coverLetter")}</Label>
-          <ContentDisplay content={item.cover_letter} />
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <CopyBtn text={item.cover_letter} label={t("savedJobs.copy")} />
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.cover_letter, "cover-letter")}>{t("savedJobs.downloadPdf")}</Btn>
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.cover_letter, "cover-letter")}>{t("savedJobs.downloadDocx")}</Btn>
-          </div>
+          {editingField === "coverLetter" ? (
+            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 200 }} />
+          ) : (
+            <ContentDisplay content={item.cover_letter} />
+          )}
+          {renderDocButtons("coverLetter", item.cover_letter, true, "cover-letter")}
         </div>
       )}
       {item.tailored_resume && (
         <div>
           <Label>{t("savedJobs.tailoredResume")}</Label>
-          <ContentDisplay content={item.tailored_resume} />
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <CopyBtn text={item.tailored_resume} label={t("savedJobs.copy")} />
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadPDF(item.tailored_resume, "tailored-resume")}>{t("savedJobs.downloadPdf")}</Btn>
-            <Btn variant="ghost" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => downloadDOCX(item.tailored_resume, "tailored-resume")}>{t("savedJobs.downloadDocx")}</Btn>
-          </div>
+          {editingField === "tailoredResume" ? (
+            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 300 }} />
+          ) : (
+            <ContentDisplay content={item.tailored_resume} />
+          )}
+          {renderDocButtons("tailoredResume", item.tailored_resume, true, "tailored-resume")}
         </div>
       )}
-      {item.recruiter_message && <div><Label>{t("savedJobs.recruiterMessage")}</Label><ContentDisplay content={item.recruiter_message} /><div style={{ marginTop: 6 }}><CopyBtn text={item.recruiter_message} label={t("savedJobs.copy")} /></div></div>}
-      {item.networking_message && <div><Label>{t("savedJobs.networkingMessage")}</Label><ContentDisplay content={item.networking_message} /><div style={{ marginTop: 6 }}><CopyBtn text={item.networking_message} label={t("savedJobs.copy")} /></div></div>}
+      {item.recruiter_message && (
+        <div>
+          <Label>{t("savedJobs.recruiterMessage")}</Label>
+          {editingField === "recruiterMessage" ? (
+            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 150 }} />
+          ) : (
+            <ContentDisplay content={item.recruiter_message} />
+          )}
+          {renderDocButtons("recruiterMessage", item.recruiter_message, false, null)}
+        </div>
+      )}
+      {item.networking_message && (
+        <div>
+          <Label>{t("savedJobs.networkingMessage")}</Label>
+          {editingField === "networkingMessage" ? (
+            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 150 }} />
+          ) : (
+            <ContentDisplay content={item.networking_message} />
+          )}
+          {renderDocButtons("networkingMessage", item.networking_message, false, null)}
+        </div>
+      )}
       {item.application_questions?.length > 0 && (
         <div>
           <Label>{t("savedJobs.likelyQuestions")}</Label>
@@ -9129,7 +9195,7 @@ function MissingSkillsBadges({ skills }) {
   );
 }
 
-function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied }) {
+function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied, savedJobs, patchQueueItem }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
@@ -9139,6 +9205,8 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+  const savedJob = (savedJobs || []).find(j => j.job_id === item.job_id);
+  const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued"), failed: t("savedJobs.statusFailed") }[item.status] || item.status;
   return (
     <Card>
@@ -9177,6 +9245,11 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
           </div>
         )}
       </div>
+      {hasJobChanges && (
+        <div style={{ marginTop: 10, padding: "8px 12px", background: C.yellowLight, border: `1px solid ${C.yellow}30`, borderRadius: 8, fontSize: 13, color: C.yellow, fontWeight: 600 }}>
+          {t("savedJobs.jobChangedNotice")}
+        </div>
+      )}
       {item.status === "queued" && <div style={{ fontSize: 13, color: C.textMuted, marginTop: 10 }}>{t("savedJobs.preparingApplication")}</div>}
       {item.status === "failed" && (
         <div style={{ marginTop: 10 }}>
@@ -9189,7 +9262,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
       )}
       {expanded && item.status === "ready" && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-          <PackageView item={item} resumes={resumes} />
+          <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} />
         </div>
       )}
     </Card>
@@ -9198,6 +9271,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
 
 function SavedJobDetailsView({ job }) {
   const { t } = useI18n();
+  const hasJobChanges = !!job.previous_description && job.previous_description !== job.description;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>
@@ -9208,6 +9282,11 @@ function SavedJobDetailsView({ job }) {
           <div style={{ fontSize: 13, color: C.textMuted }}>{t("savedJobs.noDescriptionAvailable")}</div>
         )}
       </div>
+      {hasJobChanges && (
+        <div style={{ padding: "10px 14px", background: C.yellowLight, border: `1px solid ${C.yellow}40`, borderRadius: 8, fontSize: 13, color: C.yellow, fontWeight: 600, lineHeight: 1.5 }}>
+          {t("savedJobs.jobChangedDetailUnprepared")}
+        </div>
+      )}
       {job.applyUrl && (
         <a href={job.applyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: C.purple, fontWeight: 600, textDecoration: "none" }}>
           {t("savedJobs.viewJobPosting")}
@@ -9217,7 +9296,7 @@ function SavedJobDetailsView({ job }) {
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem }) {
   const { t, language } = useI18n();
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
@@ -9381,6 +9460,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
             const isQueued = !!activeEntry;
             const isApplied = !!appliedEntry;
             const isExpanded = expandedJobs.has(job.job_id);
+            const hasJobChanges = !!job.previous_description && job.previous_description !== job.description;
 
             // Status badge
             const isPreparing = preparingIds.has(job.job_id);
@@ -9442,9 +9522,14 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                   );
                   })()}
                 </div>
+                {hasJobChanges && !isApplied && (
+                  <div style={{ marginTop: 12, padding: "8px 12px", background: C.yellowLight, border: `1px solid ${C.yellow}30`, borderRadius: 8, fontSize: 13, color: C.yellow, fontWeight: 600 }}>
+                    {t("savedJobs.jobChangedNotice")}
+                  </div>
+                )}
                 {isExpanded && (
                   <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                    {readyEntry ? <PackageView item={readyEntry} resumes={resumes} /> : <SavedJobDetailsView job={job} />}
+                    {readyEntry ? <PackageView item={readyEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} /> : <SavedJobDetailsView job={job} />}
                   </div>
                 )}
               </Card>
@@ -9465,7 +9550,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
-              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} />
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} savedJobs={savedJobs} patchQueueItem={patchQueueItem} />
             ))}
           </div>
         </div>
@@ -10778,7 +10863,7 @@ export default function App() {
     });
     console.log(`[Tracker] State updated — id=${app.id} saved`);
   };
-  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, purgeByJobId: rootPurgeByJobId } = useSmartApplyQueue(profile?.id);
+  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, purgeByJobId: rootPurgeByJobId, patchQueueItem: rootPatchQueueItem } = useSmartApplyQueue(profile?.id);
   // Lifted to App root so Dashboard always sees current values without remounting.
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
   const { session: rootInterviewSession, refresh: refreshRootInterviewSession } = useInterviewSession(profile?.id);
@@ -10956,7 +11041,7 @@ export default function App() {
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}

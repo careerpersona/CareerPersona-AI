@@ -129,5 +129,18 @@ export function useSmartApplyQueue(userId) {
     await refresh();
   }, [userId, refresh]);
 
-  return { queue, loading, enqueue, markReady, markFailed, resetToQueued, markApplied, purgeByJobId, refresh };
+  // Partially update document fields on a queue row (camelCase patch → snake_case DB columns).
+  // Used by PackageView to persist user edits to individual documents.
+  const patchQueueItem = useCallback(async (id, patch) => {
+    const dbPatch = {};
+    if (patch.tailoredResume !== undefined) dbPatch.tailored_resume = patch.tailoredResume;
+    if (patch.coverLetter !== undefined) dbPatch.cover_letter = patch.coverLetter;
+    if (patch.recruiterMessage !== undefined) dbPatch.recruiter_message = patch.recruiterMessage;
+    if (patch.networkingMessage !== undefined) dbPatch.networking_message = patch.networkingMessage;
+    const { error } = await supabase.from(TABLE).update(dbPatch).eq("id", id);
+    if (error) throw error;
+    await refresh();
+  }, [refresh]);
+
+  return { queue, loading, enqueue, markReady, markFailed, resetToQueued, markApplied, purgeByJobId, patchQueueItem, refresh };
 }
