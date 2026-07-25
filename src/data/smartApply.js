@@ -137,6 +137,7 @@ export function useSmartApplyQueue(userId) {
     if (patch.coverLetter !== undefined) dbPatch.cover_letter = patch.coverLetter;
     if (patch.recruiterMessage !== undefined) dbPatch.recruiter_message = patch.recruiterMessage;
     if (patch.networkingMessage !== undefined) dbPatch.networking_message = patch.networkingMessage;
+    if (patch.jobChangeAnalysis !== undefined) dbPatch.job_change_analysis = patch.jobChangeAnalysis;
     const { error } = await supabase.from(TABLE).update(dbPatch).eq("id", id);
     if (error) throw error;
     await refresh();

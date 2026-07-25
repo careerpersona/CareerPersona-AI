@@ -419,6 +419,11 @@ function _devMockRoute(prompt) {
     return JSON.stringify({ v: 1, generatedAt: new Date().toISOString(), marketPatterns: { status: "Strong", summary: "Your job search is concentrated in the mid-to-senior software engineering space, with a clear preference for product-driven tech companies over enterprise environments. The remote-first skew in your saved jobs aligns with a shift toward distributed team culture in your target market.", evidence: ["78% of saved jobs are at Series A–C companies, signaling a preference for high-growth environments", "Senior Engineer roles dominate at 65%, with a visible secondary cluster of Staff/Lead roles at 20%", "Remote or hybrid roles account for 82% of your saved landscape"], trends: "Hiring activity in your target sectors remains strong, with a noticeable uptick in full-stack and platform-adjacent roles over the past 30 days." }, employerDemand: { status: "Consistent", summary: "Employers in your search landscape are consistently requesting cloud-native engineering skills alongside product intuition. Python and React appear in the majority of roles, but infrastructure and observability tooling is increasingly expected at the senior level.", topSkills: ["Python", "AWS / Cloud", "React / TypeScript", "System Design", "Docker / Kubernetes"], qualifications: ["4–7 years of backend or full-stack engineering experience", "Experience shipping production systems at meaningful scale"], insight: "Container orchestration and CI/CD appear in 72% of your saved job descriptions — closing this gap would meaningfully broaden your competitive reach." }, marketFit: { status: "Good", narrative: "Your profile aligns well with the core requirements of your target market. Your Python and AWS depth positions you competitively for most senior backend roles in your saved landscape. The gap between your current profile and your target roles is narrow — primarily around infrastructure tooling and system design documentation, not core engineering competency. You are not disadvantaged in this market; you are one or two deliberate additions away from being a strong fit for the top quartile of your saved roles.", strengths: ["Strong Python/AWS foundation matching 70%+ of employer requirements", "Demonstrated impact at scale — measurable achievements that stand out in competitive pools"], gaps: ["Container orchestration (Docker, Kubernetes) expected but not visible in profile", "System design and architecture leadership experience less prominent than top candidates"], positioning: "You are positioned in the 60th–70th percentile of candidates for your target roles; targeted resume optimization could move you to the 80th percentile." }, searchStrategy: { status: "Focused", summary: "Your search is well-targeted by role level and technology stack, but geographic distribution is narrow. The concentration in San Francisco and New York limits your available opportunity set when remote roles would broaden this significantly.", alignment: "Your saved jobs align closely with your stated target role and experience level — the strategy is directionally correct.", recommendation: "Expand your saved job pool to include more remote-first companies to unlock a larger opportunity set without changing your role targeting." }, searchPerformance: { status: "Improving", summary: "Your response rate has improved as your applications have become more targeted. The shift from broad volume applications to selective, tailored ones is producing better outcomes. Early-stage applications to smaller companies are converting at a higher rate than large enterprise applications.", patterns: ["Tailored applications to Series B companies show 2× the response rate of volume applications", "Response times are shorter at companies where you have a mutual connection or warm referral"], insight: "Your data shows that quality over quantity is working — maintaining selective, tailored applications rather than increasing volume will continue to improve outcomes." } });
   }
 
+  // ── Job Change Analysis ───────────────────────────────────────────────────
+  if (p.includes("compare these two job descriptions")) {
+    return JSON.stringify({ summary: "The employer raised the experience bar and added cloud-native tooling requirements.", newSkills: ["TypeScript", "AWS Lambda"], removedSkills: ["jQuery"], responsibilitiesChanged: "Team leadership added — the role now requires mentoring junior engineers.", experienceChanged: "Minimum experience increased from 3 to 5 years.", educationChanged: null, toolsChanged: ["Docker", "Kubernetes"], workAuthorizationChanged: null, otherChanges: [] });
+  }
+
   // ── Fallback ───────────────────────────────────────────────────────────────
   return "{}";
 }
@@ -6719,6 +6724,18 @@ JOB:
 Title: ${job.title}
 Company: ${job.company}${job.description ? `\nDescription: ${job.description.slice(0, 1200)}` : ""}`;
 
+const buildJobChangePrompt = (prev, curr) =>
+  `Compare these two job descriptions and identify only the meaningful changes that would affect an applicant's materials (cover letter, resume, recruiter message).
+
+PREVIOUS JOB DESCRIPTION:
+${prev.slice(0, 3000)}
+
+UPDATED JOB DESCRIPTION:
+${curr.slice(0, 3000)}
+
+Return ONLY valid JSON. Use empty arrays [] and null for unchanged categories:
+{"summary":"<one sentence describing the most important change>","newSkills":["<skill added>"],"removedSkills":["<skill removed>"],"responsibilitiesChanged":"<description of responsibility changes, or null>","experienceChanged":"<description of experience requirement changes, or null>","educationChanged":"<description of education/certification changes, or null>","toolsChanged":["<tool or technology added or removed>"],"workAuthorizationChanged":"<description of work authorization changes, or null>","otherChanges":["<other meaningful change>"]}`;
+
 // Calibrated match scoring — uses larger context windows and an explicit rubric
 // so scores spread meaningfully across the 0–100 range instead of clustering at 70.
 const buildMatchPrompt = (ctx, resume, job) =>
@@ -8959,9 +8976,31 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   const [editingField, setEditingField] = useState(null);
   const [editText, setEditText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState(false);
   const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied") }[item.status] || item.status;
   const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
+
+  useEffect(() => {
+    if (!hasJobChanges || item.job_change_analysis || !savedJob || !patchQueueItem) return;
+    let cancelled = false;
+    const run = async () => {
+      setAnalyzing(true);
+      setAnalysisError(false);
+      try {
+        const raw = await askClaude(buildJobChangePrompt(savedJob.previous_description, savedJob.description), 1500, "job_change_analysis");
+        if (cancelled) return;
+        const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+        const clean = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+        const result = JSON.parse(clean);
+        await patchQueueItem(item.id, { jobChangeAnalysis: result });
+      } catch { if (!cancelled) setAnalysisError(true); }
+      finally { if (!cancelled) setAnalyzing(false); }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [hasJobChanges, !!item.job_change_analysis, savedJob?.job_id, item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartEdit = (field, currentValue) => { setEditingField(field); setEditText(currentValue || ""); };
   const handleSaveEdit = async (field) => {
@@ -9012,16 +9051,78 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
         <div style={{ background: C.yellowLight, border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "14px 16px" }}>
           <div style={{ fontSize: 10, fontWeight: 800, color: C.yellow, letterSpacing: 1, marginBottom: 6 }}>{t("savedJobs.jobPostingChanges")}</div>
           <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, marginBottom: 12 }}>{t("savedJobs.jobPostingChangesIntro")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.previousDescription")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 160, overflowY: "auto", background: C.bg, borderRadius: 6, padding: "8px 12px", border: `1px solid ${C.border}` }}>{savedJob.previous_description}</div>
+          {analyzing && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 12, height: 12, border: `2px solid ${C.yellow}40`, borderTopColor: C.yellow, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+              <div style={{ fontSize: 13, color: C.textMuted }}>{t("savedJobs.analyzingChanges")}</div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.yellow, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.updatedDescription")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.75, whiteSpace: "pre-wrap", maxHeight: 160, overflowY: "auto", background: C.bg, borderRadius: 6, padding: "8px 12px", border: `1px solid ${C.yellow}30` }}>{savedJob.description}</div>
-            </div>
-          </div>
+          )}
+          {!analyzing && analysisError && (
+            <div style={{ fontSize: 13, color: C.textMuted }}>{t("savedJobs.changeAnalysisFailed")}</div>
+          )}
+          {!analyzing && item.job_change_analysis && (() => {
+            const ch = item.job_change_analysis;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {ch.summary && <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, fontStyle: "italic" }}>{ch.summary}</div>}
+                {ch.newSkills?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.green, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.newSkillsAdded")}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ch.newSkills.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div>
+                  </div>
+                )}
+                {ch.removedSkills?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.red, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.skillsRemoved")}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ch.removedSkills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
+                  </div>
+                )}
+                {ch.responsibilitiesChanged && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.responsibilitiesChanged")}</div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ch.responsibilitiesChanged}</div>
+                  </div>
+                )}
+                {ch.experienceChanged && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.experienceChanged")}</div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ch.experienceChanged}</div>
+                  </div>
+                )}
+                {ch.educationChanged && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.educationChanged")}</div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ch.educationChanged}</div>
+                  </div>
+                )}
+                {ch.toolsChanged?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.toolsChanged")}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ch.toolsChanged.map(s => <Badge key={s} color={C.yellow}>{s}</Badge>)}</div>
+                  </div>
+                )}
+                {ch.workAuthorizationChanged && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.workAuthorizationChanged")}</div>
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{ch.workAuthorizationChanged}</div>
+                  </div>
+                )}
+                {ch.otherChanges?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>{t("savedJobs.otherChanges")}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {ch.otherChanges.map((c, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>• {c}</div>)}
+                    </div>
+                  </div>
+                )}
+                {savedJob?.applyUrl && (
+                  <a href={savedJob.applyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: C.purple, fontWeight: 600, textDecoration: "none" }}>
+                    {t("savedJobs.viewJobPosting")}
+                  </a>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
       {item.missing_skills?.length > 0 && (
