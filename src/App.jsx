@@ -6712,6 +6712,7 @@ const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
 const SMART_APPLY_AUTO_LIMIT = 5;
+const MATCH_CONCURRENCY = 5; // parallel Claude calls per scoring batch
 
 const buildSmartApplyPrompt = (ctx, resume, job) =>
   `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
@@ -7173,25 +7174,28 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     const unscored = forceAll ? newJobs : newJobs.filter(j => !matchResults[j.id]);
     if (!unscored.length) { console.log("[AIMatch] All jobs already scored — nothing to do"); return; }
     const runId = ++analyzeRunRef.current;
-    console.log(`[AIMatch] Scoring ${unscored.length} job(s) (runId=${runId})`);
+    console.log(`[AIMatch] Scoring ${unscored.length} job(s) in batches of ${MATCH_CONCURRENCY} (runId=${runId})`);
     setAnalyzeStatus({ state: "scoring", done: 0, total: unscored.length });
     const ctx = userContext.getContextString({ identity: true });
     console.log(`[AIMatch] Context: ${ctx.length} chars`);
-    for (let i = 0; i < unscored.length; i++) {
-      const job = unscored[i];
-      if (analyzeRunRef.current !== runId) { console.log(`[AIMatch] Run cancelled at job ${i + 1} — new search started`); return; }
-      try {
-        console.log(`[AIMatch] ⏳ [${i + 1}/${unscored.length}] Calling Claude for "${job.title}" (${job.id})`);
-        const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
+    let completed = 0;
+    for (let i = 0; i < unscored.length; i += MATCH_CONCURRENCY) {
+      if (analyzeRunRef.current !== runId) { console.log(`[AIMatch] Run cancelled — new search started`); return; }
+      const batch = unscored.slice(i, i + MATCH_CONCURRENCY);
+      await Promise.all(batch.map(async (job) => {
+        try {
+          const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
+          if (analyzeRunRef.current !== runId) return;
+          const parsed = JSON.parse(raw);
+          console.log(`[AIMatch] ✅ "${job.title}" → matchScore=${parsed?.matchScore}`);
+          setMatchResults(prev => ({ ...prev, [job.id]: parsed }));
+        } catch (e) {
+          console.error(`[AIMatch] ❌ "${job.title}" failed:`, e?.message || e);
+        }
         if (analyzeRunRef.current !== runId) return;
-        const parsed = JSON.parse(raw);
-        console.log(`[AIMatch] ✅ [${i + 1}/${unscored.length}] "${job.title}" → matchScore=${parsed?.matchScore}`);
-        setMatchResults(prev => ({ ...prev, [job.id]: parsed }));
-      } catch (e) {
-        console.error(`[AIMatch] ❌ [${i + 1}/${unscored.length}] "${job.title}" failed:`, e?.message || e);
-      }
-      if (analyzeRunRef.current !== runId) return;
-      setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: prev.done + 1 } : prev);
+        completed++;
+        setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: completed } : prev);
+      }));
     }
     if (analyzeRunRef.current !== runId) return;
     console.log(`[AIMatch] All ${unscored.length} job(s) complete (runId=${runId})`);
@@ -7200,9 +7204,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   };
 
 
-  // Auto-generate full Smart Apply packages for AI-discovered jobs after search.
-  // Skips jobs the user has explicitly saved — those are managed from Saved Jobs.
-  // Runs in the background — queue cards appear in Saved Jobs as each completes.
+  // Auto-generate full Smart Apply packages for the top-scored jobs after AI Match completes.
+  // Caller passes jobs already sorted and sliced to SMART_APPLY_AUTO_LIMIT by match score.
+  // enqueue() handles deduplication — already-queued or ready rows are skipped automatically.
   const autoSmartApply = async (newJobs) => {
     if (!profile?.id || !resume.trim()) return;
     const quota = billingState?.quotas?.ai_request;
@@ -7210,9 +7214,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log("[SmartApply] Quota exhausted — skipping auto generation");
       return;
     }
-    const savedJobIds = new Set(savedJobs.map(j => j.job_id));
-    const unsaved = newJobs.filter(j => !savedJobIds.has(j.id));
-    const limited = unsaved.slice(0, SMART_APPLY_AUTO_LIMIT);
+    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
     const runId = ++autoApplyRunRef.current;
     console.log(`[SmartApply] AUTO run#${runId} — processing ${limited.length}/${newJobs.length} job(s)`);
     setAutoApplyingCount(limited.length);
