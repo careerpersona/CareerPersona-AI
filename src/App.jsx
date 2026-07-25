@@ -6713,7 +6713,7 @@ const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experien
 
 const SMART_APPLY_AUTO_LIMIT = 5;
 const MATCH_CONCURRENCY = 5;        // parallel Claude calls per scoring batch
-const SMART_APPLY_CONCURRENCY = 2;  // concurrent Smart Apply packages — bounded to stay within Anthropic ~50K TPM limit
+const SMART_APPLY_CONCURRENCY = 5;  // concurrent Smart Apply packages — matches SMART_APPLY_AUTO_LIMIT (full concurrency)
 
 const buildSmartApplyPrompt = (ctx, resume, job) =>
   `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:

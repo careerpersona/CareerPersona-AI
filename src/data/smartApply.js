@@ -74,7 +74,6 @@ export function useSmartApplyQueue(userId) {
 
   // Step 2: fill in the AI-generated bundle and flip status to "ready".
   const markReady = useCallback(async (id, aiResult) => {
-    _activeGenerations.delete(id);
     const { error } = await supabase.from(TABLE).update({
       tailored_resume: aiResult.tailoredResume || null,
       cover_letter: aiResult.coverLetter || null,
@@ -89,9 +88,15 @@ export function useSmartApplyQueue(userId) {
       status: "ready",
     }).eq("id", id);
     if (error) {
+      _activeGenerations.delete(id);
       console.error("markReady failed:", error.code, error.message, { id });
       throw error;
     }
+    // Remove from active set only after the DB commit succeeds. Removing it
+    // before the UPDATE causes a race: a concurrent refresh() sees the row as
+    // "queued" without an active-generation entry and flags it as an orphan,
+    // which then writes status="failed" and can win the UPDATE race against us.
+    _activeGenerations.delete(id);
     await refresh();
   }, [refresh]);
 
