@@ -6927,16 +6927,62 @@ Description: ${(job.description || "").slice(0, 1200)}${(job.skills || []).lengt
 // Thresholds: 80+ green (strong/excellent), 65–79 yellow (good), below 65 red (moderate/weak).
 const matchScoreColor = v => v == null ? C.textMuted : v >= 80 ? C.green : v >= 65 ? C.yellow : C.red;
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState }) {
+// The single resume control on Job Search — always exactly one of three states:
+// no resume anywhere ("Add Resume" -> create/upload dialog), resumes exist but none
+// active ("Select Resume" -> picker), or a resume is active (its name -> picker to change
+// it). Same anchored-dropdown pattern as LanguageMenu/NotificationsMenu elsewhere in the app.
+function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploading, onSelect, onCreateAI, onUploadClick }) {
+  const { t } = useI18n();
+  const hasResumes = (resumes || []).length > 0;
+  const label = activeResume ? activeResume.name : hasResumes ? t("jobSearch.selectResumeBtn") : t("jobSearch.addResumeBtn");
+  return (
+    <div style={{ position: "relative" }}>
+      <Btn variant={activeResume ? "green" : "secondary"} loading={uploading} onClick={() => setOpen(o => !o)}>📄 {label}</Btn>
+      {open && (
+        <div>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
+            {hasResumes ? (
+              <>
+                <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("jobSearch.selectResumeTitle")}</div>
+                <div style={{ padding: "6px 0", maxHeight: 280, overflowY: "auto" }}>
+                  {resumes.map(r => (
+                    <button key={r.id} onClick={() => { onSelect(r.id); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", border: "none", background: activeResume?.id === r.id ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                      <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("jobSearch.defaultBadge")}</span>}
+                      </span>
+                      {activeResume?.id === r.id && <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("jobSearch.addResumeTitle")}</div>
+                <Btn onClick={() => { setOpen(false); onCreateAI(); }} style={{ justifyContent: "center" }}>✨ {t("jobSearch.createAiResumeBtn")}</Btn>
+                <Btn variant="secondary" onClick={() => { setOpen(false); onUploadClick(); }} style={{ justifyContent: "center" }}>📤 {t("jobSearch.uploadResumeBtn")}</Btn>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
-  const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
+  const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
+  // Active resume is derived from the single shared source of truth (resumes + activeResumeId,
+  // both owned at the root and shared with Dashboard/SavedJobs/Resume pages) rather than a
+  // separate local copy — this is what keeps every screen in sync automatically.
+  const activeResume = useMemo(() => (resumes || []).find(r => r.id === activeResumeId) || null, [resumes, activeResumeId]);
+  const resumeText = activeResume?.content || "";
+  const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const resumeFileRef = useRef();
   const [uploadingResume, setUploadingResume] = useState(false);
-  const [resumeFileName, setResumeFileName] = useSessionState("cp_jobs_resumefilename", "");
-  const [dragActive, setDragActive] = useState(false);
   const [smartApplying, setSmartApplying] = useState(null);
-  const [selectedResumeId, setSelectedResumeId] = useState(null);
   const [autoApplyingCount, setAutoApplyingCount] = useState(0);
   const userContext = useUserContext({ profile, applications, savedJobs });
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
@@ -6994,18 +7040,15 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
   const isNewJob = (job) => !!(prevVisitRef.current && job.datePosted && new Date(job.datePosted) > new Date(prevVisitRef.current));
 
-  // Auto-load the default saved resume the first time resumes arrive from Supabase.
-  // Without this, resume is always empty on first visit and autoSmartApply never fires.
+  // Auto-activate the default saved resume the first time resumes arrive, but only if
+  // no resume is active yet anywhere in the app (activeResumeId is the shared source of
+  // truth, so this also benefits Dashboard/SavedJobs if Job Search happens to load first).
   useEffect(() => {
-    if (resume) return; // textarea already has content — don't overwrite
+    if (activeResumeId) return;
     if (!resumes || resumes.length === 0) return;
     const def = resumes.find(r => r.is_default) || resumes[0];
-    if (def?.content) {
-      setResume(def.content);
-      setResumeFileName(def.name);
-      setSelectedResumeId(def.id);
-    }
-  }, [resumes]);
+    if (def) onResumeLoad?.(def.id);
+  }, [resumes, activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Once per session: when resume becomes available, auto-process any saved jobs
   const autoApplyRunRef = useRef(0);
@@ -7031,12 +7074,78 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     });
   }, [matchResults]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-generate full Smart Apply packages for the top-scored jobs after AI Match completes.
+  // Caller passes jobs already sorted and sliced to SMART_APPLY_AUTO_LIMIT by match score.
+  // All packages are prepared concurrently — each job gets its own Claude call in parallel.
+  // enqueue() handles deduplication — already-queued or ready rows are skipped automatically.
+  const autoSmartApply = async (newJobs) => {
+    if (!profile?.id || !resumeText.trim()) return;
+    const quota = billingState?.quotas?.ai_request;
+    if (quota && !quota.unlimited && quota.remaining <= 0) {
+      console.log("[SmartApply] Quota exhausted — skipping auto generation");
+      return;
+    }
+    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
+    const runId = ++autoApplyRunRef.current;
+    console.log(`[SmartApply] AUTO run#${runId} — preparing ${limited.length} package(s) concurrently`);
+    setAutoApplyingCount(limited.length);
+    let succeeded = 0;
+    // Build context once — shared across all concurrent package preparations.
+    const ctx = userContext.getContextString({ identity: true, applications: true });
+    // Bounded concurrency pool: SMART_APPLY_CONCURRENCY workers share a queue.
+    // Each worker picks the next job as soon as it finishes the current one,
+    // so there is no idle time (unlike fixed batching) while staying within
+    // the Anthropic token-per-minute rate limit.
+    const remaining = [...limited];
+    const worker = async () => {
+      while (remaining.length > 0) {
+        if (autoApplyRunRef.current !== runId) return;
+        const job = remaining.shift();
+        if (!job) return;
+        let queued;
+        try {
+          queued = await enqueue(profile.id, job, activeResumeId);
+          if (!queued) {
+            console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
+            succeeded++;
+            continue;
+          }
+          console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
+          const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
+          const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
+          const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+          const result = JSON.parse(cleanRaw);
+          const integrity = validateSmartApplyPackage(result);
+          if (integrity.ok) {
+            await markReady(queued.id, result);
+            console.log(`[SmartApply] ✅ "${job.title}" — package ready`);
+          } else {
+            await markNeedsReview(queued.id, result);
+            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${summarizeSmartApplyIntegrity(integrity)}`);
+          }
+          succeeded++;
+        } catch (e) {
+          console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
+          if (queued) await markFailed(queued.id);
+        } finally {
+          setAutoApplyingCount(c => Math.max(0, c - 1));
+          onQueueChange?.();
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SMART_APPLY_CONCURRENCY, limited.length) }, worker));
+    if (autoApplyRunRef.current !== runId) return;
+    console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
+    if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
+    if (succeeded === 0 && limited.length > 0) setError(t("jobSearch.smartApplyFailed"));
+  };
+
   // Run Smart Apply after AI Match scoring completes, using the top-scored jobs.
   // This serializes the two AI workloads so they don't race each other for API quota.
   useEffect(() => {
     if (analyzeStatus?.state !== "complete") return;
     const jobs = pendingApplyJobsRef.current;
-    if (!jobs || !profile?.id || !resume.trim()) return;
+    if (!jobs || !profile?.id || !resumeText.trim()) return;
     pendingApplyJobsRef.current = null;
     const sorted = [...jobs].sort((a, b) => (matchResults[b.id]?.matchScore ?? 0) - (matchResults[a.id]?.matchScore ?? 0));
     autoSmartApply(sorted.slice(0, SMART_APPLY_AUTO_LIMIT));
@@ -7044,14 +7153,14 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
   // Invalidation: when the user switches resumes, clear all session match scores so
   // stale scores from the previous resume are never shown on a different resume's results.
-  const prevResumeIdRef = useRef(selectedResumeId);
+  const prevResumeIdRef = useRef(activeResumeId);
   useEffect(() => {
-    if (prevResumeIdRef.current !== selectedResumeId) {
-      prevResumeIdRef.current = selectedResumeId;
+    if (prevResumeIdRef.current !== activeResumeId) {
+      prevResumeIdRef.current = activeResumeId;
       setMatchResults({});
       ++analyzeRunRef.current; // cancel any in-flight auto-analyze run
     }
-  }, [selectedResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -7067,13 +7176,16 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setLastVisit(new Date().toISOString()); }, []);
 
-  // Shared extraction core — accepts a File object
+  // Shared extraction core — accepts a File object, extracts its text, persists it as a
+  // proper entry in the shared resume library (saveResume), and activates it immediately
+  // via the shared activeResumeId so every screen reflects it with no extra step.
   const extractResumeFile = async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     if (file.size > 5 * 1024 * 1024) { setError(t("jobSearch.fileTooLarge")); return; }
     setError(""); setUploadingResume(true);
     try {
+      let text = "";
       if (ext === "pdf") {
         if (!window.pdfjsLib) {
           await new Promise((resolve, reject) => {
@@ -7086,25 +7198,23 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         }
         const buf = await file.arrayBuffer();
         const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-        let text = "";
         for (let i = 1; i <= pdf.numPages; i++) {
           const pageObj = await pdf.getPage(i);
           const content = await pageObj.getTextContent();
           text += content.items.map(it => it.str).join(" ") + "\n";
         }
-        if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); setSelectedResumeId(null); }
-        else { setError(t("jobSearch.pdfExtractFailed")); }
+        text = text.trim();
+        if (!text) { setError(t("jobSearch.pdfExtractFailed")); return; }
       } else if (ext === "docx" || ext === "doc" || ext === "txt") {
-        const text = await file.text();
-        let clean = text;
-        if (ext === "docx" || ext === "doc") {
-          clean = String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        }
-        if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); setSelectedResumeId(null); }
-        else { setError(t("jobSearch.fileReadFailed")); }
+        const raw = await file.text();
+        text = (ext === "docx" || ext === "doc") ? String(raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : raw.trim();
+        if (!text) { setError(t("jobSearch.fileReadFailed")); return; }
       } else {
         setError(t("jobSearch.unsupportedFileType"));
+        return;
       }
+      const saved = await saveResume(file.name, text, file);
+      onResumeLoad?.(saved.id);
     } catch (err) {
       setError(t("jobSearch.fileReadFailedGeneric"));
     } finally {
@@ -7116,13 +7226,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     const file = e.target.files[0];
     await extractResumeFile(file);
     e.target.value = "";
-  };
-
-  const handleResumeDrop = async (e) => {
-    e.preventDefault(); e.stopPropagation();
-    setDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    await extractResumeFile(file);
   };
 
   // Worker URL — same as Claude proxy, new /api/jobs route
@@ -7175,13 +7278,13 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
       // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
       // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
-      if (resume.trim() && newJobs.length > 0) {
-        console.log(`[AIMatch] Search returned ${newJobs.length} jobs, resume ${resume.trim().length}c — starting autoAnalyzeAll`);
+      if (resumeText.trim() && newJobs.length > 0) {
+        console.log(`[AIMatch] Search returned ${newJobs.length} jobs, resume ${resumeText.trim().length}c — starting autoAnalyzeAll`);
         autoAnalyzeAll(newJobs, !loadMore); // forceAll on initial search to bypass stale closure
       } else {
-        console.log(`[AIMatch] autoAnalyzeAll skipped — jobs=${newJobs.length}, hasResume=${!!resume.trim()}`);
+        console.log(`[AIMatch] autoAnalyzeAll skipped — jobs=${newJobs.length}, hasResume=${!!resumeText.trim()}`);
       }
-      if (!loadMore && resume.trim() && newJobs.length > 0) {
+      if (!loadMore && resumeText.trim() && newJobs.length > 0) {
         pendingApplyJobsRef.current = newJobs; // Smart Apply fires after scoring completes with top-scored jobs
       }
     } catch (e) {
@@ -7193,11 +7296,11 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
 
   // AI match a single job against resume (manual trigger via "AI Match" button)
   const analyzeMatch = async (job) => {
-    if (!resume.trim()) { setShowResume(true); return; }
+    if (!resumeText.trim()) { setResumeDialogOpen(true); return; }
     setAnalyzing(job.id);
     try {
       const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
+      const raw = await askClaude(buildMatchPrompt(ctx, resumeText, job), 600);
       const result = JSON.parse(raw);
       setMatchResults(prev => ({ ...prev, [job.id]: result }));
     } catch (e) {
@@ -7212,7 +7315,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // questions) and queues it for review — the user still clicks the real "Apply
   // Now" link themselves, this just does the prep work.
   const smartApply = async (job) => {
-    if (!resume.trim()) { setShowResume(true); return; }
+    if (!resumeText.trim()) { setResumeDialogOpen(true); return; }
     if (!profile?.id) { setError(t("jobSearch.signInForSmartApply")); return; }
     const _mr = matchResults[job.id];
     const _enriched = _mr ? { ...job, matchScore: _mr.matchScore, atsScore: _mr.atsScore } : job;
@@ -7221,7 +7324,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     let queued;
     try {
       console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id})`);
-      queued = await enqueue(profile.id, job, selectedResumeId);
+      queued = await enqueue(profile.id, job, activeResumeId);
       if (!queued) {
         console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
         return; // existing queued/ready row — no generation needed
@@ -7233,7 +7336,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
 
       console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job, profile), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
       console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
 
       console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
@@ -7318,7 +7421,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   // Auto-analyze all jobs silently using the same engine as manual AI Match.
   // Fires for both initial search results and Load More so every displayed job gets a score.
   const autoAnalyzeAll = async (newJobs, forceAll = false) => {
-    if (!resume.trim()) { console.log("[AIMatch] autoAnalyzeAll: no resume — abort"); return; }
+    if (!resumeText.trim()) { console.log("[AIMatch] autoAnalyzeAll: no resume — abort"); return; }
     const quota = billingState?.quotas?.ai_request;
     const quotaDesc = quota ? (quota.unlimited ? "unlimited" : `${quota.remaining}/${quota.limit} remaining`) : "no billing data";
     if (quota && !quota.unlimited && quota.remaining <= 0) {
@@ -7342,7 +7445,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       const batch = unscored.slice(i, i + MATCH_CONCURRENCY);
       await Promise.all(batch.map(async (job) => {
         try {
-          const raw = await askClaude(buildMatchPrompt(ctx, resume, job), 600);
+          const raw = await askClaude(buildMatchPrompt(ctx, resumeText, job), 600);
           if (analyzeRunRef.current !== runId) return;
           const parsed = JSON.parse(raw);
           console.log(`[AIMatch] ✅ "${job.title}" → matchScore=${parsed?.matchScore}`);
@@ -7359,73 +7462,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     console.log(`[AIMatch] All ${unscored.length} job(s) complete (runId=${runId})`);
     setAnalyzeStatus({ state: "complete", total: unscored.length });
     setTimeout(() => { if (analyzeRunRef.current === runId) setAnalyzeStatus(null); }, 3000);
-  };
-
-
-  // Auto-generate full Smart Apply packages for the top-scored jobs after AI Match completes.
-  // Caller passes jobs already sorted and sliced to SMART_APPLY_AUTO_LIMIT by match score.
-  // All packages are prepared concurrently — each job gets its own Claude call in parallel.
-  // enqueue() handles deduplication — already-queued or ready rows are skipped automatically.
-  const autoSmartApply = async (newJobs) => {
-    if (!profile?.id || !resume.trim()) return;
-    const quota = billingState?.quotas?.ai_request;
-    if (quota && !quota.unlimited && quota.remaining <= 0) {
-      console.log("[SmartApply] Quota exhausted — skipping auto generation");
-      return;
-    }
-    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
-    const runId = ++autoApplyRunRef.current;
-    console.log(`[SmartApply] AUTO run#${runId} — preparing ${limited.length} package(s) concurrently`);
-    setAutoApplyingCount(limited.length);
-    let succeeded = 0;
-    // Build context once — shared across all concurrent package preparations.
-    const ctx = userContext.getContextString({ identity: true, applications: true });
-    // Bounded concurrency pool: SMART_APPLY_CONCURRENCY workers share a queue.
-    // Each worker picks the next job as soon as it finishes the current one,
-    // so there is no idle time (unlike fixed batching) while staying within
-    // the Anthropic token-per-minute rate limit.
-    const remaining = [...limited];
-    const worker = async () => {
-      while (remaining.length > 0) {
-        if (autoApplyRunRef.current !== runId) return;
-        const job = remaining.shift();
-        if (!job) return;
-        let queued;
-        try {
-          queued = await enqueue(profile.id, job, selectedResumeId);
-          if (!queued) {
-            console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
-            succeeded++;
-            continue;
-          }
-          console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
-          const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job, profile), 8000);
-          const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
-          const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-          const result = JSON.parse(cleanRaw);
-          const integrity = validateSmartApplyPackage(result);
-          if (integrity.ok) {
-            await markReady(queued.id, result);
-            console.log(`[SmartApply] ✅ "${job.title}" — package ready`);
-          } else {
-            await markNeedsReview(queued.id, result);
-            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${summarizeSmartApplyIntegrity(integrity)}`);
-          }
-          succeeded++;
-        } catch (e) {
-          console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
-          if (queued) await markFailed(queued.id);
-        } finally {
-          setAutoApplyingCount(c => Math.max(0, c - 1));
-          onQueueChange?.();
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(SMART_APPLY_CONCURRENCY, limited.length) }, worker));
-    if (autoApplyRunRef.current !== runId) return;
-    console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
-    if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
-    if (succeeded === 0 && limited.length > 0) setError(t("jobSearch.smartApplyFailed"));
   };
 
   const toggleSave = (job) => {
@@ -7452,6 +7488,12 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("jobSearch.heading")}</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("jobSearch.subtitle")}</p>
+      {!activeResume && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: C.text, fontWeight: 500 }}>
+          <span style={{ fontSize: 16 }}>✨</span>
+          <span>{t("jobSearch.aiUnlockGuidance")}</span>
+        </div>
+      )}
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }} className="three-col">
           <Input label={t("jobSearch.jobTitleLabel")} placeholder={t("jobSearch.jobTitlePlaceholder")} value={filters.title} onChange={e => setFilters(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
@@ -7473,76 +7515,20 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
           {autoApplyingCount > 0 && <span style={{ color: C.purple, fontSize: 13 }}>{autoApplyingCount === 1 ? t("jobSearch.aiPreparingMsgSingular") : t("jobSearch.aiPreparingMsgPlural").replace("{n}", autoApplyingCount)}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-            <Btn variant={resume ? "green" : "secondary"} onClick={() => setShowResume(!showResume)}>📄 {resume ? t("jobSearch.resumeAdded") : t("jobSearch.addResumeForMatch")}</Btn>
+            <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
+            <JobSearchResumeControl
+              resumes={resumes || []}
+              activeResume={activeResume}
+              open={resumeDialogOpen}
+              setOpen={setResumeDialogOpen}
+              uploading={uploadingResume}
+              onSelect={(id) => onResumeLoad?.(id)}
+              onCreateAI={() => onNavigateResume?.("upload")}
+              onUploadClick={() => resumeFileRef.current?.click()}
+            />
             <Btn onClick={() => search(false)} loading={loading} style={{ padding: "12px 28px" }}>{loading ? t("jobSearch.searching") : t("jobSearch.searchJobs")}</Btn>
           </div>
         </div>
-        {showResume && <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 10 }}>{t("jobSearch.yourResumeForMatch")}</div>
-
-          <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
-
-          {/* Centered drag & drop upload area */}
-          <div
-            onClick={() => resumeFileRef.current.click()}
-            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
-            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
-            onDrop={handleResumeDrop}
-            style={{
-              border: `1.5px solid ${dragActive ? C.purple : C.border}`,
-              background: dragActive ? C.purpleLight : (resumeFileName ? C.greenLight : C.bgSoft),
-              borderRadius: 9,
-              padding: "28px 20px",
-              textAlign: "center",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-              marginBottom: 14,
-              boxSizing: "border-box",
-            }}
-          >
-            {uploadingResume ? (
-              <div style={{ color: C.purple, fontWeight: 600, fontSize: 15 }}>{t("jobSearch.extractingText")}</div>
-            ) : resumeFileName ? (
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.green, color: "#fff", padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t("jobSearch.resumeLoaded")}</div>
-                <div style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>📄 {resumeFileName}</div>
-                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>{t("jobSearch.clickOrDropReplace")}</div>
-              </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: 26, marginBottom: 6 }}>⬆️</div>
-                <div style={{ color: C.purple, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{t("jobSearch.uploadResume")}</div>
-                <div style={{ color: C.textMuted, fontSize: 13 }}>{t("jobSearch.dragDropHint")}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Saved resume picker — select from user_resumes library */}
-          {(resumes || []).length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 8 }}>{t("jobSearch.orSelectSavedResume")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(resumes || []).map(r => (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: selectedResumeId === r.id ? C.purpleLight : C.bgSoft, border: `1px solid ${selectedResumeId === r.id ? C.purple : C.border}`, borderRadius: 9, padding: "8px 12px", flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("jobSearch.defaultBadge")}</span>}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>{new Date(r.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <Btn variant={selectedResumeId === r.id ? "secondary" : "ghost"} style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => { setResume(r.content || ""); setResumeFileName(r.name); setSelectedResumeId(r.id); }}>
-                      {selectedResumeId === r.id ? t("jobSearch.selectedBtn") : t("jobSearch.selectBtn")}
-                    </Btn>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Resume textarea */}
-          <textarea style={{ width: "100%", minHeight: 180, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, lineHeight: 1.7, padding: "14px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} placeholder={t("jobSearch.resumeTextareaPlaceholder")} value={resume} onChange={e => { setResume(e.target.value); if (resumeFileName) setResumeFileName(""); if (selectedResumeId) setSelectedResumeId(null); }} />
-          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{resume ? t("jobSearch.wordCount").replace("{n}", resume.split(/\s+/).filter(Boolean).length) : t("jobSearch.extractTip")}</div>
-          {resume && <Btn variant="green" style={{ marginTop: 10 }} onClick={() => setShowResume(false)}>{t("jobSearch.saveAndClose")}</Btn>}
-        </div>}
       </Card>
 
       {/* Recent search chips */}
@@ -11376,7 +11362,7 @@ export default function App() {
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
