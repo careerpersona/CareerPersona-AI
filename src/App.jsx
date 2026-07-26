@@ -20,6 +20,7 @@ import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
 import { useUserContext } from "./data/userContext";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
+import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, normalizePhone, isPhoneValid, isPhonePresent, detectContactType } from "./lib/contactNormalization";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
 
@@ -524,7 +525,7 @@ function parseResumeDoc(rawText) {
     const t = lines[i].trim();
     if (!t) { i++; continue; }
     if (isSec(t)) break;
-    const isContactLine = /[@]/.test(t) || /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(t);
+    const isContactLine = isEmailPresent(t) || isPhonePresent(t);
     result.headerLines.push({ text: t, type: isContactLine ? 'contact' : 'title' });
     i++;
   }
@@ -1705,14 +1706,8 @@ function ContentDisplay({ content, highlightTokens }) {
 }
 
 // ─── Resume renderer helpers ─────────────────────────────────────────────────
-function detectContactType(text) {
-  if (/@/.test(text)) return 'email';
-  if (/\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}/.test(text)) return 'phone';
-  if (/linkedin/i.test(text)) return 'linkedin';
-  if (/github/i.test(text)) return 'github';
-  if (/portfolio|website/i.test(text) || /^https?:\/\/|\.(io|dev|me|co|org|net|app|site)\b/i.test(text)) return 'portfolio';
-  return 'location';
-}
+// detectContactType now lives in ./lib/contactNormalization (Contact
+// Normalization Service) — imported above, not redefined here.
 function getSectionIconType(title) {
   const t = title.toLowerCase();
   if (/summary|profile|objective|about|overview|highlight/.test(t)) return 'person';
@@ -6774,22 +6769,19 @@ Company: ${job.company}${job.description ? `\nDescription: ${job.description.sli
 // [Name], [Recruiter Name], [LinkedIn] indicate unresolved template content.
 const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/;
 
-// Same phone pattern parseResumeDoc/detectContactType already use elsewhere in the app,
-// reused here for consistency rather than inventing a second convention.
-const SMART_APPLY_EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-const SMART_APPLY_PHONE_RE = /\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
-
 // Required Contact Information is validated on the FINAL generated resume, never on the
 // user's profile — a package passes as long as the resume itself contains a name, email,
 // and phone number, regardless of whether that info came from the profile, an uploaded
-// resume, or was carried over by the AI from source material.
+// resume, or was carried over by the AI from source material. Detection is delegated
+// entirely to the Contact Normalization Service (./lib/contactNormalization) — Smart
+// Apply never implements its own phone/email parsing, it only asks "is X present?".
 const checkResumeContactInfo = (tailoredResume) => {
   const text = tailoredResume || "";
   const parsed = parseResumeDoc(text);
   return {
     hasFullName: !!parsed.name && parsed.name.trim().length > 0,
-    hasEmail: SMART_APPLY_EMAIL_RE.test(text),
-    hasPhone: SMART_APPLY_PHONE_RE.test(text),
+    hasEmail: isEmailPresent(text),
+    hasPhone: isPhonePresent(text),
   };
 };
 
@@ -8773,12 +8765,14 @@ function NetworkingPage({ profile, applications, savedJobs }) {
   };
 
   const saveContact = () => {
+    const normalizedEmail = normalizeEmail(emailTo);
+    if (!isEmailValid(normalizedEmail)) { setError(t("networking.invalidEmail")); return; }
     const contact = {
       id: uid(),
-      name: form.targetName || "",
+      name: normalizeFullName(form.targetName || ""),
       company: form.targetCompany || "",
       role: form.targetRole || "",
-      email: emailTo || "",
+      email: normalizedEmail,
       method: "email",
       subject: draft?.emailSubject || "",
       originalMessage: draft?.emailBody || "",
@@ -8939,7 +8933,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
             <Card>
               <div style={{ marginBottom: 14 }}>
                 <Label>{t("networking.toLabel")}</Label>
-                <input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="name@company.com" style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                <input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="name@company.com" style={{ width: "100%", background: "#fff", border: `1.5px solid ${emailTo && !isEmailValid(emailTo) ? C.red : C.border}`, borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
               </div>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><Label>{t("networking.subjectLabel")}</Label><CopyBtn text={draft.emailSubject} label={t("networking.copySubject")} /></div>
@@ -8964,6 +8958,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                     {emailTo && <div style={{ fontSize: 14, color: C.text }}>📧 {emailTo}</div>}
                   </div>
                   <div style={{ fontSize: 13, color: C.textMid, marginBottom: 14 }}>{t("networking.savePromptBody")}</div>
+                  {error && <div style={{ color: C.red, fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{error}</div>}
                   <div style={{ display: "flex", gap: 10 }}>
                     <Btn onClick={saveContact}>{t("networking.saveContactBtn")}</Btn>
                     <Btn variant="secondary" onClick={() => setShowSavePrompt(false)}>{t("networking.notNowBtn")}</Btn>
@@ -10019,8 +10014,17 @@ function ProfilePage({ profile, updateProfile }) {
 
   const save = () => {
     if (!form.full_name.trim()) { setError(t("profile.fullNameRequired")); return; }
+    const normalized = {
+      ...form,
+      full_name: normalizeFullName(form.full_name),
+      email_address: normalizeEmail(form.email_address),
+      phone: normalizePhone(form.phone),
+    };
+    if (!isEmailValid(normalized.email_address)) { setError(t("profile.invalidEmail")); return; }
+    if (!isPhoneValid(normalized.phone)) { setError(t("profile.invalidPhone")); return; }
     setError("");
-    updateProfile(form);
+    setForm(normalized);
+    updateProfile(normalized);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };

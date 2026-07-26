@@ -1,4 +1,5 @@
 import { useSyncedList } from "./syncList";
+import { normalizeFullName, normalizeEmail } from "../lib/contactNormalization";
 
 const TABLE = "networking_contacts";
 const LOCAL_KEY = "cp_network_contacts";
@@ -6,9 +7,9 @@ const LOCAL_KEY = "cp_network_contacts";
 const toRow = (c, userId) => ({
   id: c.id,
   user_id: userId,
-  name: c.name || "",
+  name: normalizeFullName(c.name || ""),
   company: c.company || null,
-  email: c.email || null,
+  email: c.email ? normalizeEmail(c.email) : null,
   status: c.status || "Waiting for Reply",
   subject: c.subject || null,
   date_saved: c.dateSaved || null,

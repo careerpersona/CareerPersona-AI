@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { normalizeFullName, normalizePhone, normalizeEmail } from "../lib/contactNormalization";
 
 // Merges the existing `profiles` table with the additive `profile_details`
 // table into the flat shape the rest of the app already expects
@@ -41,6 +42,10 @@ export async function upsertProfile(userId, updates) {
 
   const baseUpdate = Object.fromEntries(baseFields.filter(f => f in updates).map(f => [f, updates[f]]));
   const detailUpdate = Object.fromEntries(detailFields.filter(f => f in updates).map(f => [f, updates[f]]));
+
+  if ("full_name" in baseUpdate) baseUpdate.full_name = normalizeFullName(baseUpdate.full_name);
+  if ("phone" in baseUpdate) baseUpdate.phone = normalizePhone(baseUpdate.phone);
+  if ("email_address" in detailUpdate) detailUpdate.email_address = normalizeEmail(detailUpdate.email_address);
 
   await Promise.all([
     Object.keys(baseUpdate).length
