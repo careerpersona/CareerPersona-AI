@@ -1684,10 +1684,22 @@ function CopyBtn({ text, label, variant = "ghost", style: outerStyle }) {
   return <Btn variant={variant} style={{ padding: "6px 14px", fontSize: 12, ...outerStyle }} onClick={handleCopy}>{c ? t("common.copied") : (label ?? t("common.copy"))}</Btn>;
 }
 
-function ContentDisplay({ content }) {
+// highlightTokens: optional array of exact substrings (e.g. unresolved placeholder
+// tokens) to underline in red directly in the text, in place of a separate warning box.
+function ContentDisplay({ content, highlightTokens }) {
+  const boxStyle = { background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", fontSize: 14, lineHeight: 1.85, color: C.text, whiteSpace: "pre-wrap", maxHeight: 420, overflowY: "auto", fontFamily: "inherit" };
+  if (!highlightTokens?.length) {
+    return <div style={boxStyle}>{content}</div>;
+  }
+  const uniqueTokens = [...new Set(highlightTokens)];
+  const pattern = new RegExp(`(${uniqueTokens.map(tok => tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  const parts = (content || "").split(pattern);
   return (
-    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", fontSize: 14, lineHeight: 1.85, color: C.text, whiteSpace: "pre-wrap", maxHeight: 420, overflowY: "auto", fontFamily: "inherit" }}>
-      {content}
+    <div style={boxStyle}>
+      {parts.map((part, i) => uniqueTokens.includes(part)
+        ? <span key={i} style={{ textDecoration: "underline", textDecorationColor: C.red, textDecorationThickness: 2, textUnderlineOffset: 3 }}>{part}</span>
+        : part
+      )}
     </div>
   );
 }
@@ -6738,11 +6750,15 @@ CONTACT INFO RULES:
 
 RECRUITER MESSAGE RULES:
 - No specific recruiter name is known for this job. Do NOT invent a name and do NOT use a placeholder token like "[Recruiter Name]" or "[Name]".
-- Open with "Dear Hiring Team," by default, or "Dear ${job.company} Hiring Team," / "Hello ${job.company} Recruiting Team," if that reads more naturally.
+- Use a professional generic greeting instead, such as "Dear Hiring Manager,".
 
 NETWORKING MESSAGE RULES:
 - No specific contact name is known. Do NOT invent one and do NOT use a placeholder token.
 - Write a professional, generic networking introduction that references the company and role without addressing anyone by name.
+
+COMPANY NAME FALLBACK:
+- If the company name is known (see JOB below), use it naturally.
+- If no company name is available, do not use a placeholder like "[Company Name]" — rewrite the sentence naturally without naming the company. For example, use "I am excited to apply for this opportunity." instead of "I am excited to join [Company Name]."
 
 GENERAL RULE — applies to every field in the JSON: never output a bracketed placeholder token (e.g. "[Name]", "[Phone]", "[Email]", "[LinkedIn]", "[GitHub]", "[Portfolio]", "[Company Name]", "[Recruiter Name]"). If a detail is unknown, omit it rather than leaving a placeholder.
 
@@ -6758,25 +6774,111 @@ Company: ${job.company}${job.description ? `\nDescription: ${job.description.sli
 // [Name], [Recruiter Name], [LinkedIn] indicate unresolved template content.
 const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/;
 
-// Package Integrity Validation — the gate for "ready" status. A package only reaches
-// "ready" if every required field is present and free of placeholder tokens; otherwise
-// it's routed to "needs_review" so an incomplete package never silently looks ready.
-const validateSmartApplyPackage = (result, profile) => {
-  const reasons = [];
-  const requiredFields = {
-    tailoredResume: result?.tailoredResume,
-    coverLetter: result?.coverLetter,
-    recruiterMessage: result?.recruiterMessage,
-    networkingMessage: result?.networkingMessage,
+// Same phone pattern parseResumeDoc/detectContactType already use elsewhere in the app,
+// reused here for consistency rather than inventing a second convention.
+const SMART_APPLY_EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+const SMART_APPLY_PHONE_RE = /\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
+
+// Required Contact Information is validated on the FINAL generated resume, never on the
+// user's profile — a package passes as long as the resume itself contains a name, email,
+// and phone number, regardless of whether that info came from the profile, an uploaded
+// resume, or was carried over by the AI from source material.
+const checkResumeContactInfo = (tailoredResume) => {
+  const text = tailoredResume || "";
+  const parsed = parseResumeDoc(text);
+  return {
+    hasFullName: !!parsed.name && parsed.name.trim().length > 0,
+    hasEmail: SMART_APPLY_EMAIL_RE.test(text),
+    hasPhone: SMART_APPLY_PHONE_RE.test(text),
   };
-  for (const [field, value] of Object.entries(requiredFields)) {
-    if (!value || !value.trim()) reasons.push(`${field} missing`);
-    else if (SMART_APPLY_PLACEHOLDER_RE.test(value)) reasons.push(`${field} contains an unresolved placeholder`);
-  }
-  if (!profile?.full_name?.trim()) reasons.push("candidate full name missing from profile");
-  if (!profile?.email_address?.trim() && !profile?.phone?.trim()) reasons.push("no candidate contact method (email or phone) on profile");
-  return { ok: reasons.length === 0, reasons };
 };
+
+// Recursively scans every string value anywhere in the generated package for placeholder
+// tokens — not just the four primary documents — so missingSkills, applicationQuestions,
+// salaryInsight, companyInsight, and any future generated field are covered automatically
+// with no code change required when new fields are added.
+const findSmartApplyPlaceholders = (value, path = "") => {
+  const hits = [];
+  if (typeof value === "string") {
+    const m = value.match(SMART_APPLY_PLACEHOLDER_RE);
+    if (m) hits.push({ path, token: m[0] });
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => hits.push(...findSmartApplyPlaceholders(v, path ? `${path}[${i}]` : `[${i}]`)));
+  } else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value)) hits.push(...findSmartApplyPlaceholders(v, path ? `${path}.${k}` : k));
+  }
+  return hits;
+};
+
+const SMART_APPLY_DOC_FIELDS = ["tailoredResume", "coverLetter", "recruiterMessage", "networkingMessage"];
+
+// Package Integrity Validation — the single gate for "ready" status and the source of
+// truth for the per-document Needs Attention indicators in PackageView. Its scope is
+// deliberately narrow: missing required information (contact info on the resume) and
+// placeholder tokens, both of which the user can actually fix by editing. It does NOT
+// check whether a document generated at all or how long it is — an empty or truncated
+// document is an AI generation problem, not a package validation problem, and is handled
+// upstream (askClaude/JSON-parse failure -> "failed" status) rather than here. Optional
+// information (LinkedIn, GitHub, portfolio, recruiter/contact names, company name) is
+// never checked here either — the prompt is responsible for omitting or falling back.
+const validateSmartApplyPackage = (result) => {
+  const placeholderHits = findSmartApplyPlaceholders(result || {});
+  const placeholderTokensByField = {};
+  for (const h of placeholderHits) {
+    const top = h.path.split(/[.[]/)[0];
+    (placeholderTokensByField[top] ||= []).push(h.token);
+  }
+
+  const documents = {};
+  for (const field of SMART_APPLY_DOC_FIELDS) {
+    // Exact placeholder tokens found in this field's own text, exposed so the UI can
+    // underline the specific offending span instead of showing a generic warning.
+    const placeholderTokens = placeholderTokensByField[field] || [];
+    const issues = placeholderTokens.length ? ["placeholder"] : [];
+    documents[field] = { ok: issues.length === 0, issues, placeholderTokens };
+  }
+
+  // Required Contact Information — checked directly on the resume text. An empty resume
+  // naturally surfaces as all three fields missing, which is itself the correct "missing
+  // required information" signal — no separate empty/failed-generation concept needed.
+  const contact = checkResumeContactInfo(result?.tailoredResume);
+  if (!contact.hasFullName) documents.tailoredResume.issues.push("missing_full_name");
+  if (!contact.hasEmail) documents.tailoredResume.issues.push("missing_email");
+  if (!contact.hasPhone) documents.tailoredResume.issues.push("missing_phone");
+  documents.tailoredResume.ok = documents.tailoredResume.issues.length === 0;
+
+  // Placeholders outside the four primary documents (e.g. inside salaryInsight or
+  // companyInsight) still block Ready even though they have no dedicated document slot
+  // in the review UI.
+  const otherPlaceholders = placeholderHits.filter(h => !SMART_APPLY_DOC_FIELDS.includes(h.path.split(/[.[]/)[0]));
+
+  const ok = Object.values(documents).every(d => d.ok) && otherPlaceholders.length === 0;
+  return { ok, documents, otherPlaceholders };
+};
+
+// Flattens a Package Integrity Validation result into a short human-readable string —
+// used for console logging only, not shown to the user (the UI reads .documents directly).
+const summarizeSmartApplyIntegrity = (integrity) => {
+  const parts = Object.entries(integrity.documents)
+    .filter(([, d]) => !d.ok)
+    .map(([field, d]) => `${field}: ${d.issues.join(",")}`);
+  if (integrity.otherPlaceholders.length) parts.push(`other placeholders: ${integrity.otherPlaceholders.map(h => h.path).join(",")}`);
+  return parts.join("; ") || "ok";
+};
+
+// Maps a DB smart_apply_queue row (snake_case) to the camelCase document shape
+// validateSmartApplyPackage expects — reused by PackageView to re-validate on render
+// and after edits, since the validator itself works on the AI-response shape.
+const smartApplyDocFieldsFromRow = (item) => ({
+  tailoredResume: item.tailored_resume,
+  coverLetter: item.cover_letter,
+  recruiterMessage: item.recruiter_message,
+  networkingMessage: item.networking_message,
+  missingSkills: item.missing_skills,
+  applicationQuestions: item.application_questions,
+  salaryInsight: item.salary_insight,
+  companyInsight: item.company_insight,
+});
 
 const buildJobChangePrompt = (prev, curr) =>
   `Compare these two job descriptions and identify only the meaningful changes that would affect an applicant's materials (cover letter, resume, recruiter message).
@@ -7141,11 +7243,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
 
       console.log(`[SmartApply] ⏳ [5/6] Validating package integrity for "${job.title}"`);
-      const trLen = (result.tailoredResume || "").trim().length;
-      const clLen = (result.coverLetter || "").trim().length;
-      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      const integrity = validateSmartApplyPackage(result, profile);
-      console.log(`[SmartApply] ✅ [5/6] Integrity check: ${integrity.ok ? "passed" : "FAILED — " + integrity.reasons.join("; ")}`);
+      const integrity = validateSmartApplyPackage(result);
+      console.log(`[SmartApply] ✅ [5/6] Integrity check: ${integrity.ok ? "passed" : "FAILED — " + summarizeSmartApplyIntegrity(integrity)}`);
 
       console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
       if (integrity.ok) {
@@ -7304,16 +7403,13 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
           const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
           const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
           const result = JSON.parse(cleanRaw);
-          const trLen = (result.tailoredResume || "").trim().length;
-          const clLen = (result.coverLetter || "").trim().length;
-          if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-          const integrity = validateSmartApplyPackage(result, profile);
+          const integrity = validateSmartApplyPackage(result);
           if (integrity.ok) {
             await markReady(queued.id, result);
-            console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
+            console.log(`[SmartApply] ✅ "${job.title}" — package ready`);
           } else {
             await markNeedsReview(queued.id, result);
-            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${integrity.reasons.join("; ")}`);
+            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${summarizeSmartApplyIntegrity(integrity)}`);
           }
           succeeded++;
         } catch (e) {
@@ -9033,6 +9129,14 @@ function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
   );
 }
 
+// Contact fields checked on the resume (see checkResumeContactInfo) — order they render in
+// the compact "missing field" strip, and the issue code / translation key each maps to.
+const SMART_APPLY_CONTACT_FIELDS = [
+  { issue: "missing_full_name", labelKey: "savedJobs.contactFieldFullName" },
+  { issue: "missing_email", labelKey: "savedJobs.contactFieldEmail" },
+  { issue: "missing_phone", labelKey: "savedJobs.contactFieldPhone" },
+];
+
 function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   const { t } = useI18n();
   const [editingField, setEditingField] = useState(null);
@@ -9050,6 +9154,10 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
   const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), needs_review: t("savedJobs.statusNeedsReview") }[item.status] || item.status;
   const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
+  // Package Integrity Validation, recomputed live from the current stored fields on every
+  // render — drives the per-document ✅/🔴 indicators below. Editing + saving a field
+  // re-runs this same check (see handleSaveEdit) so status stays accurate automatically.
+  const integrity = validateSmartApplyPackage(smartApplyDocFieldsFromRow(item));
 
   useEffect(() => {
     if (!hasJobChanges || item.job_change_analysis || !savedJob || !patchQueueItem) return;
@@ -9072,10 +9180,22 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   }, [hasJobChanges, !!item.job_change_analysis, savedJob?.job_id, item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartEdit = (field, currentValue) => { setEditingField(field); setEditText(currentValue || ""); };
+  // Saving an edit re-runs Package Integrity Validation against the updated document set
+  // and writes the resulting status in the same update — this is the "Automatic validation
+  // runs" step of the Needs Attention workflow. Only ready/needs_review rows have their
+  // status touched; other statuses (e.g. applied) are never altered by an edit.
   const handleSaveEdit = async (field) => {
     if (!patchQueueItem) return;
     setSaving(true);
-    try { await patchQueueItem(item.id, { [field]: editText }); setEditingField(null); }
+    try {
+      const patch = { [field]: editText };
+      if (item.status === "ready" || item.status === "needs_review") {
+        const merged = { ...smartApplyDocFieldsFromRow(item), [field]: editText };
+        patch.status = validateSmartApplyPackage(merged).ok ? "ready" : "needs_review";
+      }
+      await patchQueueItem(item.id, patch);
+      setEditingField(null);
+    }
     catch { /* keep editing mode on error so user can retry */ }
     finally { setSaving(false); }
   };
@@ -9114,6 +9234,45 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
     );
   };
 
+  // Per-document heading + red warning block for the Needs Attention UI. A document is
+  // always shown — even when it failed to generate — so the user never has to search the
+  // package to find what's wrong; an empty document just shows a "not generated" state
+  // with editing still available so it can be filled in and saved.
+  // Minimal per-document status: a name + a one-line count ("✅ Ready" or "🔴 N Issues –
+  // See Below"), never a reason list. The specific problem is only ever shown as a small
+  // highlight on the exact item — a red-underlined field for missing contact info, or the
+  // literal placeholder token underlined in place. Package Validation doesn't check
+  // whether a document generated or how long it is (that's an AI generation concern), so
+  // there's no whole-document highlight state here.
+  const renderDocSection = (field, label, storedValue, minHeight) => {
+    const doc = integrity.documents[field];
+    const statusText = doc.ok
+      ? "✅ " + t("savedJobs.docStatusReady")
+      : "🔴 " + (doc.issues.length === 1 ? t("savedJobs.docStatusIssueOne") : t("savedJobs.docStatusIssueMany").replace("{n}", doc.issues.length));
+    const missingContactFields = SMART_APPLY_CONTACT_FIELDS.filter(f => doc.issues.includes(f.issue));
+    return (
+      <>
+        <Label>{label}</Label>
+        <div style={{ fontSize: 12, fontWeight: 700, color: doc.ok ? C.green : C.red, marginBottom: 8 }}>{statusText}</div>
+        {missingContactFields.length > 0 && (
+          <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
+            {missingContactFields.map(f => (
+              <div key={f.issue} style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>
+                {t(f.labelKey)}
+                <div style={{ width: 72, borderBottom: `2px solid ${C.red}`, marginTop: 4 }} />
+              </div>
+            ))}
+          </div>
+        )}
+        {editingField === field ? (
+          <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight }} />
+        ) : (
+          <ContentDisplay content={storedValue} highlightTokens={doc.placeholderTokens} />
+        )}
+      </>
+    );
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px" }}>
@@ -9121,7 +9280,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
         {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{t("savedJobs.resumePrefix")}: {selectedResumeName}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Badge color={item.status === "needs_review" ? C.yellow : C.green}>{statusLabel}</Badge>
+          <Badge color={item.status === "needs_review" ? C.orange : C.green}>{statusLabel}</Badge>
           {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
           {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
         </div>
@@ -9204,56 +9363,31 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
           })()}
         </div>
       )}
+      {integrity.otherPlaceholders.length > 0 && (
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.red }}>🔴 {t("savedJobs.issuePlaceholderElsewhere")}</div>
+      )}
       {item.missing_skills?.length > 0 && (
         <div>
           <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
         </div>
       )}
-      {item.cover_letter && (
-        <div>
-          <Label>{t("savedJobs.coverLetter")}</Label>
-          {editingField === "coverLetter" ? (
-            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 200 }} />
-          ) : (
-            <ContentDisplay content={item.cover_letter} />
-          )}
-          {renderDocButtons("coverLetter", item.cover_letter, true, "cover-letter")}
-        </div>
-      )}
-      {item.tailored_resume && (
-        <div>
-          <Label>{t("savedJobs.tailoredResume")}</Label>
-          {editingField === "tailoredResume" ? (
-            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 300 }} />
-          ) : (
-            <ContentDisplay content={item.tailored_resume} />
-          )}
-          {renderDocButtons("tailoredResume", item.tailored_resume, true, "tailored-resume")}
-        </div>
-      )}
-      {item.recruiter_message && (
-        <div>
-          <Label>{t("savedJobs.recruiterMessage")}</Label>
-          {editingField === "recruiterMessage" ? (
-            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 150 }} />
-          ) : (
-            <ContentDisplay content={item.recruiter_message} />
-          )}
-          {renderDocButtons("recruiterMessage", item.recruiter_message, false, null)}
-        </div>
-      )}
-      {item.networking_message && (
-        <div>
-          <Label>{t("savedJobs.networkingMessage")}</Label>
-          {editingField === "networkingMessage" ? (
-            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight: 150 }} />
-          ) : (
-            <ContentDisplay content={item.networking_message} />
-          )}
-          {renderDocButtons("networkingMessage", item.networking_message, false, null)}
-        </div>
-      )}
+      <div>
+        {renderDocSection("coverLetter", t("savedJobs.coverLetter"), item.cover_letter, 200)}
+        {renderDocButtons("coverLetter", item.cover_letter, true, "cover-letter")}
+      </div>
+      <div>
+        {renderDocSection("tailoredResume", t("savedJobs.tailoredResume"), item.tailored_resume, 300)}
+        {renderDocButtons("tailoredResume", item.tailored_resume, true, "tailored-resume")}
+      </div>
+      <div>
+        {renderDocSection("recruiterMessage", t("savedJobs.recruiterMessage"), item.recruiter_message, 150)}
+        {renderDocButtons("recruiterMessage", item.recruiter_message, false, null)}
+      </div>
+      <div>
+        {renderDocSection("networkingMessage", t("savedJobs.networkingMessage"), item.networking_message, 150)}
+        {renderDocButtons("networkingMessage", item.networking_message, false, null)}
+      </div>
       {item.application_questions?.length > 0 && (
         <div>
           <Label>{t("savedJobs.likelyQuestions")}</Label>
@@ -9403,7 +9537,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{item.job_title}</div>
-            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : item.status === "failed" ? C.red : C.yellow}>{statusLabel}</Badge>
+            <Badge color={item.status === "ready" ? C.green : item.status === "applied" ? C.blue : item.status === "skipped" ? C.textMuted : item.status === "failed" ? C.red : item.status === "needs_review" ? C.orange : C.yellow}>{statusLabel}</Badge>
           </div>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 8 }}>{item.company}</div>
           {item.status === "ready" && (
@@ -9451,7 +9585,6 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
       )}
       {item.status === "needs_review" && (
         <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 13, color: C.yellow, marginBottom: 8 }}>{t("savedJobs.packageNeedsReview")}</div>
           <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
         </div>
       )}
@@ -9567,16 +9700,13 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const trLen = (result.tailoredResume || "").trim().length;
-      const clLen = (result.coverLetter || "").trim().length;
-      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      const integrity = validateSmartApplyPackage(result, profile);
+      const integrity = validateSmartApplyPackage(result);
       if (integrity.ok) {
         await markReady(item.id, result);
         console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
       } else {
         await markNeedsReview(item.id, result);
-        console.log(`[SmartApply] ⚠️ Retry complete — status: needs_review (${integrity.reasons.join("; ")})`);
+        console.log(`[SmartApply] ⚠️ Retry complete — status: needs_review (${summarizeSmartApplyIntegrity(integrity)})`);
       }
     } catch (e) {
       console.error(`[SmartApply] ❌ RETRY failed for "${item.job_title}":`, e?.code, e?.message, e);
@@ -9608,10 +9738,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const trLen = (result.tailoredResume || "").trim().length;
-      const clLen = (result.coverLetter || "").trim().length;
-      if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      const integrity = validateSmartApplyPackage(result, profile);
+      const integrity = validateSmartApplyPackage(result);
       if (integrity.ok) await markReady(queued.id, result);
       else await markNeedsReview(queued.id, result);
     } catch (e) {
@@ -9671,7 +9798,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
             let statusLabel = t("savedJobs.statusSaved");
             if (isApplied) { statusColor = C.blue; statusLabel = t("savedJobs.statusApplied"); }
             else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = t("savedJobs.statusAiReady"); }
-            else if (activeEntry?.status === "needs_review") { statusColor = C.yellow; statusLabel = t("savedJobs.statusNeedsReview"); }
+            else if (activeEntry?.status === "needs_review") { statusColor = C.orange; statusLabel = t("savedJobs.statusNeedsReview"); }
             else if (isPreparing || activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = t("savedJobs.statusInQueue"); }
             else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = t("savedJobs.statusGenFailed"); }
 

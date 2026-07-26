@@ -161,7 +161,9 @@ export function useSmartApplyQueue(userId) {
   }, [userId, refresh]);
 
   // Partially update document fields on a queue row (camelCase patch → snake_case DB columns).
-  // Used by PackageView to persist user edits to individual documents.
+  // Used by PackageView to persist user edits to individual documents. Also accepts an
+  // optional `status` so an edit can atomically re-validate and flip needs_review <-> ready
+  // in the same write, instead of a separate round trip.
   const patchQueueItem = useCallback(async (id, patch) => {
     const dbPatch = {};
     if (patch.tailoredResume !== undefined) dbPatch.tailored_resume = patch.tailoredResume;
@@ -169,6 +171,7 @@ export function useSmartApplyQueue(userId) {
     if (patch.recruiterMessage !== undefined) dbPatch.recruiter_message = patch.recruiterMessage;
     if (patch.networkingMessage !== undefined) dbPatch.networking_message = patch.networkingMessage;
     if (patch.jobChangeAnalysis !== undefined) dbPatch.job_change_analysis = patch.jobChangeAnalysis;
+    if (patch.status !== undefined) dbPatch.status = patch.status;
     const { error } = await supabase.from(TABLE).update(dbPatch).eq("id", id);
     if (error) throw error;
     await refresh();
