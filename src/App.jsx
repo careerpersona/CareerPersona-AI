@@ -432,7 +432,7 @@ function _devMockRoute(prompt) {
 function _devMockResume() {
   return `John Smith
 Senior Software Engineer | San Francisco, CA
-john.smith@email.com | (555) 123-4567 | linkedin.com/in/johnsmith
+john.smith@email.com | (415) 234-5678 | linkedin.com/in/johnsmith
 
 PROFESSIONAL SUMMARY
 Results-driven Senior Software Engineer with 5+ years architecting scalable, high-performance distributed systems. Proven track record of reducing infrastructure costs by 35% and driving 40% API latency improvements. Expertise in Python, AWS, and React with strong leadership experience managing cross-functional engineering teams.
@@ -4551,7 +4551,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage }) {
   const { t, language } = useI18n();
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
@@ -4566,7 +4566,9 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [resumeSaved, setResumeSaved] = useState(false);
   const [resumeError, setResumeError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
-  const [loadedResumeId, setLoadedResumeId] = useSessionState("cp_resume_loaded_id", null);
+  // activeResumeId (prop) is the single shared source of truth for "which resume is
+  // active" across the whole app (Job Search, Smart Apply, Dashboard, this page) —
+  // there is no separate local "loaded resume" concept here anymore.
   const [editLabelId, setEditLabelId] = useState(null);
   const [labelValue, setLabelValue] = useState("");
   // Read job search filters from session so the language suggestion can use the active search country.
@@ -4674,17 +4676,20 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 350);
   }, [results]);
 
-  // Auto-load the most recently saved resume when the workspace is empty.
+  // Auto-load a resume when the workspace is empty. If a resume is already
+  // active elsewhere (Job Search, Dashboard, etc. via the shared activeResumeId),
+  // load THAT one so this page reflects the same shared state; otherwise fall
+  // back to the most recently analyzed resume.
   // Guards: skip if user deliberately cleared (New Analysis), if workspace already has content,
   // or if resumes are still loading.
   useEffect(() => {
     if (manualReset) return;
-    if (resumesLoading || resume.trim() || results || loadedResumeId) return;
+    if (resumesLoading || resume.trim() || results) return;
     if (!resumes || resumes.length === 0) return;
-    const r = resumes[0]; // sorted by last_analyzed_at desc
+    const r = (activeResumeId && resumes.find(x => x.id === activeResumeId)) || resumes[0]; // sorted by last_analyzed_at desc
     if (!r?.content) return;
     setResume(r.content);
-    setLoadedResumeId(r.id);
+    onResumeLoad?.(r.id);
     setResumeSource("upload");
     if (r.ats_score != null) {
       setResults({
@@ -4702,7 +4707,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
       setMasterMissingKws(r.keywords_missing || []);
       if (!initialEntryRef.current) setTab("resume");
     }
-  }, [resumes, resumesLoading, manualReset]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resumes, resumesLoading, manualReset, activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tool 2: after AI Builder generates a resume, auto-trigger analysis if a job description is present.
   // Runs after the resume state has been committed to React so analyze() reads the correct value.
@@ -4875,9 +4880,9 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   };
 
   // explicitResumeId: pass the freshly-saved resumeId from handleSaveToLibrary because
-  // setLoadedResumeId(id) is async — the closure still sees the old null value.
+  // onResumeLoad(id) is async — the closure still sees the old value.
   const saveHistoryEntry = (parsed, analysisType = 'Initial Analysis', resumeStatus = 'Draft', explicitResumeId = null) => {
-    const effectiveResumeId = explicitResumeId ?? loadedResumeId;
+    const effectiveResumeId = explicitResumeId ?? activeResumeId;
     const resumeName = uploadedFile?.name || (effectiveResumeId ? (resumes.find(r => r.id === effectiveResumeId)?.name || 'Resume') : 'Resume');
     const entry = {
       resumeName,
@@ -4957,7 +4962,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => 
     try {
       const savedRow = await saveResume(uploadedFile?.name || t("resume.myResumeFallback"), resume, null);
       if (savedRow?.id) {
-        setLoadedResumeId(savedRow.id);
+        onResumeLoad?.(savedRow.id);
         if (results && saveAnalysis) {
           await saveAnalysis(savedRow.id, results).catch(e => console.warn("[Resume] saveAnalysis on new resume failed:", e?.message));
         }
@@ -4979,19 +4984,19 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => 
     if (!results || !resume.trim() || !profile?.id) return;
     setSavingToLibrary(true); setLibrarySaveError("");
     try {
-      let resumeId = loadedResumeId;
+      let resumeId = activeResumeId;
       // When saving an improved (optimized) resume and there's already a loaded resume,
       // always create a new library entry so the original is never silently overwritten.
-      const shouldSaveAsNew = isOptimized && loadedResumeId && saveResume;
+      const shouldSaveAsNew = isOptimized && activeResumeId && saveResume;
       if (!resumeId || forceNew || shouldSaveAsNew) {
-        const originalName = resumes.find(r => r.id === loadedResumeId)?.name || uploadedFile?.name;
+        const originalName = resumes.find(r => r.id === activeResumeId)?.name || uploadedFile?.name;
         const name = shouldSaveAsNew
           ? `Optimized${results.jobTitle ? ` — ${results.jobTitle}` : ""}${originalName ? ` (${originalName.replace(/\.[^.]+$/, "")})` : ""}`
           : uploadedFile?.name || (results.jobTitle ? `Resume — ${results.jobTitle}` : t("resume.myResumeFallback"));
         const detection = detectResumeLanguage(resume);
         const langMeta = detection.lang ? { language: detection.lang, detected_language: detection.lang, language_confidence: detection.confidence } : undefined;
         const savedRow = await saveResume(name, resume, null, langMeta);
-        if (savedRow?.id) { resumeId = savedRow.id; setLoadedResumeId(savedRow.id); }
+        if (savedRow?.id) { resumeId = savedRow.id; onResumeLoad?.(savedRow.id); }
       }
       if (resumeId && saveAnalysis) {
         await saveAnalysis(resumeId, results, isOptimized ? resume : null);
@@ -5007,7 +5012,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => 
   };
 
   const handleLoadResume = (r) => {
-    setResume(r.content || ""); setUploadedFile(null); setLoadedResumeId(r.id); onResumeLoad?.(r.id);
+    setResume(r.content || ""); setUploadedFile(null); onResumeLoad?.(r.id);
     // Backfill detection for existing resumes that were saved before this feature existed
     if (r.content && !r.detected_language && updateResumeLanguage) {
       const { lang, confidence } = detectResumeLanguage(r.content);
@@ -5034,7 +5039,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => 
 
       // Resume Language for this new document: use the loaded resume's language if one is
       // loaded, otherwise fall back to job language (what the user is targeting), otherwise "en".
-      const loadedResumeLang = resumes.find(r => r.id === loadedResumeId)?.language;
+      const loadedResumeLang = resumes.find(r => r.id === activeResumeId)?.language;
       const docLang = loadedResumeLang || jobLanguage || "en";
 
       const basePrompt = `You are an expert resume writer. Create a professional, ATS-optimized resume in plain text format.
@@ -5079,8 +5084,8 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, 
       const parsed = JSON.parse(raw);
       setBenchmarkData(parsed);
       if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
-        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
       }
     } catch (e) { console.error("[Benchmark]", e); setBenchmarkError(t("resume.benchmarkError")); }
     finally { setBenchmarkLoading(false); }
@@ -5099,8 +5104,8 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
       const parsed = JSON.parse(raw);
       setJobFitData(parsed);
       if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
       }
     } catch (e) { console.error("[JobFit]", e); setJobFitError(t("resume.jobFitError")); }
     finally { setJobFitLoading(false); }
@@ -5118,8 +5123,8 @@ RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + l
       const parsed = JSON.parse(raw);
       setLinkedinOptData(parsed);
       if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
       }
     } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError(t("resume.linkedinOptError")); }
     finally { setLinkedinOptLoading(false); }
@@ -5159,8 +5164,8 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, 
       const parsed = JSON.parse(raw);
       setDeepInsights(parsed);
       if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === loadedResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, loadedResumeId || null).catch(() => {});
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
       }
     } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError(t("resume.deepInsightsError")); }
     finally { setDeepInsightsLoading(false); }
@@ -5327,7 +5332,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
 
   const handleEditResume = (r) => {
     setResume(r.content || "");
-    setLoadedResumeId(r.id);
+    onResumeLoad?.(r.id);
     setResumeSource("upload");
     setLibrarySaved(true);
     setLibrarySaveError("");
@@ -5369,7 +5374,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
   const hubHealthLabel = (s) => s == null ? null : s >= 90 ? t("resume.healthExcellent") : s >= 80 ? t("resume.healthVeryGood") : s >= 70 ? t("resume.healthGood") : s >= 60 ? t("resume.healthNeedsImprovement") : t("resume.healthPoor");
 
   const newAnalysisReset = () => {
-    setResults(null); setResume(""); setJobDesc(""); setLoadedResumeId(null);
+    setResults(null); setResume(""); setJobDesc(""); onResumeLoad?.(null);
     setSelectedKeywords([]); setMasterMissingKws([]);
     setIsOptimized(false); setResultsInsights(null); setInsightsLoading(false);
     setImproveStats(null); setInsightsSectionExpanded({}); setShowAllHistory(false);
@@ -5521,7 +5526,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                 {resumes.slice(0, 6).map(r => {
                   const hl = hubHealthLabel(r.ats_score);
                   const hc = hubHealthColor(r.ats_score);
-                  const isLoaded = loadedResumeId === r.id;
+                  const isLoaded = activeResumeId === r.id;
                   const isEditing = editingResumeName === r.name && isLoaded;
                   return (
                     <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: C.bgSoft, border: `1.5px solid ${C.border}`, borderLeft: isLoaded ? `3px solid ${C.purple}` : `3px solid transparent`, borderRadius: 10, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
@@ -5530,11 +5535,11 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                         <button
                           onClick={() => {
                             if (isLoaded) {
-                              setResume(""); setLoadedResumeId(null); setResults(null);
+                              setResume(""); onResumeLoad?.(null); setResults(null);
                               setResumeSource("upload"); setLibrarySaved(false); setLibrarySaveError("");
                               setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
                             } else {
-                              setResume(r.content || ""); setLoadedResumeId(r.id);
+                              setResume(r.content || ""); onResumeLoad?.(r.id);
                               setResumeSource("upload"); setLibrarySaved(false); setLibrarySaveError("");
                               setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
                               if (r.ats_score != null) {
@@ -5614,7 +5619,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
 
           {/* Smart AI Language Suggestion — only when a resume is loaded and job language differs */}
           {(() => {
-            const loadedResume = resumes.find(r => r.id === loadedResumeId);
+            const loadedResume = resumes.find(r => r.id === activeResumeId);
             const effectiveJobLang = jobLanguage || "en";
             const suggestLang = loadedResume ? computeLanguageSuggestion({
               resume: loadedResume,
@@ -11382,7 +11387,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}

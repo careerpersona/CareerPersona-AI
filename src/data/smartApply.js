@@ -67,6 +67,11 @@ export function useSmartApplyQueue(userId) {
       console.error("smart_apply_queue insert failed:", error.code, error.message, { userId, job_id: job.id || job.job_id });
       throw error;
     }
+    // Defensive: a successful insert().select().single() should always return a row
+    // with an id. If it somehow doesn't, adding `undefined` to _activeGenerations would
+    // silently fail to protect this row from the very next refresh()'s orphan cleanup
+    // (which marks any "queued" row not in this set as "failed") — fail loudly instead.
+    if (!data?.id) throw new Error("smart_apply_queue insert returned no row id");
     _activeGenerations.add(data.id);
     await refresh();
     return data;
