@@ -49,9 +49,9 @@ export function useSmartApplyQueue(userId) {
       .order("created_at", { ascending: false });
     const existing = (rows || []).find(r => !["applied", "skipped"].includes(r.status));
     if (existing) {
-      if (existing.status === "queued" || existing.status === "ready") {
+      if (existing.status === "queued" || existing.status === "ready" || existing.status === "needs_review") {
         await refresh();
-        return null; // already in progress or ready — caller skips generation
+        return null; // already in progress, ready, or awaiting manual review — caller skips generation
       }
       // status === "failed": reset so it can be regenerated
       await supabase.from(TABLE).update({ status: "queued" }).eq("id", existing.id);
@@ -96,6 +96,32 @@ export function useSmartApplyQueue(userId) {
     // before the UPDATE causes a race: a concurrent refresh() sees the row as
     // "queued" without an active-generation entry and flags it as an orphan,
     // which then writes status="failed" and can win the UPDATE race against us.
+    _activeGenerations.delete(id);
+    await refresh();
+  }, [refresh]);
+
+  // Same persistence as markReady, but for packages that failed Package Integrity
+  // Validation. Content is still saved (so it's visible/editable in PackageView) but
+  // status is "needs_review" instead of "ready", keeping it out of the Apply-ready queue.
+  const markNeedsReview = useCallback(async (id, aiResult) => {
+    const { error } = await supabase.from(TABLE).update({
+      tailored_resume: aiResult.tailoredResume || null,
+      cover_letter: aiResult.coverLetter || null,
+      recruiter_message: aiResult.recruiterMessage || null,
+      networking_message: aiResult.networkingMessage || null,
+      missing_skills: aiResult.missingSkills || null,
+      interview_probability: aiResult.interviewProbability ?? null,
+      hiring_probability: aiResult.hiringProbability ?? null,
+      application_questions: aiResult.applicationQuestions || null,
+      salary_insight: aiResult.salaryInsight || null,
+      company_insight: aiResult.companyInsight || null,
+      status: "needs_review",
+    }).eq("id", id);
+    if (error) {
+      _activeGenerations.delete(id);
+      console.error("markNeedsReview failed:", error.code, error.message, { id });
+      throw error;
+    }
     _activeGenerations.delete(id);
     await refresh();
   }, [refresh]);
@@ -148,5 +174,5 @@ export function useSmartApplyQueue(userId) {
     await refresh();
   }, [refresh]);
 
-  return { queue, loading, enqueue, markReady, markFailed, resetToQueued, markApplied, purgeByJobId, patchQueueItem, refresh };
+  return { queue, loading, enqueue, markReady, markNeedsReview, markFailed, resetToQueued, markApplied, purgeByJobId, patchQueueItem, refresh };
 }

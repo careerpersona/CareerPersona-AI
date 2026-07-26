@@ -295,6 +295,8 @@
     likelyQuestions: "Wahrscheinliche Bewerbungsfragen",
     statusFailed: "Fehlgeschlagen",
     generationFailed: "⚠️ Generierung fehlgeschlagen. Klicken Sie auf Wiederholen, um es erneut zu versuchen.",
+    statusNeedsReview: "Überprüfung nötig",
+    packageNeedsReview: "⚠️ Dieses Paket benötigt vor dem Versand eine kurze Überprüfung. Prüfen Sie die Felder unten, bearbeiten Sie, was nötig ist, oder klicken Sie auf Wiederholen, um es neu zu generieren.",
     retryGeneration: "Wiederholen",
     retryNoResume: "Kein Lebenslauf gefunden. Bitte fügen Sie Ihren Lebenslauf zuerst in der Jobsuche hinzu.",
     retryError: "Wiederholung fehlgeschlagen. Bitte versuchen Sie es erneut.",

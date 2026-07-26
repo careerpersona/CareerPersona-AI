@@ -295,6 +295,8 @@
     likelyQuestions: "Probabili Domande della Candidatura",
     statusFailed: "Fallita",
     generationFailed: "⚠️ Generazione fallita. Fai clic su Riprova per riprovare.",
+    statusNeedsReview: "Da rivedere",
+    packageNeedsReview: "⚠️ Questo pacchetto richiede una rapida revisione prima di essere pronto per l'invio. Controlla i campi qui sotto, modifica ciò che serve oppure fai clic su Riprova per rigenerarlo.",
     retryGeneration: "Riprova",
     retryNoResume: "Nessun curriculum trovato. Aggiungi il tuo curriculum in Ricerca Lavoro prima.",
     retryError: "Nuovo tentativo fallito. Riprova.",

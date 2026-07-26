@@ -295,6 +295,8 @@
     likelyQuestions: "Waarschijnlijke Sollicitatievragen",
     statusFailed: "Mislukt",
     generationFailed: "⚠️ Generatie mislukt. Klik op Opnieuw proberen.",
+    statusNeedsReview: "Beoordeling nodig",
+    packageNeedsReview: "⚠️ Dit pakket heeft een korte controle nodig voordat het klaar is om te verzenden. Controleer de onderstaande velden, bewerk wat nodig is, of klik op Opnieuw proberen om opnieuw te genereren.",
     retryGeneration: "Opnieuw proberen",
     retryNoResume: "Geen cv gevonden. Voeg eerst uw cv toe in Vacatures Zoeken.",
     retryError: "Opnieuw proberen mislukt. Probeer het opnieuw.",

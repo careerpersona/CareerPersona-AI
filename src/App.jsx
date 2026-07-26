@@ -6715,9 +6715,36 @@ const SMART_APPLY_AUTO_LIMIT = 5;
 const MATCH_CONCURRENCY = 5;        // parallel Claude calls per scoring batch
 const SMART_APPLY_CONCURRENCY = 5;  // concurrent Smart Apply packages — matches SMART_APPLY_AUTO_LIMIT (full concurrency)
 
-const buildSmartApplyPrompt = (ctx, resume, job) =>
-  `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's resume and job, produce a complete application package. Return ONLY valid JSON, no markdown:
+// Explicit candidate identity block — same pattern as the AI Resume Builder's identity
+// array (see handleGenerateResume). Passed directly into the prompt so Name/Email/Phone
+// are never left to the lossy getContextString() summary, which drops contact fields.
+const buildIdentityBlock = (profile) => [
+  profile?.full_name ? `Name: ${profile.full_name}` : "",
+  profile?.email_address ? `Email: ${profile.email_address}` : "",
+  profile?.phone ? `Phone: ${profile.phone}` : "",
+].filter(Boolean).join("\n");
+
+const buildSmartApplyPrompt = (ctx, resume, job, profile) => {
+  const identityBlock = buildIdentityBlock(profile);
+  return `${ctx ? ctx + "\n\n" : ""}You are an expert job application assistant. Given this candidate's identity, resume, and job, produce a complete application package. Return ONLY valid JSON, no markdown:
 {"tailoredResume":"<resume rewritten and optimized for this specific job, full text>","coverLetter":"<professional 3 paragraph cover letter for this job>","recruiterMessage":"<short personalized LinkedIn message to a recruiter at this company, 2-3 sentences>","networkingMessage":"<short message to a potential referral contact at this company, 2-3 sentences>","missingSkills":["<skill1>","<skill2>","<skill3>"],"interviewProbability":<0-100>,"hiringProbability":<0-100>,"applicationQuestions":["<likely application question 1>","<likely application question 2>","<likely application question 3>"],"salaryInsight":{"marketRange":{"low":<annual USD>,"median":<annual USD>,"high":<annual USD>},"userPositioning":"<1 sentence: how candidate likely compares to market range>","negotiationLeverage":"<1 sentence: strongest leverage point for negotiation>","benchmarks":["<comparable role or location benchmark>"]},"companyInsight":{"culture":"<1-2 sentences on company culture and work environment>","recentNews":"<1-2 sentences on recent company news relevant to a job seeker>","hiringTrend":"<growing|stable|shrinking>","redFlags":["<potential concern about this role or company>"],"greenFlags":["<positive signal about this role or company>"],"talkingPoints":["<specific talking point to use in interviews or outreach>"]}}
+
+CANDIDATE CONTACT INFO (use exactly as given for the resume header and cover letter signature — do not alter, guess, or add to it):
+${identityBlock || "(not provided — omit a contact line for any field not listed above)"}
+
+CONTACT INFO RULES:
+- Only use contact details listed above, or details that already appear verbatim in the RESUME text below. Never invent, guess, or auto-generate a phone number, email address, LinkedIn URL, GitHub URL, portfolio URL, or personal website.
+- If a contact detail (e.g. LinkedIn, GitHub, portfolio) is not present above and not present in the source resume text, omit that line entirely from the tailored resume header. A missing line is correct; a bracketed placeholder like "[LinkedIn]" or "[GitHub]" is never acceptable.
+
+RECRUITER MESSAGE RULES:
+- No specific recruiter name is known for this job. Do NOT invent a name and do NOT use a placeholder token like "[Recruiter Name]" or "[Name]".
+- Open with "Dear Hiring Team," by default, or "Dear ${job.company} Hiring Team," / "Hello ${job.company} Recruiting Team," if that reads more naturally.
+
+NETWORKING MESSAGE RULES:
+- No specific contact name is known. Do NOT invent one and do NOT use a placeholder token.
+- Write a professional, generic networking introduction that references the company and role without addressing anyone by name.
+
+GENERAL RULE — applies to every field in the JSON: never output a bracketed placeholder token (e.g. "[Name]", "[Phone]", "[Email]", "[LinkedIn]", "[GitHub]", "[Portfolio]", "[Company Name]", "[Recruiter Name]"). If a detail is unknown, omit it rather than leaving a placeholder.
 
 RESUME:
 ${resume}
@@ -6725,6 +6752,31 @@ ${resume}
 JOB:
 Title: ${job.title}
 Company: ${job.company}${job.description ? `\nDescription: ${job.description.slice(0, 1200)}` : ""}`;
+};
+
+// Placeholder tokens the AI must never leave behind — bracket-enclosed spans like
+// [Name], [Recruiter Name], [LinkedIn] indicate unresolved template content.
+const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/;
+
+// Package Integrity Validation — the gate for "ready" status. A package only reaches
+// "ready" if every required field is present and free of placeholder tokens; otherwise
+// it's routed to "needs_review" so an incomplete package never silently looks ready.
+const validateSmartApplyPackage = (result, profile) => {
+  const reasons = [];
+  const requiredFields = {
+    tailoredResume: result?.tailoredResume,
+    coverLetter: result?.coverLetter,
+    recruiterMessage: result?.recruiterMessage,
+    networkingMessage: result?.networkingMessage,
+  };
+  for (const [field, value] of Object.entries(requiredFields)) {
+    if (!value || !value.trim()) reasons.push(`${field} missing`);
+    else if (SMART_APPLY_PLACEHOLDER_RE.test(value)) reasons.push(`${field} contains an unresolved placeholder`);
+  }
+  if (!profile?.full_name?.trim()) reasons.push("candidate full name missing from profile");
+  if (!profile?.email_address?.trim() && !profile?.phone?.trim()) reasons.push("no candidate contact method (email or phone) on profile");
+  return { ok: reasons.length === 0, reasons };
+};
 
 const buildJobChangePrompt = (prev, curr) =>
   `Compare these two job descriptions and identify only the meaningful changes that would affect an applicant's materials (cover letter, resume, recruiter message).
@@ -6773,7 +6825,7 @@ Description: ${(job.description || "").slice(0, 1200)}${(job.skills || []).lengt
 // Thresholds: 80+ green (strong/excellent), 65–79 yellow (good), below 65 red (moderate/weak).
 const matchScoreColor = v => v == null ? C.textMuted : v >= 80 ? C.green : v >= 65 ? C.yellow : C.red;
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markFailed, purgeQueueByJobId, onNavigate, billingState }) {
+function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [resume, setResume] = useSessionState("cp_jobs_resume", ""); const [showResume, setShowResume] = useState(false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
@@ -6796,7 +6848,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const prevVisitRef = useRef(lastVisit);
   const [analyzeStatus, setAnalyzeStatus] = useState(null); // { state: 'scoring'|'complete', done, total }
   const analyzeRunRef = useRef(0);
-  const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready"));
+  const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready" || q.status === "needs_review"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
 
   // Use functional updater so the toggle decision reads the latest state,
@@ -7079,7 +7131,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
 
       console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job, profile), 8000);
       console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
 
       console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
@@ -7088,15 +7140,21 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       const result = JSON.parse(cleanRaw);
       console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
 
-      console.log(`[SmartApply] ⏳ [5/6] Validating fields for "${job.title}"`);
+      console.log(`[SmartApply] ⏳ [5/6] Validating package integrity for "${job.title}"`);
       const trLen = (result.tailoredResume || "").trim().length;
       const clLen = (result.coverLetter || "").trim().length;
-      console.log(`[SmartApply] ✅ [5/6] tailoredResume=${trLen}c, coverLetter=${clLen}c, interviewProb=${result.interviewProbability}, hiringProb=${result.hiringProbability}`);
       if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
+      const integrity = validateSmartApplyPackage(result, profile);
+      console.log(`[SmartApply] ✅ [5/6] Integrity check: ${integrity.ok ? "passed" : "FAILED — " + integrity.reasons.join("; ")}`);
 
       console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
-      await markReady(queued.id, result);
-      console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
+      if (integrity.ok) {
+        await markReady(queued.id, result);
+        console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
+      } else {
+        await markNeedsReview(queued.id, result);
+        console.log(`[SmartApply] ⚠️ [6/6] Package saved — status: needs_review`);
+      }
     } catch (e) {
       console.error(`[SmartApply] ❌ MANUAL failed for "${job.title}":`, e?.code, e?.message, e);
       if (queued) await markFailed(queued.id);
@@ -7242,15 +7300,21 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
             continue;
           }
           console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
-          const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job), 8000);
+          const raw = await askClaude(buildSmartApplyPrompt(ctx, resume, job, profile), 8000);
           const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
           const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
           const result = JSON.parse(cleanRaw);
           const trLen = (result.tailoredResume || "").trim().length;
           const clLen = (result.coverLetter || "").trim().length;
           if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-          await markReady(queued.id, result);
-          console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
+          const integrity = validateSmartApplyPackage(result, profile);
+          if (integrity.ok) {
+            await markReady(queued.id, result);
+            console.log(`[SmartApply] ✅ "${job.title}" — package ready (tailoredResume=${trLen}c, coverLetter=${clLen}c)`);
+          } else {
+            await markNeedsReview(queued.id, result);
+            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${integrity.reasons.join("; ")}`);
+          }
           succeeded++;
         } catch (e) {
           console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
@@ -8984,7 +9048,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
     return () => mq.removeEventListener("change", handler);
   }, []);
   const selectedResumeName = resumes && item.resume_id ? (resumes.find(r => r.id === item.resume_id)?.name || null) : null;
-  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied") }[item.status] || item.status;
+  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), needs_review: t("savedJobs.statusNeedsReview") }[item.status] || item.status;
   const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
 
   useEffect(() => {
@@ -9057,7 +9121,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{item.job_title} — {item.company}</div>
         {selectedResumeName && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{t("savedJobs.resumePrefix")}: {selectedResumeName}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Badge color={C.green}>{statusLabel}</Badge>
+          <Badge color={item.status === "needs_review" ? C.yellow : C.green}>{statusLabel}</Badge>
           {item.interview_probability != null && <Badge color={C.purple}>{t("savedJobs.interviewLabel").replace("{pct}", item.interview_probability)}</Badge>}
           {item.hiring_probability != null && <Badge color={C.green}>{t("savedJobs.hiringLabel").replace("{pct}", item.hiring_probability)}</Badge>}
         </div>
@@ -9331,7 +9395,8 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
   }, []);
   const savedJob = (savedJobs || []).find(j => j.job_id === item.job_id);
   const hasJobChanges = !!savedJob?.previous_description && savedJob.previous_description !== savedJob.description;
-  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued"), failed: t("savedJobs.statusFailed") }[item.status] || item.status;
+  const statusLabel = { ready: t("savedJobs.statusReady"), applied: t("savedJobs.statusApplied"), skipped: t("savedJobs.statusSkipped"), queued: t("savedJobs.statusQueued"), failed: t("savedJobs.statusFailed"), needs_review: t("savedJobs.statusNeedsReview") }[item.status] || item.status;
+  const isViewable = item.status === "ready" || item.status === "needs_review";
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -9349,7 +9414,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
             </div>
           )}
         </div>
-        {(item.status === "ready" || justApplied) && (
+        {(isViewable || justApplied) && (
           <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
             {!justApplied && (
               <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => setExpanded(e => !e)}>{expanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")}</Btn>
@@ -9357,7 +9422,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
             {!justApplied && (
               <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>{t("savedJobs.removeBtn")}</Btn>
             )}
-            {isMobile ? (
+            {item.status === "ready" && (isMobile ? (
               <SwipeToApply onApply={() => onApply(item)} applying={applying} justApplied={justApplied} />
             ) : justApplied ? (
               <Btn variant="green" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.appliedConfirm")}</Btn>
@@ -9365,7 +9430,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
               <Btn style={{ fontSize: 13, padding: "9px 14px" }} loading={applying} onClick={() => onApply(item)}>
                 {applying ? t("savedJobs.applyingBtn") : t("savedJobs.applyBtn")}
               </Btn>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -9384,7 +9449,13 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
           </div>
         </div>
       )}
-      {expanded && item.status === "ready" && (
+      {item.status === "needs_review" && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 13, color: C.yellow, marginBottom: 8 }}>{t("savedJobs.packageNeedsReview")}</div>
+          <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+        </div>
+      )}
+      {expanded && isViewable && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} />
         </div>
@@ -9420,7 +9491,7 @@ function SavedJobDetailsView({ job }) {
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markNeedsReview, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem }) {
   const { t, language } = useI18n();
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
@@ -9492,15 +9563,21 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       await resetToQueued(item.id);
       const ctx = userContext.getContextString({ identity: true });
       const job = { title: item.job_title, company: item.company, description: item.job_description || "" };
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
       const trLen = (result.tailoredResume || "").trim().length;
       const clLen = (result.coverLetter || "").trim().length;
       if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      await markReady(item.id, result);
-      console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
+      const integrity = validateSmartApplyPackage(result, profile);
+      if (integrity.ok) {
+        await markReady(item.id, result);
+        console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
+      } else {
+        await markNeedsReview(item.id, result);
+        console.log(`[SmartApply] ⚠️ Retry complete — status: needs_review (${integrity.reasons.join("; ")})`);
+      }
     } catch (e) {
       console.error(`[SmartApply] ❌ RETRY failed for "${item.job_title}":`, e?.code, e?.message, e);
       await markFailed(item.id);
@@ -9527,14 +9604,16 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       queued = await enqueue(profile.id, jobForQueue, resumeId);
       if (!queued) { onQueueChange?.(); return; } // already queued/ready
       const ctx = userContext.getContextString({ identity: true, applications: true });
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, jobForQueue), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, jobForQueue, profile), 8000);
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
       const trLen = (result.tailoredResume || "").trim().length;
       const clLen = (result.coverLetter || "").trim().length;
       if (trLen < 50 && clLen < 50) throw new Error(`AI returned empty package: tailoredResume=${trLen}c, coverLetter=${clLen}c`);
-      await markReady(queued.id, result);
+      const integrity = validateSmartApplyPackage(result, profile);
+      if (integrity.ok) await markReady(queued.id, result);
+      else await markNeedsReview(queued.id, result);
     } catch (e) {
       console.error(`[SmartApply] ❌ Prepare failed for "${job.title}":`, e?.message || e);
       if (queued) await markFailed(queued.id);
@@ -9592,6 +9671,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
             let statusLabel = t("savedJobs.statusSaved");
             if (isApplied) { statusColor = C.blue; statusLabel = t("savedJobs.statusApplied"); }
             else if (activeEntry?.status === "ready") { statusColor = C.green; statusLabel = t("savedJobs.statusAiReady"); }
+            else if (activeEntry?.status === "needs_review") { statusColor = C.yellow; statusLabel = t("savedJobs.statusNeedsReview"); }
             else if (isPreparing || activeEntry?.status === "queued") { statusColor = C.yellow; statusLabel = t("savedJobs.statusInQueue"); }
             else if (activeEntry?.status === "failed") { statusColor = C.red; statusLabel = t("savedJobs.statusGenFailed"); }
 
@@ -9628,6 +9708,8 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                           <Btn disabled style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>{t("savedJobs.preparingSmartApply")}</Btn>
                         ) : activeEntry?.status === "failed" ? (
                           <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.retryGeneration")}</Btn>
+                        ) : activeEntry?.status === "needs_review" ? (
+                          <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} loading={retryingId === activeEntry.id} onClick={() => handleRetry(activeEntry)}>{t("savedJobs.retryGeneration")}</Btn>
                         ) : (
                           <Btn style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.prepareSmartApply")}</Btn>
                         )
@@ -9651,11 +9733,14 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                     {t("savedJobs.jobChangedNotice")}
                   </div>
                 )}
-                {isExpanded && (
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                    {readyEntry ? <PackageView item={readyEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} /> : <SavedJobDetailsView job={job} />}
-                  </div>
-                )}
+                {isExpanded && (() => {
+                  const viewEntry = readyEntry || (activeEntry?.status === "needs_review" ? activeEntry : null);
+                  return (
+                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+                      {viewEntry ? <PackageView item={viewEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} /> : <SavedJobDetailsView job={job} />}
+                    </div>
+                  );
+                })()}
               </Card>
             );
           })}
@@ -10987,7 +11072,7 @@ export default function App() {
     });
     console.log(`[Tracker] State updated — id=${app.id} saved`);
   };
-  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, purgeByJobId: rootPurgeByJobId, patchQueueItem: rootPatchQueueItem } = useSmartApplyQueue(profile?.id);
+  const { queue: smartApplyQueue, loading: smartApplyQueueLoading, refresh: refreshSmartApplyQueue, enqueue: rootEnqueue, markApplied: rootMarkApplied, markReady: rootMarkReady, markNeedsReview: rootMarkNeedsReview, markFailed: rootMarkFailed, resetToQueued: rootResetToQueued, purgeByJobId: rootPurgeByJobId, patchQueueItem: rootPatchQueueItem } = useSmartApplyQueue(profile?.id);
   // Lifted to App root so Dashboard always sees current values without remounting.
   // InterviewPage, SalaryPage, NetworkingPage keep their own hook instances for mutations.
   const { session: rootInterviewSession, refresh: refreshRootInterviewSession } = useInterviewSession(profile?.id);
@@ -11164,8 +11249,8 @@ export default function App() {
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}

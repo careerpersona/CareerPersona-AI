@@ -295,6 +295,8 @@
     likelyQuestions: "Questions Probables de Candidature",
     statusFailed: "Échouée",
     generationFailed: "⚠️ La génération a échoué. Cliquez sur Réessayer pour recommencer.",
+    statusNeedsReview: "À vérifier",
+    packageNeedsReview: "⚠️ Ce dossier nécessite une vérification rapide avant d'être prêt à être envoyé. Vérifiez les champs ci-dessous, modifiez ce qui doit l'être, ou cliquez sur Réessayer pour le régénérer.",
     retryGeneration: "Réessayer",
     retryNoResume: "Aucun CV trouvé. Veuillez d'abord ajouter votre CV dans Recherche d'Emplois.",
     retryError: "Nouvelle tentative échouée. Veuillez réessayer.",

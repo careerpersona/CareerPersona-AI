@@ -295,6 +295,8 @@
     likelyQuestions: "Preguntas Probables de la Solicitud",
     statusFailed: "Fallida",
     generationFailed: "⚠️ Error en la generación. Haz clic en Reintentar para volver a intentarlo.",
+    statusNeedsReview: "Requiere revisión",
+    packageNeedsReview: "⚠️ Este paquete necesita una revisión rápida antes de estar listo para enviarse. Revisa los campos a continuación, edita lo que sea necesario o haz clic en Reintentar para regenerarlo.",
     retryGeneration: "Reintentar",
     retryNoResume: "No se encontró el currículum. Añade tu currículum en Búsqueda de Empleos primero.",
     retryError: "Reintento fallido. Por favor, inténtalo de nuevo.",

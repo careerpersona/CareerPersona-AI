@@ -295,6 +295,8 @@
     likelyQuestions: "Perguntas Prováveis da Candidatura",
     statusFailed: "Falhou",
     generationFailed: "⚠️ Geração falhou. Clique em Tentar Novamente para tentar de novo.",
+    statusNeedsReview: "Requer Revisão",
+    packageNeedsReview: "⚠️ Este pacote precisa de uma rápida revisão antes de estar pronto para envio. Verifique os campos abaixo, edite o que for necessário ou clique em Tentar Novamente para gerar novamente.",
     retryGeneration: "Tentar Novamente",
     retryNoResume: "Currículo não encontrado. Por favor, adicione seu currículo na Busca de Empregos primeiro.",
     retryError: "Nova tentativa falhou. Por favor, tente novamente.",

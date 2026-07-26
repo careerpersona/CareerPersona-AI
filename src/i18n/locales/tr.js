@@ -295,6 +295,8 @@
     likelyQuestions: "Olası Başvuru Soruları",
     statusFailed: "Başarısız",
     generationFailed: "⚠️ Oluşturma başarısız. Tekrar denemek için Yeniden Dene'ye tıklayın.",
+    statusNeedsReview: "İnceleme Gerekli",
+    packageNeedsReview: "⚠️ Bu paket, gönderime hazır olmadan önce hızlı bir inceleme gerektiriyor. Aşağıdaki alanları kontrol edin, gerekeni düzenleyin veya yeniden oluşturmak için Yeniden Dene'ye tıklayın.",
     retryGeneration: "Yeniden Dene",
     retryNoResume: "Özgeçmiş bulunamadı. Lütfen önce İş Arama'ya özgeçmişinizi ekleyin.",
     retryError: "Yeniden deneme başarısız. Lütfen tekrar deneyin.",

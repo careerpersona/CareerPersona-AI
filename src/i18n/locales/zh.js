@@ -295,6 +295,8 @@
     likelyQuestions: "可能的申请问题",
     statusFailed: "失败",
     generationFailed: "⚠️ 生成失败。点击重试再次尝试。",
+    statusNeedsReview: "待审核",
+    packageNeedsReview: "⚠️ 此申请材料包在提交前需要快速审核。请检查以下字段，编辑需要修改的内容，或点击重试重新生成。",
     retryGeneration: "重试",
     retryNoResume: "未找到简历。请先在职位搜索中添加您的简历。",
     retryError: "重试失败。请再次尝试。",

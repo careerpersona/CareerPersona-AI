@@ -295,6 +295,8 @@
     likelyQuestions: "想定される応募質問",
     statusFailed: "失敗",
     generationFailed: "⚠️ 生成に失敗しました。再試行するには「再試行」をクリックしてください。",
+    statusNeedsReview: "要確認",
+    packageNeedsReview: "⚠️ この応募パッケージは、送信可能になる前に簡単な確認が必要です。以下の項目を確認し、必要な部分を編集するか、「再試行」をクリックして再生成してください。",
     retryGeneration: "再試行",
     retryNoResume: "履歴書が見つかりません。まず求人検索で履歴書を追加してください。",
     retryError: "再試行に失敗しました。もう一度お試しください。",

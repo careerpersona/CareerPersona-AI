@@ -302,6 +302,8 @@ export default {
     likelyQuestions: "Likely Application Questions",
     statusFailed: "Failed",
     generationFailed: "⚠️ Generation failed. Click Retry to try again.",
+    statusNeedsReview: "Needs Review",
+    packageNeedsReview: "⚠️ This package needs a quick review before it's ready to submit. Check the fields below, edit anything that needs it, or click Retry to regenerate.",
     retryGeneration: "Retry",
     retryNoResume: "No resume found. Please add your resume in Job Search first.",
     retryError: "Retry failed. Please try again.",

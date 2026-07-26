@@ -295,6 +295,8 @@
     likelyQuestions: "예상 지원 질문",
     statusFailed: "실패",
     generationFailed: "⚠️ 생성 실패. 다시 시도하려면 재시도를 클릭하세요.",
+    statusNeedsReview: "검토 필요",
+    packageNeedsReview: "⚠️ 제출하기 전에 이 패키지를 빠르게 검토해야 합니다. 아래 필드를 확인하고 필요한 내용을 수정하거나, 다시 생성하려면 재시도를 클릭하세요.",
     retryGeneration: "재시도",
     retryNoResume: "이력서를 찾을 수 없습니다. 먼저 취업 검색에서 이력서를 추가하세요.",
     retryError: "재시도 실패. 다시 시도해 주세요.",
