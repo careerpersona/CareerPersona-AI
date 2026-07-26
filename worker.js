@@ -467,17 +467,6 @@ async function logAIRequest(userId, feature, period, tokensIn, tokensOut, env) {
 // ─── JOB SEARCH (PRESERVED EXACTLY) ─────────────────────────────────────────
 // POST /api/jobs — no auth, unchanged from pre-billing version.
 
-const COUNTRY_MAP = {
-  "United States": "us",
-  "United Kingdom": "gb",
-  "Canada": "ca",
-  "Australia": "au",
-  "Germany": "de",
-  "France": "fr",
-  "Netherlands": "nl",
-  "Remote Worldwide": "us",
-};
-
 const EMP_TYPE_MAP = {
   "Full-time": "full_time",
   "Part-time": "part_time",
@@ -558,7 +547,9 @@ function deduplicate(jobs) {
 
 async function fetchAdzuna(params, env, page = 1) {
   const { title, keywords, country, city, remote, employmentType, salaryMin } = params;
-  const countryCode = COUNTRY_MAP[country] || "us";
+  // country is an ISO 3166-1 alpha-2 code (e.g. "US", "DE") or the "REMOTE"
+  // sentinel — Adzuna's URL path segment already is the lowercased ISO code.
+  const countryCode = (country && country !== "REMOTE") ? country.toLowerCase() : "us";
   const appId = env.ADZUNA_APP_ID;
   const appKey = env.ADZUNA_APP_KEY;
   if (!appId || !appKey) {
@@ -600,7 +591,11 @@ async function fetchRapid(params, env, page = 1) {
   let query = title;
   if (keywords && keywords.trim()) query += ` ${keywords.trim()}`;
   if (city) query += ` in ${city}`;
-  else if (country && country !== "Remote Worldwide") query += ` in ${country}`;
+  // JSearch takes a natural-language query, which genuinely needs a country
+  // NAME ("Germany"), not a code — the one legitimate third-party-API
+  // exception to ISO codes end-to-end. Derived here rather than kept as a
+  // second hardcoded table.
+  else if (country && country !== "REMOTE") query += ` in ${new Intl.DisplayNames(["en"], { type: "region" }).of(country)}`;
   if (remote) query += " remote";
   const url = new URL("https://jsearch.p.rapidapi.com/search-v2");
   url.searchParams.set("query", query);

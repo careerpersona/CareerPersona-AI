@@ -20,7 +20,7 @@ import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
 import { useUserContext } from "./data/userContext";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
-import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, normalizePhone, isPhoneValid, isPhonePresent, detectContactType } from "./lib/contactNormalization";
+import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
 
@@ -1798,7 +1798,7 @@ function ResumeDoc({ content, profile }) {
             <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 24px' }}>
               {contactItems.filter(Boolean).map((ci, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: BODY }}>
-                  <ContactIcon type={detectContactType(ci)} size={15} color={ACC}/>
+                  <ContactIcon type={detectContactType(ci, resolveCountry(profile?.country))} size={15} color={ACC}/>
                   <span style={{ borderBottom: `1.5px solid ${ACC}`, paddingBottom: 1, lineHeight: 1.3 }}>{ci}</span>
                 </div>
               ))}
@@ -2323,19 +2323,21 @@ function detectResumeLanguage(text) {
 
 // Country → primary job-market language. Conservative: only clear single-dominant-language markets.
 // Multilingual countries (Switzerland, Belgium, India) are intentionally omitted to avoid false positives.
+// Keyed by ISO 3166-1 alpha-2 country code (matches searchCountry, which
+// comes from JobSearchPage's filters.country — see JS_COUNTRY_OPTIONS).
 const COUNTRY_LANG = {
-  "Germany": "de", "Austria": "de",
-  "France": "fr",
-  "Spain": "es", "Mexico": "es", "Argentina": "es", "Colombia": "es", "Chile": "es",
-  "Italy": "it",
-  "Portugal": "pt", "Brazil": "pt",
-  "Netherlands": "nl",
-  "Turkey": "tr",
-  "Japan": "ja",
-  "South Korea": "ko",
-  "Russia": "ru",
-  "China": "zh",
-  "Saudi Arabia": "ar", "United Arab Emirates": "ar",
+  DE: "de", AT: "de",
+  FR: "fr",
+  ES: "es", MX: "es", AR: "es", CO: "es", CL: "es",
+  IT: "it",
+  PT: "pt", BR: "pt",
+  NL: "nl",
+  TR: "tr",
+  JP: "ja",
+  KR: "ko",
+  RU: "ru",
+  CN: "zh",
+  SA: "ar", AE: "ar",
 };
 
 // Returns the language code to suggest, or null.
@@ -6711,8 +6713,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
 }
 
 // ─── JOB SEARCH ────────────────────────────────────────────
-const JS_COUNTRY_OPTIONS = ["United States","Canada","United Kingdom","Australia","Germany","France","Netherlands","Remote Worldwide"];
-const JS_COUNTRY_LABEL_KEY = { "United States": "countryUS", "Canada": "countryCanada", "United Kingdom": "countryUK", "Australia": "countryAustralia", "Germany": "countryGermany", "France": "countryFrance", "Netherlands": "countryNetherlands", "Remote Worldwide": "countryRemoteWorldwide" };
+// ISO 3166-1 alpha-2 codes end-to-end (Profile, Smart Apply, this dropdown);
+// labels come from Intl.DisplayNames, not a hand-translated name table.
+// "REMOTE" is a sentinel for "Remote Worldwide" — not a real ISO region.
+const JS_COUNTRY_OPTIONS = ["US","CA","GB","AU","DE","FR","NL","REMOTE"];
 const JS_EMPLOYMENT_OPTIONS = ["Any","Full-time","Part-time","Contract","Internship","Freelance"];
 const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employmentFullTime", "Part-time": "employmentPartTime", Contract: "employmentContract", Internship: "employmentInternship", Freelance: "employmentFreelance" };
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
@@ -6775,13 +6779,13 @@ const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/;
 // resume, or was carried over by the AI from source material. Detection is delegated
 // entirely to the Contact Normalization Service (./lib/contactNormalization) — Smart
 // Apply never implements its own phone/email parsing, it only asks "is X present?".
-const checkResumeContactInfo = (tailoredResume) => {
+const checkResumeContactInfo = (tailoredResume, country) => {
   const text = tailoredResume || "";
   const parsed = parseResumeDoc(text);
   return {
     hasFullName: !!parsed.name && parsed.name.trim().length > 0,
     hasEmail: isEmailPresent(text),
-    hasPhone: isPhonePresent(text),
+    hasPhone: isPhonePresent(text, country),
   };
 };
 
@@ -6813,7 +6817,7 @@ const SMART_APPLY_DOC_FIELDS = ["tailoredResume", "coverLetter", "recruiterMessa
 // upstream (askClaude/JSON-parse failure -> "failed" status) rather than here. Optional
 // information (LinkedIn, GitHub, portfolio, recruiter/contact names, company name) is
 // never checked here either — the prompt is responsible for omitting or falling back.
-const validateSmartApplyPackage = (result) => {
+const validateSmartApplyPackage = (result, country) => {
   const placeholderHits = findSmartApplyPlaceholders(result || {});
   const placeholderTokensByField = {};
   for (const h of placeholderHits) {
@@ -6833,7 +6837,7 @@ const validateSmartApplyPackage = (result) => {
   // Required Contact Information — checked directly on the resume text. An empty resume
   // naturally surfaces as all three fields missing, which is itself the correct "missing
   // required information" signal — no separate empty/failed-generation concept needed.
-  const contact = checkResumeContactInfo(result?.tailoredResume);
+  const contact = checkResumeContactInfo(result?.tailoredResume, country);
   if (!contact.hasFullName) documents.tailoredResume.issues.push("missing_full_name");
   if (!contact.hasEmail) documents.tailoredResume.issues.push("missing_email");
   if (!contact.hasPhone) documents.tailoredResume.issues.push("missing_phone");
@@ -6964,7 +6968,7 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
 
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume }) {
   const { t, language } = useI18n();
-  const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "United States", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
+  const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "US", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
   // Active resume is derived from the single shared source of truth (resumes + activeResumeId,
   // both owned at the root and shared with Dashboard/SavedJobs/Resume pages) rather than a
@@ -7107,7 +7111,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
           const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
           const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
           const result = JSON.parse(cleanRaw);
-          const integrity = validateSmartApplyPackage(result);
+          const integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
           if (integrity.ok) {
             await markReady(queued.id, result);
             console.log(`[SmartApply] ✅ "${job.title}" — package ready`);
@@ -7338,7 +7342,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
 
       console.log(`[SmartApply] ⏳ [5/6] Validating package integrity for "${job.title}"`);
-      const integrity = validateSmartApplyPackage(result);
+      const integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
       console.log(`[SmartApply] ✅ [5/6] Integrity check: ${integrity.ok ? "passed" : "FAILED — " + summarizeSmartApplyIntegrity(integrity)}`);
 
       console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
@@ -7491,7 +7495,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
           <Input label={t("jobSearch.jobTitleLabel")} placeholder={t("jobSearch.jobTitlePlaceholder")} value={filters.title} onChange={e => setFilters(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
           <Input label={t("jobSearch.keywordsLabel")} placeholder={t("jobSearch.keywordsPlaceholder")} value={filters.keywords || ""} onChange={e => setFilters(f => ({ ...f, keywords: e.target.value }))} onKeyDown={e => e.key === "Enter" && search()} />
           <Select label={t("jobSearch.countryLabel")} value={filters.country} onChange={e => setFilters(f => ({ ...f, country: e.target.value }))}>
-            {JS_COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{t(`jobSearch.${JS_COUNTRY_LABEL_KEY[c]}`)}</option>)}
+            {JS_COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{c === "REMOTE" ? t("jobSearch.countryRemoteWorldwide") : new Intl.DisplayNames([language], { type: "region" }).of(c)}</option>)}
           </Select>
           <Input label={t("jobSearch.cityLabel")} placeholder={t("jobSearch.cityPlaceholder")} value={filters.city} onChange={e => setFilters(f => ({ ...f, city: e.target.value }))} />
           <Select label={t("jobSearch.employmentTypeLabel")} value={filters.employmentType} onChange={e => setFilters(f => ({ ...f, employmentType: e.target.value }))}>
@@ -8436,11 +8440,15 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
     );
     if (dupe) errors.company = t("tracker.duplicateApplication").replace("{title}", form.jobTitle).replace("{company}", form.company);
 
+    const { values: contactValues, errors: contactErrors } = validateFields(form,
+      { contactName: "fullName", contactEmail: "email" }, {});
+    if (contactErrors.contactEmail) errors.contactEmail = t("tracker.invalidContactEmail");
+
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     setFormErrors({});
     setSaveError("");
 
-    const cleanForm = { ...form, atsScore: atsClean };
+    const cleanForm = { ...form, atsScore: atsClean, contactName: contactValues.contactName, contactEmail: contactValues.contactEmail };
     const fullApp = editId
       ? { ...(applications.find(a => a.id === editId) || {}), ...cleanForm }
       : { ...cleanForm, id: uid() };
@@ -8523,7 +8531,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
             <div><Input label={t("tracker.followUpDateLabel")} type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} style={formErrors.followUpDate ? { borderColor: C.red } : {}} />{formErrors.followUpDate && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.followUpDate}</div>}</div>
             <div><Input label={t("tracker.atsScoreLabel")} type="number" min="0" max="100" placeholder={t("tracker.atsScorePlaceholder")} value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} style={formErrors.atsScore ? { borderColor: C.red } : {}} />{formErrors.atsScore && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.atsScore}</div>}</div>
             <Input label={t("tracker.contactNameLabel")} placeholder={t("tracker.contactNamePlaceholder")} value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} />
-            <Input label={t("tracker.contactEmailLabel")} placeholder={t("tracker.contactEmailPlaceholder")} value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} />
+            <div><Input label={t("tracker.contactEmailLabel")} type="email" placeholder={t("tracker.contactEmailPlaceholder")} value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} style={formErrors.contactEmail ? { borderColor: C.red } : {}} />{formErrors.contactEmail && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.contactEmail}</div>}</div>
             <div style={{ gridColumn: "1 / -1" }}><Input label={t("tracker.jobUrlLabel")} placeholder={t("tracker.jobUrlPlaceholder")} value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
           </div>
           <div style={{ marginBottom: 16 }}><Textarea label={t("tracker.notesLabel")} placeholder={t("tracker.notesPlaceholder")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
@@ -9118,7 +9126,7 @@ const SMART_APPLY_CONTACT_FIELDS = [
   { issue: "missing_phone", labelKey: "savedJobs.contactFieldPhone" },
 ];
 
-function PackageView({ item, resumes, savedJob, patchQueueItem }) {
+function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
   const { t } = useI18n();
   const [editingField, setEditingField] = useState(null);
   const [editText, setEditText] = useState("");
@@ -9138,7 +9146,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
   // Package Integrity Validation, recomputed live from the current stored fields on every
   // render — drives the per-document ✅/🔴 indicators below. Editing + saving a field
   // re-runs this same check (see handleSaveEdit) so status stays accurate automatically.
-  const integrity = validateSmartApplyPackage(smartApplyDocFieldsFromRow(item));
+  const integrity = validateSmartApplyPackage(smartApplyDocFieldsFromRow(item), resolveCountry(profile?.country));
 
   useEffect(() => {
     if (!hasJobChanges || item.job_change_analysis || !savedJob || !patchQueueItem) return;
@@ -9169,10 +9177,12 @@ function PackageView({ item, resumes, savedJob, patchQueueItem }) {
     if (!patchQueueItem) return;
     setSaving(true);
     try {
-      const patch = { [field]: editText };
+      const country = resolveCountry(profile?.country);
+      const normalizedText = normalizePhonesInText(editText, country);
+      const patch = { [field]: normalizedText };
       if (item.status === "ready" || item.status === "needs_review") {
-        const merged = { ...smartApplyDocFieldsFromRow(item), [field]: editText };
-        patch.status = validateSmartApplyPackage(merged).ok ? "ready" : "needs_review";
+        const merged = { ...smartApplyDocFieldsFromRow(item), [field]: normalizedText };
+        patch.status = validateSmartApplyPackage(merged, country).ok ? "ready" : "needs_review";
       }
       await patchQueueItem(item.id, patch);
       setEditingField(null);
@@ -9498,7 +9508,7 @@ function MissingSkillsBadges({ skills }) {
   );
 }
 
-function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied, savedJobs, patchQueueItem }) {
+function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied, savedJobs, patchQueueItem, profile }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
@@ -9571,7 +9581,7 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
       )}
       {expanded && isViewable && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-          <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} />
+          <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} profile={profile} />
         </div>
       )}
     </Card>
@@ -9681,7 +9691,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const integrity = validateSmartApplyPackage(result);
+      const integrity = validateSmartApplyPackage(result, resolveCountry(profile?.country));
       if (integrity.ok) {
         await markReady(item.id, result);
         console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
@@ -9719,7 +9729,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const integrity = validateSmartApplyPackage(result);
+      const integrity = validateSmartApplyPackage(result, resolveCountry(profile?.country));
       if (integrity.ok) await markReady(queued.id, result);
       else await markNeedsReview(queued.id, result);
     } catch (e) {
@@ -9845,7 +9855,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                   const viewEntry = readyEntry || (activeEntry?.status === "needs_review" ? activeEntry : null);
                   return (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                      {viewEntry ? <PackageView item={viewEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} /> : <SavedJobDetailsView job={job} />}
+                      {viewEntry ? <PackageView item={viewEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} profile={profile} /> : <SavedJobDetailsView job={job} />}
                     </div>
                   );
                 })()}
@@ -9867,7 +9877,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
-              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} savedJobs={savedJobs} patchQueueItem={patchQueueItem} />
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} savedJobs={savedJobs} patchQueueItem={patchQueueItem} profile={profile} />
             ))}
           </div>
         </div>
@@ -9991,11 +10001,12 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
 
 // ─── PROFILE PAGE ──────────────────────────────────────────
 function ProfilePage({ profile, updateProfile }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [form, setForm] = useState({
     full_name: profile?.full_name || "",
     email_address: profile?.email_address || "",
     phone: profile?.phone || "",
+    country: profile?.country || "",
     location: profile?.location || "",
     job_title: profile?.job_title || "",
     years_experience: profile?.years_experience || "",
@@ -10011,17 +10022,19 @@ function ProfilePage({ profile, updateProfile }) {
     { value: "Hybrid", label: t("profile.workTypeHybrid") },
     { value: "On-site", label: t("profile.workTypeOnsite") },
   ];
+  const countryDisplayNames = new Intl.DisplayNames([language], { type: "region" });
+  const countryOptions = getCountries()
+    .map(code => ({ code, label: countryDisplayNames.of(code) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const save = () => {
     if (!form.full_name.trim()) { setError(t("profile.fullNameRequired")); return; }
-    const normalized = {
-      ...form,
-      full_name: normalizeFullName(form.full_name),
-      email_address: normalizeEmail(form.email_address),
-      phone: normalizePhone(form.phone),
-    };
-    if (!isEmailValid(normalized.email_address)) { setError(t("profile.invalidEmail")); return; }
-    if (!isPhoneValid(normalized.phone)) { setError(t("profile.invalidPhone")); return; }
+    const ctx = { country: resolveCountry(form.country) };
+    const { values: normalized, errors } = validateFields(form,
+      { full_name: "fullName", email_address: "email", phone: "phone" }, ctx);
+    const ERROR_KEY = { email_address: "profile.invalidEmail", phone: "profile.invalidPhone" };
+    const firstError = Object.keys(errors)[0];
+    if (firstError) { setError(t(ERROR_KEY[firstError])); return; }
     setError("");
     setForm(normalized);
     updateProfile(normalized);
@@ -10058,6 +10071,10 @@ function ProfilePage({ profile, updateProfile }) {
           <Input label={t("profile.fullNameLabel")} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder={t("profile.fullNamePlaceholder")} />
           <Input label={t("profile.emailLabel")} value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} placeholder={t("profile.emailPlaceholder")} />
           <Input label={t("profile.phoneLabel")} placeholder={t("profile.phonePlaceholder")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          <Select label={t("profile.countryLabel")} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))}>
+            <option value="">—</option>
+            {countryOptions.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+          </Select>
           <Input label={t("profile.locationLabel")} placeholder={t("profile.locationPlaceholder")} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
         </div>
       </Card>

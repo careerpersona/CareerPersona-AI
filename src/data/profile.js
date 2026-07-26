@@ -15,6 +15,7 @@ export async function fetchProfile(userId, email) {
     email: base?.email || email,
     full_name: base?.full_name || "",
     phone: base?.phone || "",
+    country: base?.country || "",
     location: base?.location || "",
     job_title: base?.job_title || "",
     years_experience: base?.years_experience || "",
@@ -37,14 +38,14 @@ export async function fetchProfile(userId, email) {
 }
 
 export async function upsertProfile(userId, updates) {
-  const baseFields = ["full_name", "phone", "location", "job_title", "years_experience"];
+  const baseFields = ["full_name", "phone", "country", "location", "job_title", "years_experience"];
   const detailFields = ["email_address", "preferred_job_title", "preferred_industry", "work_type", "desired_salary", "preferred_language", "job_language", "career_goal", "career_timeline"];
 
   const baseUpdate = Object.fromEntries(baseFields.filter(f => f in updates).map(f => [f, updates[f]]));
   const detailUpdate = Object.fromEntries(detailFields.filter(f => f in updates).map(f => [f, updates[f]]));
 
   if ("full_name" in baseUpdate) baseUpdate.full_name = normalizeFullName(baseUpdate.full_name);
-  if ("phone" in baseUpdate) baseUpdate.phone = normalizePhone(baseUpdate.phone);
+  if ("phone" in baseUpdate) baseUpdate.phone = normalizePhone(baseUpdate.phone, updates.country);
   if ("email_address" in detailUpdate) detailUpdate.email_address = normalizeEmail(detailUpdate.email_address);
 
   await Promise.all([
