@@ -7127,7 +7127,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
           succeeded++;
         } catch (e) {
           console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
-          if (queued) await markFailed(queued.id);
+          if (queued) await markFailed(queued.id, queued.retry_count);
         } finally {
           setAutoApplyingCount(c => Math.max(0, c - 1));
           onQueueChange?.();
@@ -7360,7 +7360,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       }
     } catch (e) {
       console.error(`[SmartApply] ❌ MANUAL failed for "${job.title}":`, e?.code, e?.message, e);
-      if (queued) await markFailed(queued.id);
+      if (queued) await markFailed(queued.id, queued.retry_count);
       const isRls = e?.code === "42501" || e?.message?.includes("row-level security");
       setError(isRls ? t("jobSearch.signInForSmartApply") : t("jobSearch.smartApplyFailed"));
     } finally {
@@ -9706,7 +9706,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       }
     } catch (e) {
       console.error(`[SmartApply] ❌ RETRY failed for "${item.job_title}":`, e?.code, e?.message, e);
-      await markFailed(item.id);
+      await markFailed(item.id, item.retry_count);
       setQueueError(t("savedJobs.retryError"));
     } finally {
       setRetryingId(null);
@@ -9739,7 +9739,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       else await markNeedsReview(queued.id, result);
     } catch (e) {
       console.error(`[SmartApply] ❌ Prepare failed for "${job.title}":`, e?.message || e);
-      if (queued) await markFailed(queued.id);
+      if (queued) await markFailed(queued.id, queued.retry_count);
       setQueueError(t("savedJobs.retryError"));
     } finally {
       setPreparingIds(prev => { const next = new Set(prev); next.delete(job.job_id); return next; });

@@ -8,6 +8,13 @@ const TABLE = "smart_apply_queue";
 // from a previous session and gets automatically reset to "failed".
 const _activeGenerations = new Set();
 
+// Caps automatic regeneration of a "failed" row when the same job is
+// rediscovered (e.g. a later search). Once retry_count reaches this, enqueue()
+// stops silently re-billing a job that keeps failing — the row stays "failed"
+// until the user clicks the manual Retry action (resetToQueued), which is
+// intentionally NOT subject to this cap.
+const SMART_APPLY_MAX_AUTO_RETRIES = 2;
+
 export function useSmartApplyQueue(userId) {
   const [queue, setQueue] = useState([]);
   // Start loading=true when userId is already available so consumers never see
@@ -26,7 +33,7 @@ export function useSmartApplyQueue(userId) {
       if (orphans.length > 0) {
         try {
           await Promise.all(orphans.map(q =>
-            supabase.from(TABLE).update({ status: "failed" }).eq("id", q.id)
+            supabase.from(TABLE).update({ status: "failed", retry_count: (q.retry_count || 0) + 1 }).eq("id", q.id)
           ));
           const { data: clean } = await supabase
             .from(TABLE).select("*").eq("user_id", userId).order("created_at", { ascending: false });
@@ -53,7 +60,13 @@ export function useSmartApplyQueue(userId) {
         await refresh();
         return null; // already in progress, ready, or awaiting manual review — caller skips generation
       }
-      // status === "failed": reset so it can be regenerated
+      // status === "failed": auto-regenerate only while under the retry cap. Once
+      // a job has failed SMART_APPLY_MAX_AUTO_RETRIES times, stop re-billing it
+      // automatically — it stays "failed" until the user clicks manual Retry.
+      if ((existing.retry_count || 0) >= SMART_APPLY_MAX_AUTO_RETRIES) {
+        await refresh();
+        return null; // retry limit reached — caller skips generation, row stays failed
+      }
       await supabase.from(TABLE).update({ status: "queued" }).eq("id", existing.id);
       _activeGenerations.add(existing.id);
       await refresh();
@@ -132,9 +145,12 @@ export function useSmartApplyQueue(userId) {
   }, [refresh]);
 
   // Mark a row as failed (keeps it visible for retry) instead of deleting it.
-  const markFailed = useCallback(async (id) => {
+  // currentRetryCount: the row's retry_count before this failure (callers already
+  // have the row from enqueue()'s return value or the queue list) — persisted as
+  // currentRetryCount + 1 so enqueue() can enforce SMART_APPLY_MAX_AUTO_RETRIES.
+  const markFailed = useCallback(async (id, currentRetryCount = 0) => {
     _activeGenerations.delete(id);
-    await supabase.from(TABLE).update({ status: "failed" }).eq("id", id);
+    await supabase.from(TABLE).update({ status: "failed", retry_count: (currentRetryCount || 0) + 1 }).eq("id", id);
     await refresh();
   }, [refresh]);
 
