@@ -92,7 +92,10 @@ export function useSmartApplyQueue(userId) {
 
   // Step 2: fill in the AI-generated bundle and flip status to "ready".
   const markReady = useCallback(async (id, aiResult) => {
-    const { error } = await supabase.from(TABLE).update({
+    // TEMPORARY FORENSIC INSTRUMENTATION — .select() added only to confirm a row was
+    // actually affected (RLS can silently match zero rows without setting `error`).
+    // Remove after diagnosis; does not change the update payload or status logic.
+    const { error, data } = await supabase.from(TABLE).update({
       tailored_resume: aiResult.tailoredResume || null,
       cover_letter: aiResult.coverLetter || null,
       recruiter_message: aiResult.recruiterMessage || null,
@@ -104,11 +107,17 @@ export function useSmartApplyQueue(userId) {
       salary_insight: aiResult.salaryInsight || null,
       company_insight: aiResult.companyInsight || null,
       status: "ready",
-    }).eq("id", id);
+    }).eq("id", id).select();
     if (error) {
       _activeGenerations.delete(id);
       console.error("markReady failed:", error.code, error.message, { id });
+      console.error(`[FORENSIC] Package ${id} — ✗ markReady Supabase error`, error.code, error.message);
       throw error;
+    }
+    if (!data || data.length === 0) {
+      console.error(`[FORENSIC] Package ${id} — markReady matched ZERO rows (likely RLS) — no error thrown, but status was NOT changed to ready`);
+    } else {
+      console.log(`[FORENSIC] Package ${id} — ✓ markReady write confirmed committed`);
     }
     // Remove from active set only after the DB commit succeeds. Removing it
     // before the UPDATE causes a race: a concurrent refresh() sees the row as
@@ -122,7 +131,8 @@ export function useSmartApplyQueue(userId) {
   // Validation. Content is still saved (so it's visible/editable in PackageView) but
   // status is "needs_review" instead of "ready", keeping it out of the Apply-ready queue.
   const markNeedsReview = useCallback(async (id, aiResult) => {
-    const { error } = await supabase.from(TABLE).update({
+    // TEMPORARY FORENSIC INSTRUMENTATION — same .select()-for-confirmation addition as markReady.
+    const { error, data } = await supabase.from(TABLE).update({
       tailored_resume: aiResult.tailoredResume || null,
       cover_letter: aiResult.coverLetter || null,
       recruiter_message: aiResult.recruiterMessage || null,
@@ -134,11 +144,17 @@ export function useSmartApplyQueue(userId) {
       salary_insight: aiResult.salaryInsight || null,
       company_insight: aiResult.companyInsight || null,
       status: "needs_review",
-    }).eq("id", id);
+    }).eq("id", id).select();
     if (error) {
       _activeGenerations.delete(id);
       console.error("markNeedsReview failed:", error.code, error.message, { id });
+      console.error(`[FORENSIC] Package ${id} — ✗ markNeedsReview Supabase error`, error.code, error.message);
       throw error;
+    }
+    if (!data || data.length === 0) {
+      console.error(`[FORENSIC] Package ${id} — markNeedsReview matched ZERO rows (likely RLS) — status was NOT changed`);
+    } else {
+      console.log(`[FORENSIC] Package ${id} — ✓ markNeedsReview write confirmed committed`);
     }
     _activeGenerations.delete(id);
     await refresh();
@@ -150,7 +166,16 @@ export function useSmartApplyQueue(userId) {
   // currentRetryCount + 1 so enqueue() can enforce SMART_APPLY_MAX_AUTO_RETRIES.
   const markFailed = useCallback(async (id, currentRetryCount = 0) => {
     _activeGenerations.delete(id);
-    await supabase.from(TABLE).update({ status: "failed", retry_count: (currentRetryCount || 0) + 1 }).eq("id", id);
+    // TEMPORARY FORENSIC INSTRUMENTATION — remove after diagnosis. Reads the { error }
+    // this call already receives but previously discarded; does not change behavior.
+    const { error, data } = await supabase.from(TABLE).update({ status: "failed", retry_count: (currentRetryCount || 0) + 1 }).eq("id", id).select();
+    if (error) {
+      console.error(`[FORENSIC] markFailed's OWN write failed for ${id}:`, error.code, error.message, error);
+    } else if (!data || data.length === 0) {
+      console.error(`[FORENSIC] markFailed matched ZERO rows for ${id} (likely RLS) — status was NOT actually changed to failed`);
+    } else {
+      console.log(`[FORENSIC] markFailed's write to ${id} confirmed committed`);
+    }
     await refresh();
   }, [refresh]);
 

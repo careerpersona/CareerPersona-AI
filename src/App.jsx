@@ -239,6 +239,11 @@ async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
     throw Object.assign(new Error(errMsg), { workerError: err.error, status: res.status });
   }
   const data = await res.json();
+  // TEMPORARY FORENSIC INSTRUMENTATION — remove after diagnosis. Does not change the
+  // return value or any behavior; only surfaces stop_reason for truncation diagnosis.
+  if (feature === "ai_request" && maxTokens === 8000) {
+    console.log(`[FORENSIC] askClaude stop_reason=${data.stop_reason} content_blocks=${data.content?.length} text_len=${data.content?.[0]?.text?.length}`);
+  }
   return (data.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
 }
 
@@ -7172,44 +7177,83 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     setSavedJobs(p => p.some(j => j.job_id === job.id) ? p : [{ job_id: job.id, ..._enriched, saved_at: new Date().toISOString() }, ...p]);
     setSmartApplying(job.id);
     let queued;
+    // TEMPORARY FORENSIC INSTRUMENTATION — remove after diagnosis, no business logic changed.
+    let _stage = "start";
+    let _raw = null;
+    let _cleanRaw = null;
+    let _braceStart = null, _braceEnd = null;
+    let _integrity = null;
     try {
       console.log(`[SmartApply] ⏳ [1/6] Enqueueing "${job.title}" at ${job.company} (job_id: ${job.id})`);
+      _stage = "enqueue";
       queued = await enqueue(profile.id, job, activeResumeId);
       if (!queued) {
         console.log(`[SmartApply] ⏭️ [1/6] Skipped "${job.title}" — already queued/ready`);
         return; // existing queued/ready row — no generation needed
       }
       console.log(`[SmartApply] ✅ [1/6] Enqueued: queue_id=${queued.id}, status=${queued.status}`);
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Queue row created`);
 
       console.log(`[SmartApply] ⏳ [2/6] Building context for "${job.title}"`);
       const ctx = userContext.getContextString({ identity: true, applications: true });
       console.log(`[SmartApply] ✅ [2/6] Context ready: ${ctx.length} chars`);
 
       console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
-      console.log(`[SmartApply] ✅ [3/6] Claude responded: ${raw.length} chars`);
+      _stage = "before_anthropic_request";
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before Anthropic request`);
+      _raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
+      _stage = "after_anthropic_response";
+      console.log(`[SmartApply] ✅ [3/6] Claude responded: ${_raw.length} chars`);
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After Anthropic response. length=${_raw.length} first500=${JSON.stringify(_raw.slice(0, 500))}`);
 
       console.log(`[SmartApply] ⏳ [4/6] Parsing JSON for "${job.title}"`);
-      const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
-      const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-      const result = JSON.parse(cleanRaw);
+      _stage = "before_json_parse";
+      _braceStart = _raw.indexOf("{"); _braceEnd = _raw.lastIndexOf("}");
+      _cleanRaw = (_braceStart >= 0 && _braceEnd > _braceStart) ? _raw.slice(_braceStart, _braceEnd + 1) : _raw;
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before JSON.parse. braceStart=${_braceStart} braceEnd=${_braceEnd} extractedLength=${_cleanRaw.length}`);
+      const result = JSON.parse(_cleanRaw);
+      _stage = "after_json_parse";
       console.log(`[SmartApply] ✅ [4/6] JSON parsed. Keys: ${Object.keys(result).join(", ")}`);
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After JSON.parse succeeded`);
 
       console.log(`[SmartApply] ⏳ [5/6] Validating package integrity for "${job.title}"`);
-      const integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
-      console.log(`[SmartApply] ✅ [5/6] Integrity check: ${integrity.ok ? "passed" : "FAILED — " + summarizeSmartApplyIntegrity(integrity)}`);
+      _integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
+      _stage = "after_validation";
+      console.log(`[SmartApply] ✅ [5/6] Integrity check: ${_integrity.ok ? "passed" : "FAILED — " + summarizeSmartApplyIntegrity(_integrity)}`);
+      console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After validateSmartApplyPackage. ok=${_integrity.ok}`);
 
       console.log(`[SmartApply] ⏳ [6/6] Saving to Supabase (queue_id: ${queued.id})`);
-      if (integrity.ok) {
+      if (_integrity.ok) {
+        _stage = "before_markReady";
+        console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before markReady()`);
         await markReady(queued.id, result);
         console.log(`[SmartApply] ✅ [6/6] Package saved — status: ready ✓`);
       } else {
+        _stage = "before_markNeedsReview";
+        console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before markNeedsReview()`);
         await markNeedsReview(queued.id, result);
         console.log(`[SmartApply] ⚠️ [6/6] Package saved — status: needs_review`);
       }
     } catch (e) {
+      console.error(`[FORENSIC] ===================== CATCH BLOCK (manual smartApply) =====================`);
+      console.error(`[FORENSIC] job_id=${job.id}`);
+      console.error(`[FORENSIC] queue_id=${queued?.id || "(none — failure occurred before/during enqueue)"}`);
+      console.error(`[FORENSIC] stage_reached=${_stage}`);
+      console.error(`[FORENSIC] exception.message=${e?.message}`);
+      console.error(`[FORENSIC] exception.stack=${e?.stack}`);
+      console.error(`[FORENSIC] exception.code=${e?.code}`);
+      console.error(`[FORENSIC] exception.status=${e?.status}`);
+      console.error(`[FORENSIC] response_length=${_raw != null ? _raw.length : "N/A — no response received"}`);
+      console.error(`[FORENSIC] response_first_500=${_raw != null ? JSON.stringify(_raw.slice(0, 500)) : "N/A"}`);
+      console.error(`[FORENSIC] brace_indices=start:${_braceStart} end:${_braceEnd}`);
+      console.error(`[FORENSIC] validation_result=${_integrity ? JSON.stringify(_integrity) : "N/A — not reached"}`);
       console.error(`[SmartApply] ❌ MANUAL failed for "${job.title}":`, e?.code, e?.message, e);
-      if (queued) await markFailed(queued.id, queued.retry_count);
+      if (queued) {
+        _stage = "before_markFailed";
+        console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before markFailed()`);
+        await markFailed(queued.id, queued.retry_count);
+        console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — markFailed executed. Final status: failed`);
+      }
       const isRls = e?.code === "42501" || e?.message?.includes("row-level security");
       setError(isRls ? t("jobSearch.signInForSmartApply") : t("jobSearch.smartApplyFailed"));
     } finally {
