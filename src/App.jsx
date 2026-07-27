@@ -18,6 +18,8 @@ import { useAiActionPlan } from "./data/aiActionPlan";
 import { useCareerProgressAnalysis } from "./data/careerProgress";
 import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
 import { useUserContext } from "./data/userContext";
+import { loadSkillSynonyms } from "./data/skillSynonyms";
+import { extractSkillKeywords, buildCompatibilityRecord } from "./lib/compatibility";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
@@ -332,11 +334,6 @@ function _devMockRoute(prompt) {
   if (p.includes("keywords to incorporate") && p.includes("current resume")) {
     const r = _devExtractResume(prompt);
     return (r || _devMockResume()) + "\n• Containerized services using Docker and Kubernetes, improving deployment reliability by 60%\n• Implemented CI/CD pipelines reducing time-to-production by 75%\n• Leveraged TypeScript for type-safe frontend development across React applications";
-  }
-
-  // ── Job Search AI Match (per-job match score) ──────────────────────────────
-  if (p.includes("analyze resume-job match") || (p.includes("matchscore") && p.includes("interviewprobability"))) {
-    return JSON.stringify({ matchScore: 76, atsScore: 74, interviewProbability: 62, matchingSkills: ["Python", "AWS", "React"], missingSkills: ["Docker", "Kubernetes", "GraphQL"], summary: "Strong technical match with core requirements; adding container experience would close the remaining gap." });
   }
 
   // ── Smart Apply Full Package ───────────────────────────────────────────────
@@ -6727,10 +6724,6 @@ const JS_EMPLOYMENT_LABEL_KEY = { Any: "employmentAny", "Full-time": "employment
 const JS_EXPERIENCE_OPTIONS = ["Any","Entry Level","Mid Level","Senior","Lead","Executive"];
 const JS_EXPERIENCE_LABEL_KEY = { Any: "experienceAny", "Entry Level": "experienceEntry", "Mid Level": "experienceMid", Senior: "experienceSenior", Lead: "experienceLead", Executive: "experienceExecutive" };
 
-const SMART_APPLY_AUTO_LIMIT = 5;
-const MATCH_CONCURRENCY = 5;        // parallel Claude calls per scoring batch
-const SMART_APPLY_CONCURRENCY = 5;  // concurrent Smart Apply packages — matches SMART_APPLY_AUTO_LIMIT (full concurrency)
-
 // Explicit candidate identity block — same pattern as the AI Resume Builder's identity
 // array (see handleGenerateResume). Passed directly into the prompt so Name/Email/Phone
 // are never left to the lossy getContextString() summary, which drops contact fields.
@@ -6893,37 +6886,6 @@ ${curr.slice(0, 3000)}
 Return ONLY valid JSON. Use empty arrays [] and null for unchanged categories:
 {"summary":"<one sentence describing the most important change>","newSkills":["<skill added>"],"removedSkills":["<skill removed>"],"responsibilitiesChanged":"<description of responsibility changes, or null>","experienceChanged":"<description of experience requirement changes, or null>","educationChanged":"<description of education/certification changes, or null>","toolsChanged":["<tool or technology added or removed>"],"workAuthorizationChanged":"<description of work authorization changes, or null>","otherChanges":["<other meaningful change>"]}`;
 
-// Calibrated match scoring — uses larger context windows and an explicit rubric
-// so scores spread meaningfully across the 0–100 range instead of clustering at 70.
-const buildMatchPrompt = (ctx, resume, job) =>
-  `${ctx ? ctx + "\n\n" : ""}You are a strict, calibrated resume-to-job match evaluator. Score honestly — most candidates are NOT a strong match for most jobs. Use the full 0–100 range based on evidence, not assumptions.
-
-SCORING RUBRIC — apply all criteria before assigning a number:
-90–100 EXCELLENT: 85%+ of required skills present with direct experience in this exact role type at comparable seniority and scope.
-80–89 STRONG: 70–84% of requirements met; seniority matches; 1–2 gaps are minor and easily bridged.
-65–79 GOOD: 55–69% of requirements met; relevant background but meaningful skill or seniority gaps exist.
-50–64 MODERATE: 35–54% of requirements met; transferable skills present but significant gaps in core areas.
-Below 50 WEAK: Under 35% of requirements met, wrong seniority level, or fundamental domain mismatch.
-
-Score LOW when: critical required skills are absent, seniority mismatches (junior resume, senior role or vice versa), industry knowledge is required but absent, role domain differs significantly from candidate's background.
-Score HIGH only when: candidate has direct prior experience in this exact role type, tech stack overlaps precisely, seniority and scope match, and quantified achievements align with what the job expects.
-
-Return ONLY valid JSON, no markdown:
-{"matchScore":<integer 0-100>,"atsScore":<integer 0-100>,"interviewProbability":<integer 0-100>,"matchingSkills":["<skill>"],"missingSkills":["<skill>"],"summary":"<1 honest sentence about the actual fit level>"}
-
-atsScore = how well this specific resume would pass ATS keyword filters for this job (keyword alignment).
-interviewProbability = realistic probability of receiving an interview invite given this match level.
-matchingSkills = up to 5 specific skills from the job requirements found in the resume.
-missingSkills = up to 5 important required skills that are absent from the resume.
-
-RESUME:
-${resume.slice(0, 1500)}
-
-JOB:
-Title: ${job.title}
-Company: ${job.company}${job.experienceLevel ? `\nExperience Level: ${job.experienceLevel}` : ""}${job.employmentType && job.employmentType !== "Any" ? `\nEmployment Type: ${job.employmentType}` : ""}
-Description: ${(job.description || "").slice(0, 1200)}${(job.skills || []).length ? `\nSkills Required: ${job.skills.join(", ")}` : ""}`;
-
 // Single matchScore color function — used by JobSearchPage, OpportunityPage, and Dashboard.
 // Thresholds: 80+ green (strong/excellent), 65–79 yellow (good), below 65 red (moderate/weak).
 const matchScoreColor = v => v == null ? C.textMuted : v >= 80 ? C.green : v >= 65 ? C.yellow : C.red;
@@ -6974,7 +6936,7 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
 function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "US", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
-  const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [analyzing, setAnalyzing] = useState(null); const [matchResults, setMatchResults] = useSessionState("cp_jobs_match", {}); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
+  const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
   // Active resume is derived from the single shared source of truth (resumes + activeResumeId,
   // both owned at the root and shared with Dashboard/SavedJobs/Resume pages) rather than a
   // separate local copy — this is what keeps every screen in sync automatically.
@@ -6984,32 +6946,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const resumeFileRef = useRef();
   const [uploadingResume, setUploadingResume] = useState(false);
   const [smartApplying, setSmartApplying] = useState(null);
-  const [autoApplyingCount, setAutoApplyingCount] = useState(0);
   const userContext = useUserContext({ profile, applications, savedJobs });
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
-  const [expandedAnalysisId, setExpandedAnalysisId] = useState(null);
   // ── Job Intelligence features ────────────────────────────────────────────
   const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "relevance");
   const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
   const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
-  const [analyzeStatus, setAnalyzeStatus] = useState(null); // { state: 'scoring'|'complete', done, total }
-  const analyzeRunRef = useRef(0);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready" || q.status === "needs_review"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
-
-  // Use functional updater so the toggle decision reads the latest state,
-  // not a potentially-stale closure captured during async analysis re-renders.
-  const handleAiMatch = (job) => {
-    let expanding = false;
-    setExpandedAnalysisId(prev => {
-      expanding = prev !== job.id;
-      return expanding ? job.id : null;
-    });
-    if (expanding && !matchResults[job.id]) analyzeMatch(job);
-  };
 
   // Detect same title+company appearing from multiple sources
   const dupeSet = useMemo(() => {
@@ -7023,21 +6970,39 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     return dupes;
   }, [jobs]);
 
+  // Career Compatibility Engine — deterministic, zero-LLM-call Match % scoring.
+  // Replaces the old AI Match Claude call entirely. The skill synonym dictionary
+  // is Supabase-backed but fetched exactly once per session (see skillSynonyms.js),
+  // never per job/search, so scoring itself stays fully synchronous and free.
+  const [skillDictionary, setSkillDictionary] = useState({});
+  useEffect(() => { loadSkillSynonyms().then(setSkillDictionary); }, []);
+
+  const resumeSkills = useMemo(() => extractSkillKeywords(resumeText), [resumeText]);
+
+  const compatibilityByJobId = useMemo(() => {
+    if (!resumeText.trim()) return {};
+    const out = {};
+    for (const job of jobs) {
+      out[job.id] = buildCompatibilityRecord({ job, profile, resumeSkills, skillDictionary });
+    }
+    return out;
+  }, [jobs, resumeText, resumeSkills, profile, skillDictionary]);
+
   // Sort + dedup derived list — never mutates raw `jobs` session state
   const displayJobs = useMemo(() => {
     let result = [...jobs];
     if (hideDupes) result = result.filter(j => !dupeSet.has(j.id));
     if (sortBy === "match") {
       result = [...result].sort((a, b) => {
-        const sa = matchResults[a.id]?.matchScore ?? a.matchScore ?? 0;
-        const sb = matchResults[b.id]?.matchScore ?? b.matchScore ?? 0;
+        const sa = compatibilityByJobId[a.id]?.match_score ?? a.matchScore ?? 0;
+        const sb = compatibilityByJobId[b.id]?.match_score ?? b.matchScore ?? 0;
         return sb - sa;
       });
     } else if (sortBy === "date") {
       result = [...result].sort((a, b) => new Date(b.datePosted || 0) - new Date(a.datePosted || 0));
     }
     return result;
-  }, [jobs, hideDupes, sortBy, matchResults, dupeSet]);
+  }, [jobs, hideDupes, sortBy, compatibilityByJobId, dupeSet]);
 
   const isNewJob = (job) => !!(prevVisitRef.current && job.datePosted && new Date(job.datePosted) > new Date(prevVisitRef.current));
 
@@ -7051,117 +7016,27 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     if (def) onResumeLoad?.(def.id);
   }, [resumes, activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Once per session: when resume becomes available, auto-process any saved jobs
-  const autoApplyRunRef = useRef(0);
-  const pendingApplyJobsRef = useRef(null);
-
-  // Back-fill: when auto-analyze scores arrive, write them to any already-saved jobs
-  // whose score is absent or has changed. Fires on every new search so re-scores from
-  // updated job descriptions propagate to Dashboard / SavedJobs / Opportunity Intelligence.
+  // Back-fill: when fresh Compatibility Engine scores are computed, write them to any
+  // already-saved jobs whose score is absent or has changed. Fires on every new search
+  // so re-scores from updated job descriptions propagate to Dashboard / SavedJobs /
+  // Opportunity Intelligence. No Claude call involved -- compatibilityByJobId is
+  // synchronous, so this simply mirrors it onto the persisted savedJobs list.
   useEffect(() => {
-    const keys = Object.keys(matchResults);
+    const keys = Object.keys(compatibilityByJobId);
     if (!keys.length) return;
     setSavedJobs(prev => {
       let changed = false;
       const next = prev.map(j => {
-        const mr = matchResults[j.job_id];
-        if (mr && mr.matchScore != null && mr.matchScore !== j.matchScore) {
+        const cr = compatibilityByJobId[j.job_id];
+        if (cr && cr.match_score != null && cr.match_score !== j.matchScore) {
           changed = true;
-          return { ...j, matchScore: mr.matchScore, atsScore: mr.atsScore };
+          return { ...j, matchScore: cr.match_score, compatibilityBreakdown: cr };
         }
         return j;
       });
       return changed ? next : prev;
     });
-  }, [matchResults]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-generate full Smart Apply packages for the top-scored jobs after AI Match completes.
-  // Caller passes jobs already sorted and sliced to SMART_APPLY_AUTO_LIMIT by match score.
-  // All packages are prepared concurrently — each job gets its own Claude call in parallel.
-  // enqueue() handles deduplication — already-queued or ready rows are skipped automatically.
-  const autoSmartApply = async (newJobs) => {
-    if (!profile?.id || !resumeText.trim()) return;
-    const quota = billingState?.quotas?.ai_request;
-    if (quota && !quota.unlimited && quota.remaining <= 0) {
-      console.log("[SmartApply] Quota exhausted — skipping auto generation");
-      return;
-    }
-    const limited = newJobs.slice(0, SMART_APPLY_AUTO_LIMIT);
-    const runId = ++autoApplyRunRef.current;
-    console.log(`[SmartApply] AUTO run#${runId} — preparing ${limited.length} package(s) concurrently`);
-    setAutoApplyingCount(limited.length);
-    let succeeded = 0;
-    // Build context once — shared across all concurrent package preparations.
-    const ctx = userContext.getContextString({ identity: true, applications: true });
-    // Bounded concurrency pool: SMART_APPLY_CONCURRENCY workers share a queue.
-    // Each worker picks the next job as soon as it finishes the current one,
-    // so there is no idle time (unlike fixed batching) while staying within
-    // the Anthropic token-per-minute rate limit.
-    const remaining = [...limited];
-    const worker = async () => {
-      while (remaining.length > 0) {
-        if (autoApplyRunRef.current !== runId) return;
-        const job = remaining.shift();
-        if (!job) return;
-        let queued;
-        try {
-          queued = await enqueue(profile.id, job, activeResumeId);
-          if (!queued) {
-            console.log(`[SmartApply] ⏭️ Skipped "${job.title}" — already queued/ready`);
-            succeeded++;
-            continue;
-          }
-          console.log(`[SmartApply] ⏳ Calling Claude for "${job.title}" (queue_id=${queued.id})`);
-          const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
-          const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
-          const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-          const result = JSON.parse(cleanRaw);
-          const integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
-          if (integrity.ok) {
-            await markReady(queued.id, result);
-            console.log(`[SmartApply] ✅ "${job.title}" — package ready`);
-          } else {
-            await markNeedsReview(queued.id, result);
-            console.log(`[SmartApply] ⚠️ "${job.title}" — package needs review: ${summarizeSmartApplyIntegrity(integrity)}`);
-          }
-          succeeded++;
-        } catch (e) {
-          console.error(`[SmartApply] ❌ "${job.title}" failed:`, e?.code, e?.message, e);
-          if (queued) await markFailed(queued.id, queued.retry_count);
-        } finally {
-          setAutoApplyingCount(c => Math.max(0, c - 1));
-          onQueueChange?.();
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(SMART_APPLY_CONCURRENCY, limited.length) }, worker));
-    if (autoApplyRunRef.current !== runId) return;
-    console.log(`[SmartApply] AUTO run#${runId} complete: ${succeeded}/${limited.length} succeeded`);
-    if (succeeded > 0) insertNotification(profile?.id, { type: "smart_apply", title: "Smart Apply complete.", body: succeeded + " application" + (succeeded === 1 ? "" : "s") + " prepared successfully." });
-    if (succeeded === 0 && limited.length > 0) setError(t("jobSearch.smartApplyFailed"));
-  };
-
-  // Run Smart Apply after AI Match scoring completes, using the top-scored jobs.
-  // This serializes the two AI workloads so they don't race each other for API quota.
-  useEffect(() => {
-    if (analyzeStatus?.state !== "complete") return;
-    const jobs = pendingApplyJobsRef.current;
-    if (!jobs || !profile?.id || !resumeText.trim()) return;
-    pendingApplyJobsRef.current = null;
-    const sorted = [...jobs].sort((a, b) => (matchResults[b.id]?.matchScore ?? 0) - (matchResults[a.id]?.matchScore ?? 0));
-    autoSmartApply(sorted.slice(0, SMART_APPLY_AUTO_LIMIT));
-  }, [analyzeStatus?.state]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Invalidation: when the user switches resumes, clear all session match scores so
-  // stale scores from the previous resume are never shown on a different resume's results.
-  const prevResumeIdRef = useRef(activeResumeId);
-  useEffect(() => {
-    if (prevResumeIdRef.current !== activeResumeId) {
-      prevResumeIdRef.current = activeResumeId;
-      setMatchResults({});
-      ++analyzeRunRef.current; // cancel any in-flight auto-analyze run
-    }
-  }, [activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [compatibilityByJobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -7237,7 +7112,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     setError("");
     setLoading(true);
     const nextPage = loadMore ? page + 1 : 1;
-    if (!loadMore) { setJobs([]); setSearched(true); setPage(1); setSourceCounts(null); setMatchResults({}); }
+    if (!loadMore) { setJobs([]); setSearched(true); setPage(1); setSourceCounts(null); }
 
     try {
       const res = await fetch(`${WORKER_URL}/api/jobs`, {
@@ -7274,40 +7149,14 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         });
       }
 
-      // Sync saved job data from fresh API results before AI Match runs.
+      // Sync saved job data from fresh API results — Match % itself is computed
+      // synchronously by the Career Compatibility Engine (compatibilityByJobId),
+      // no Claude call and no explicit trigger needed here.
       if (newJobs.length > 0) syncSavedJobData(newJobs);
-
-      // Auto AI-match: fires for every page (initial + load more) so every displayed job gets a score.
-      // autoSmartApply only fires on initial search (not load more — packages are queued, not re-batched).
-      if (resumeText.trim() && newJobs.length > 0) {
-        console.log(`[AIMatch] Search returned ${newJobs.length} jobs, resume ${resumeText.trim().length}c — starting autoAnalyzeAll`);
-        autoAnalyzeAll(newJobs, !loadMore); // forceAll on initial search to bypass stale closure
-      } else {
-        console.log(`[AIMatch] autoAnalyzeAll skipped — jobs=${newJobs.length}, hasResume=${!!resumeText.trim()}`);
-      }
-      if (!loadMore && resumeText.trim() && newJobs.length > 0) {
-        pendingApplyJobsRef.current = newJobs; // Smart Apply fires after scoring completes with top-scored jobs
-      }
     } catch (e) {
       setError(t("jobSearch.searchFailed").replace("{message}", e.message));
     } finally {
       setLoading(false);
-    }
-  };
-
-  // AI match a single job against resume (manual trigger via "AI Match" button)
-  const analyzeMatch = async (job) => {
-    if (!resumeText.trim()) { setResumeDialogOpen(true); return; }
-    setAnalyzing(job.id);
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(buildMatchPrompt(ctx, resumeText, job), 600);
-      const result = JSON.parse(raw);
-      setMatchResults(prev => ({ ...prev, [job.id]: result }));
-    } catch (e) {
-      console.error("AI match failed:", e);
-    } finally {
-      setAnalyzing(null);
     }
   };
 
@@ -7318,8 +7167,8 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const smartApply = async (job) => {
     if (!resumeText.trim()) { setResumeDialogOpen(true); return; }
     if (!profile?.id) { setError(t("jobSearch.signInForSmartApply")); return; }
-    const _mr = matchResults[job.id];
-    const _enriched = _mr ? { ...job, matchScore: _mr.matchScore, atsScore: _mr.atsScore } : job;
+    const _cr = compatibilityByJobId[job.id];
+    const _enriched = _cr ? { ...job, matchScore: _cr.match_score, compatibilityBreakdown: _cr } : job;
     setSavedJobs(p => p.some(j => j.job_id === job.id) ? p : [{ job_id: job.id, ..._enriched, saved_at: new Date().toISOString() }, ...p]);
     setSmartApplying(job.id);
     let queued;
@@ -7419,61 +7268,15 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     });
   };
 
-  // Auto-analyze all jobs silently using the same engine as manual AI Match.
-  // Fires for both initial search results and Load More so every displayed job gets a score.
-  const autoAnalyzeAll = async (newJobs, forceAll = false) => {
-    if (!resumeText.trim()) { console.log("[AIMatch] autoAnalyzeAll: no resume — abort"); return; }
-    const quota = billingState?.quotas?.ai_request;
-    const quotaDesc = quota ? (quota.unlimited ? "unlimited" : `${quota.remaining}/${quota.limit} remaining`) : "no billing data";
-    if (quota && !quota.unlimited && quota.remaining <= 0) {
-      console.log(`[AIMatch] Quota exhausted (${quotaDesc}) — skipping auto-analyze`);
-      return;
-    }
-    console.log(`[AIMatch] Quota: ${quotaDesc}`);
-    // forceAll=true on initial search so stale closure matchResults don't filter out
-    // jobs that appeared in a previous search — the state clear (setMatchResults({}))
-    // is batched and may not be reflected in this closure yet.
-    const unscored = forceAll ? newJobs : newJobs.filter(j => !matchResults[j.id]);
-    if (!unscored.length) { console.log("[AIMatch] All jobs already scored — nothing to do"); return; }
-    const runId = ++analyzeRunRef.current;
-    console.log(`[AIMatch] Scoring ${unscored.length} job(s) in batches of ${MATCH_CONCURRENCY} (runId=${runId})`);
-    setAnalyzeStatus({ state: "scoring", done: 0, total: unscored.length });
-    const ctx = userContext.getContextString({ identity: true });
-    console.log(`[AIMatch] Context: ${ctx.length} chars`);
-    let completed = 0;
-    for (let i = 0; i < unscored.length; i += MATCH_CONCURRENCY) {
-      if (analyzeRunRef.current !== runId) { console.log(`[AIMatch] Run cancelled — new search started`); return; }
-      const batch = unscored.slice(i, i + MATCH_CONCURRENCY);
-      await Promise.all(batch.map(async (job) => {
-        try {
-          const raw = await askClaude(buildMatchPrompt(ctx, resumeText, job), 600);
-          if (analyzeRunRef.current !== runId) return;
-          const parsed = JSON.parse(raw);
-          console.log(`[AIMatch] ✅ "${job.title}" → matchScore=${parsed?.matchScore}`);
-          setMatchResults(prev => ({ ...prev, [job.id]: parsed }));
-        } catch (e) {
-          console.error(`[AIMatch] ❌ "${job.title}" failed:`, e?.message || e);
-        }
-        if (analyzeRunRef.current !== runId) return;
-        completed++;
-        setAnalyzeStatus(prev => prev?.state === "scoring" ? { ...prev, done: completed } : prev);
-      }));
-    }
-    if (analyzeRunRef.current !== runId) return;
-    console.log(`[AIMatch] All ${unscored.length} job(s) complete (runId=${runId})`);
-    setAnalyzeStatus({ state: "complete", total: unscored.length });
-    setTimeout(() => { if (analyzeRunRef.current === runId) setAnalyzeStatus(null); }, 3000);
-  };
-
   const toggleSave = (job) => {
     const s = savedJobs.find(j => j.job_id === job.id);
     if (s) {
       setSavedJobs(p => p.filter(j => j.job_id !== job.id));
       purgeQueueByJobId(job.id);
     } else {
-      // Merge in any match score already computed this session so it persists to the DB.
-      const mr = matchResults[job.id];
-      const enriched = mr ? { ...job, matchScore: mr.matchScore, atsScore: mr.atsScore } : job;
+      // Merge in the Compatibility Engine score already computed this session so it persists to the DB.
+      const cr = compatibilityByJobId[job.id];
+      const enriched = cr ? { ...job, matchScore: cr.match_score, compatibilityBreakdown: cr } : job;
       setSavedJobs(p => [{ job_id: job.id, ...enriched, saved_at: new Date().toISOString() }, ...p]);
     }
   };
@@ -7514,7 +7317,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
-          {autoApplyingCount > 0 && <span style={{ color: C.purple, fontSize: 13 }}>{autoApplyingCount === 1 ? t("jobSearch.aiPreparingMsgSingular") : t("jobSearch.aiPreparingMsgPlural").replace("{n}", autoApplyingCount)}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
             <JobSearchResumeControl
@@ -7565,22 +7367,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                 <option value="date">{t("jobSearch.sortDate")}</option>
               </select>
               {dupeSet.size > 0 && <Btn variant={hideDupes ? "secondary" : "ghost"} style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setHideDupes(v => !v)}>{hideDupes ? t("jobSearch.showAll") : t("jobSearch.dupesFilter").replace("{n}", dupeSet.size)}</Btn>}
-              {analyzeStatus && (
-                <span style={{ fontSize: 12, color: analyzeStatus.state === "complete" ? C.green : C.textMuted, fontWeight: 500, display: "flex", alignItems: "center", gap: 4, userSelect: "none" }}>
-                  {analyzeStatus.state === "scoring" ? t("jobSearch.aiScoringStatus").replace("{done}", analyzeStatus.done).replace("{total}", analyzeStatus.total) : t("jobSearch.aiAnalysisComplete")}
-                </span>
-              )}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : isTablet ? 10 : 14 }}>
             {displayJobs.map(job => {
-              const mr = matchResults[job.id];
-              const displayMatch = mr ? mr.matchScore : job.matchScore;
+              const cr = compatibilityByJobId[job.id];
+              const displayMatch = cr ? cr.match_score : job.matchScore;
 
               if (isMobile || isTablet) {
                 const compact = isMobile;
                 return (
-                  <Card key={job.id} style={{ padding: compact ? "10px 12px" : "14px 18px", ...(mr ? { border: `1.5px solid ${matchScoreColor(mr.matchScore)}30` } : {}) }}>
+                  <Card key={job.id} style={{ padding: compact ? "10px 12px" : "14px 18px", ...(displayMatch != null ? { border: `1.5px solid ${matchScoreColor(displayMatch)}30` } : {}) }}>
                     {/* Badges + match score */}
                     <div style={{ display: "flex", gap: 4, marginBottom: 5, flexWrap: "wrap", alignItems: "center" }}>
                       <span style={{ background: `${C.blue}15`, color: C.blue, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{job.source}</span>
@@ -7608,16 +7405,15 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                         ))}
                       </div>
                     )}
-                    {/* Row 1: AI Match | Save | Track */}
+                    {/* Row 1: Save | Track */}
                     <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                      <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} loading={analyzing === job.id} onClick={() => handleAiMatch(job)}>{analyzing === job.id ? "…" : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
                         : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
                     </div>
                     {/* Row 2: Smart Apply — full width, state machine */}
-                    <div style={{ marginBottom: (mr && expandedAnalysisId === job.id) ? 8 : 0 }}>
+                    <div>
                       {smartApplying === job.id ? (
                         <Btn variant="secondary" loading style={{ width: "100%", fontSize: 11, padding: "8px 4px" }}>{t("jobSearch.preparingAiPackage")}</Btn>
                       ) : isSmartApplied(job) ? (
@@ -7626,37 +7422,13 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                         <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>{t("jobSearch.smartApply")}</Btn>
                       )}
                     </div>
-                    {/* AI Analysis panel — toggle-controlled by AI Match button */}
-                    {mr && expandedAnalysisId === job.id && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{mr.summary}</div>
-                        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                          {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
-                            <div key={l} style={{ flex: 1 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchScoreColor(v), fontWeight: 700 }}>{v}%</span></div>
-                              <PBar val={v} color={matchScoreColor(v)} />
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-                          <div style={{ background: C.greenLight, borderRadius: 7, padding: 8 }}>
-                            <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youHave")}</div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div>
-                          </div>
-                          <div style={{ background: C.redLight, borderRadius: 7, padding: 8 }}>
-                            <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginBottom: 4 }}>{t("jobSearch.youNeed")}</div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </Card>
                 );
               }
 
               // Desktop
               return (
-                <Card key={job.id} style={{ ...(mr ? { border: `1.5px solid ${matchScoreColor(mr.matchScore)}30` } : {}) }}>
+                <Card key={job.id} style={{ ...(displayMatch != null ? { border: `1.5px solid ${matchScoreColor(displayMatch)}30` } : {}) }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -7676,7 +7448,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                       <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
-                      <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={analyzing === job.id} onClick={() => handleAiMatch(job)}>{analyzing === job.id ? t("jobSearch.analyzing") : t("jobSearch.aiMatch")}</Btn>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
                       {isTracked(job)
                         ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
@@ -7690,23 +7461,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                       )}
                     </div>
                   </div>
-                  {mr && expandedAnalysisId === job.id && (
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{mr.summary}</div>
-                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                        {[[t("jobSearch.match"), mr.matchScore], [t("jobSearch.ats"), mr.atsScore], [t("jobSearch.interviewPct"), mr.interviewProbability]].map(([l, v]) => (
-                          <div key={l} style={{ flex: 1, minWidth: 80 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: C.textMuted }}>{l}</span><span style={{ color: matchScoreColor(v), fontWeight: 700 }}>{v}%</span></div>
-                            <PBar val={v} color={matchScoreColor(v)} />
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }} className="two-col">
-                        <div style={{ background: C.greenLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 6 }}>{t("jobSearch.youHave")}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.matchingSkills?.map(s => <Badge key={s} color={C.green}>{s}</Badge>)}</div></div>
-                        <div style={{ background: C.redLight, borderRadius: 8, padding: 10 }}><div style={{ fontSize: 11, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("jobSearch.youNeed")}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{mr.missingSkills?.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div></div>
-                      </div>
-                    </div>
-                  )}
                 </Card>
               );
             })}

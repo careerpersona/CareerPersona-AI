@@ -18,6 +18,8 @@
 // Routes (Stripe HMAC — no JWT):
 //   POST /webhooks/stripe              → process billing events, invalidate KV
 
+import { extractSkillKeywords } from "./src/lib/compatibility/skills.js";
+
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = [
@@ -495,7 +497,7 @@ function normalizeAdzuna(job) {
     remote: isRemote,
     applyUrl: job.redirect_url || "#",
     datePosted: job.created || null,
-    skills: extractSkills(job.description || ""),
+    skills: extractSkillKeywords(job.description || "", { limit: 8 }),
   };
 }
 
@@ -519,20 +521,8 @@ function normalizeRapid(job) {
     remote: job.job_is_remote || false,
     applyUrl: job.job_apply_link || job.job_google_link || "#",
     datePosted: job.job_posted_at_datetime_utc || null,
-    skills: job.job_required_skills || extractSkills(job.job_description || ""),
+    skills: job.job_required_skills || extractSkillKeywords(job.job_description || "", { limit: 8 }),
   };
-}
-
-function extractSkills(text) {
-  const SKILLS = [
-    "JavaScript","TypeScript","React","Vue","Angular","Node.js","Python","Java",
-    "Go","Rust","C++","C#","PHP","Ruby","Swift","Kotlin","SQL","PostgreSQL",
-    "MySQL","MongoDB","Redis","AWS","Azure","GCP","Docker","Kubernetes","Git",
-    "GraphQL","REST","API","CSS","HTML","Tailwind","Next.js","Express","Django",
-    "FastAPI","Spring","Terraform","CI/CD","Linux","Agile","Scrum",
-  ];
-  const lower = text.toLowerCase();
-  return SKILLS.filter(s => lower.includes(s.toLowerCase())).slice(0, 8);
 }
 
 function deduplicate(jobs) {

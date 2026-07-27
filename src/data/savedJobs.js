@@ -20,6 +20,7 @@ const toRow = (j, userId) => {
     date_posted: j.datePosted || null,
     match_score: j.matchScore != null ? Number(j.matchScore) : null,
     ats_score: j.atsScore != null ? Number(j.atsScore) : null,
+    compatibility_breakdown: j.compatibilityBreakdown ?? null,
     previous_description: j.previous_description ?? null,
     last_synced_at: j.last_synced_at ?? null,
   };
@@ -46,6 +47,7 @@ const fromRow = (r) => ({
   datePosted: r.date_posted || "",
   matchScore: r.match_score,
   atsScore: r.ats_score,
+  compatibilityBreakdown: r.compatibility_breakdown ?? null,
   saved_at: r.created_at,
   previous_description: r.previous_description ?? null,
   last_synced_at: r.last_synced_at ?? null,
