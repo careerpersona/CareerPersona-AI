@@ -1,10 +1,17 @@
 /**
- * verify-compatibility-engine.cjs — confirms the AI Match removal + Career
- * Compatibility Engine refactor: no AI Match UI, Match % appears instantly
- * with no Claude call, no auto Smart Apply generation, manual Smart Apply
- * button still present.
- * Run: node verify-compatibility-engine.cjs
- * Requires dev server running at http://localhost:5183
+ * verify-compatibility-engine.cjs — confirms the deterministic Career
+ * Compatibility Engine (src/lib/compatibility/*) is wired correctly: no
+ * "AI Match" UI anywhere, a Match % badge appears instantly with zero Claude
+ * calls during search, no auto Smart Apply generation fires, and the manual
+ * Smart Apply button is still present.
+ *
+ * When to run: after any change to src/lib/compatibility/*, JobSearchPage's
+ * scoring wiring in src/App.jsx, or worker.js's skill extraction.
+ * Production-safe: no — all Supabase/Worker calls are mocked, including
+ * /api/jobs (fake job fixtures). Local development only.
+ * Prerequisites: dev server running at http://localhost:5183 (update the
+ * BASE port in this file if your dev server runs elsewhere).
+ * Run: node scripts/verify/verify-compatibility-engine.cjs
  */
 const { chromium } = require('playwright');
 
