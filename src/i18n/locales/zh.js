@@ -303,6 +303,7 @@
     contactFieldEmail: "电子邮箱",
     contactFieldPhone: "电话号码",
     issuePlaceholderElsewhere: "其他数据问题 – 见下方",
+    placeholderReviewMessage: "请检查并完善高亮显示的信息。",
     retryGeneration: "重试",
     retryNoResume: "未找到简历。请先在职位搜索中添加您的简历。",
     retryError: "重试失败。请再次尝试。",

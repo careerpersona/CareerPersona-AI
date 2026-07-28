@@ -303,6 +303,7 @@
     contactFieldEmail: "メールアドレス",
     contactFieldPhone: "電話番号",
     issuePlaceholderElsewhere: "その他のデータの問題 – 下記参照",
+    placeholderReviewMessage: "ハイライトされた情報を確認し、入力を完了してください。",
     retryGeneration: "再試行",
     retryNoResume: "履歴書が見つかりません。まず求人検索で履歴書を追加してください。",
     retryError: "再試行に失敗しました。もう一度お試しください。",

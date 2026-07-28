@@ -303,6 +303,7 @@
     contactFieldEmail: "E-posta",
     contactFieldPhone: "Telefon",
     issuePlaceholderElsewhere: "Diğer Veri Sorunu – Aşağıya Bakın",
+    placeholderReviewMessage: "Lütfen vurgulanan bilgileri gözden geçirip tamamlayın.",
     retryGeneration: "Yeniden Dene",
     retryNoResume: "Özgeçmiş bulunamadı. Lütfen önce İş Arama'ya özgeçmişinizi ekleyin.",
     retryError: "Yeniden deneme başarısız. Lütfen tekrar deneyin.",

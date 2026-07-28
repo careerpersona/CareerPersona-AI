@@ -303,6 +303,7 @@
     contactFieldEmail: "E-mail",
     contactFieldPhone: "Telefone",
     issuePlaceholderElsewhere: "Outro problema de dados – Ver abaixo",
+    placeholderReviewMessage: "Revise e complete as informações destacadas.",
     retryGeneration: "Tentar Novamente",
     retryNoResume: "Currículo não encontrado. Por favor, adicione seu currículo na Busca de Empregos primeiro.",
     retryError: "Nova tentativa falhou. Por favor, tente novamente.",

@@ -310,6 +310,7 @@ export default {
     contactFieldEmail: "Email",
     contactFieldPhone: "Phone",
     issuePlaceholderElsewhere: "Other Data Issue – See Below",
+    placeholderReviewMessage: "Please review and complete the highlighted information.",
     retryGeneration: "Retry",
     retryNoResume: "No resume found. Please add your resume in Job Search first.",
     retryError: "Retry failed. Please try again.",

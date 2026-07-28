@@ -303,6 +303,7 @@
     contactFieldEmail: "ईमेल",
     contactFieldPhone: "फ़ोन",
     issuePlaceholderElsewhere: "अन्य डेटा समस्या – नीचे देखें",
+    placeholderReviewMessage: "कृपया हाइलाइट की गई जानकारी की समीक्षा करें और उसे पूरा करें।",
     retryGeneration: "पुनः प्रयास",
     retryNoResume: "कोई रिज्यूमे नहीं मिला। पहले Job Search में अपना रिज्यूमे जोड़ें।",
     retryError: "पुनः प्रयास विफल। कृपया फिर से प्रयास करें।",

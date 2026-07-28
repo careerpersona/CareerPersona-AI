@@ -303,6 +303,7 @@
     contactFieldEmail: "E-mail",
     contactFieldPhone: "Telefoon",
     issuePlaceholderElsewhere: "Ander gegevensprobleem – Zie hieronder",
+    placeholderReviewMessage: "Controleer en vul de gemarkeerde informatie aan.",
     retryGeneration: "Opnieuw proberen",
     retryNoResume: "Geen cv gevonden. Voeg eerst uw cv toe in Vacatures Zoeken.",
     retryError: "Opnieuw proberen mislukt. Probeer het opnieuw.",

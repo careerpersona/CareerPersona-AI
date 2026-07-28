@@ -303,6 +303,7 @@
     contactFieldEmail: "البريد الإلكتروني",
     contactFieldPhone: "الهاتف",
     issuePlaceholderElsewhere: "مشكلة بيانات أخرى – انظر أدناه",
+    placeholderReviewMessage: "يرجى مراجعة المعلومات المميزة وإكمالها.",
     retryGeneration: "إعادة المحاولة",
     retryNoResume: "لم يتم العثور على السيرة الذاتية. يرجى إضافة سيرتك الذاتية في البحث عن الوظائف أولاً.",
     retryError: "فشلت إعادة المحاولة. يرجى المحاولة مرة أخرى.",

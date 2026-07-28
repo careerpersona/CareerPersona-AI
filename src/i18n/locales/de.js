@@ -303,6 +303,7 @@
     contactFieldEmail: "E-Mail",
     contactFieldPhone: "Telefon",
     issuePlaceholderElsewhere: "Andere Dateninkonsistenz – Siehe unten",
+    placeholderReviewMessage: "Bitte überprüfen und vervollständigen Sie die hervorgehobenen Informationen.",
     retryGeneration: "Wiederholen",
     retryNoResume: "Kein Lebenslauf gefunden. Bitte fügen Sie Ihren Lebenslauf zuerst in der Jobsuche hinzu.",
     retryError: "Wiederholung fehlgeschlagen. Bitte versuchen Sie es erneut.",

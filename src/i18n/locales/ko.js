@@ -303,6 +303,7 @@
     contactFieldEmail: "이메일",
     contactFieldPhone: "전화번호",
     issuePlaceholderElsewhere: "기타 데이터 문제 – 아래 참조",
+    placeholderReviewMessage: "강조 표시된 정보를 검토하고 완성해 주세요.",
     retryGeneration: "재시도",
     retryNoResume: "이력서를 찾을 수 없습니다. 먼저 취업 검색에서 이력서를 추가하세요.",
     retryError: "재시도 실패. 다시 시도해 주세요.",

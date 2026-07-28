@@ -303,6 +303,7 @@
     contactFieldEmail: "Электронная почта",
     contactFieldPhone: "Телефон",
     issuePlaceholderElsewhere: "Другая проблема с данными – См. ниже",
+    placeholderReviewMessage: "Пожалуйста, проверьте и дополните выделенную информацию.",
     retryGeneration: "Повторить",
     retryNoResume: "Резюме не найдено. Сначала добавьте резюме в разделе Поиск Работы.",
     retryError: "Повторная попытка не удалась. Пожалуйста, попробуйте снова.",

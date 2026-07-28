@@ -6773,8 +6773,10 @@ Company: ${job.company}${job.description ? `\nDescription: ${job.description.sli
 };
 
 // Placeholder tokens the AI must never leave behind — bracket-enclosed spans like
-// [Name], [Recruiter Name], [LinkedIn] indicate unresolved template content.
-const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/;
+// [Name], [Recruiter Name], [LinkedIn] indicate unresolved template content. Global
+// flag is required: a field can contain more than one distinct unresolved token, and
+// every one of them must be found, not just the first (see findSmartApplyPlaceholders).
+const SMART_APPLY_PLACEHOLDER_RE = /\[[^\[\]]{1,40}\]/g;
 
 // Required Contact Information is validated on the FINAL generated resume, never on the
 // user's profile — a package passes as long as the resume itself contains a name, email,
@@ -6799,8 +6801,11 @@ const checkResumeContactInfo = (tailoredResume, country) => {
 const findSmartApplyPlaceholders = (value, path = "") => {
   const hits = [];
   if (typeof value === "string") {
-    const m = value.match(SMART_APPLY_PLACEHOLDER_RE);
-    if (m) hits.push({ path, token: m[0] });
+    // .match() with the /g/ flag returns every distinct match in the string (not just
+    // the first) — every one is pushed as its own hit so no unresolved token is ever
+    // silently skipped, however many a single field happens to contain.
+    const matches = value.match(SMART_APPLY_PLACEHOLDER_RE);
+    if (matches) matches.forEach(token => hits.push({ path, token }));
   } else if (Array.isArray(value)) {
     value.forEach((v, i) => hits.push(...findSmartApplyPlaceholders(v, path ? `${path}[${i}]` : `[${i}]`)));
   } else if (value && typeof value === "object") {
@@ -6832,8 +6837,10 @@ const validateSmartApplyPackage = (result, country) => {
   for (const field of SMART_APPLY_DOC_FIELDS) {
     // Exact placeholder tokens found in this field's own text, exposed so the UI can
     // underline the specific offending span instead of showing a generic warning.
+    // One "placeholder" issue per token (not capped at one) so the displayed issue
+    // count always matches the true number of unresolved placeholders remaining.
     const placeholderTokens = placeholderTokensByField[field] || [];
-    const issues = placeholderTokens.length ? ["placeholder"] : [];
+    const issues = placeholderTokens.map(() => "placeholder");
     documents[field] = { ok: issues.length === 0, issues, placeholderTokens };
   }
 
@@ -9035,9 +9042,10 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
   // Minimal per-document status: a name + a one-line count ("✅ Ready" or "🔴 N Issues –
   // See Below"), never a reason list. The specific problem is only ever shown as a small
   // highlight on the exact item — a red-underlined field for missing contact info, or the
-  // literal placeholder token underlined in place. Package Validation doesn't check
-  // whether a document generated or how long it is (that's an AI generation concern), so
-  // there's no whole-document highlight state here.
+  // literal placeholder token underlined in place, plus a generic instruction line (never
+  // the raw internal token text) telling the user where to look. Package Validation
+  // doesn't check whether a document generated or how long it is (that's an AI generation
+  // concern), so there's no whole-document highlight state here.
   const renderDocSection = (field, label, storedValue, minHeight) => {
     const doc = integrity.documents[field];
     const statusText = doc.ok
@@ -9057,6 +9065,9 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
               </div>
             ))}
           </div>
+        )}
+        {doc.placeholderTokens.length > 0 && (
+          <div style={{ fontSize: 12, color: C.red, fontWeight: 600, marginBottom: 10 }}>{t("savedJobs.placeholderReviewMessage")}</div>
         )}
         {editingField === field ? (
           <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight }} />
