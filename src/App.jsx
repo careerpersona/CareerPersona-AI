@@ -5854,7 +5854,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
                 {isOptimized ? t("resume.yourOptimizedResume") : t("resume.optimizedPreview")}
               </div>
-              <div id="resume-editor-preview" className={editorHighlight ? "editor-highlight-active" : ""}>
+              {/* minHeight matches the edit textarea's own minHeight so switching between
+                  View Mode (ResumeDoc, height varies with content) and Edit Mode (fixed-
+                  height textarea) doesn't visibly jump the surrounding page layout. */}
+              <div id="resume-editor-preview" className={editorHighlight ? "editor-highlight-active" : ""} style={{ minHeight: 480 }}>
                 {editingPreview ? (
                   <textarea
                     autoFocus
@@ -6971,13 +6974,19 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
   // ── Job Intelligence features ────────────────────────────────────────────
-  const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "relevance");
+  // Default is "match" (highest AI Match Score first) so ranked results are
+  // trustworthy on first view; "relevance" (raw API order) stays selectable.
+  const [sortBy, setSortBy] = useSessionState("cp_jobs_sort", "match");
   const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
   const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready" || q.status === "needs_review"));
   const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
+  // Same match key as isTracked, narrowed to a genuine successful application
+  // (status "Applied", written by SavedJobsPage's handleMarkApplied) so a job
+  // already applied to never lingers in fresh search results.
+  const isApplied = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company && a.status === "Applied");
 
   // Detect same title+company appearing from multiple sources
   const dupeSet = useMemo(() => {
@@ -7009,9 +7018,12 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     return out;
   }, [jobs, resumeText, resumeSkills, profile, skillDictionary]);
 
-  // Sort + dedup derived list — never mutates raw `jobs` session state
+  // Sort + dedup derived list — never mutates raw `jobs` session state.
+  // Successfully-applied jobs are always excluded (not just when hideDupes is
+  // on) so Job Search only ever shows new opportunities and re-applying to
+  // the same listing is never possible from here.
   const displayJobs = useMemo(() => {
-    let result = [...jobs];
+    let result = jobs.filter(j => !isApplied(j));
     if (hideDupes) result = result.filter(j => !dupeSet.has(j.id));
     if (sortBy === "match") {
       result = [...result].sort((a, b) => {
@@ -7023,7 +7035,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       result = [...result].sort((a, b) => new Date(b.datePosted || 0) - new Date(a.datePosted || 0));
     }
     return result;
-  }, [jobs, hideDupes, sortBy, compatibilityByJobId, dupeSet]);
+  }, [jobs, hideDupes, sortBy, compatibilityByJobId, dupeSet, applications]);
 
   const isNewJob = (job) => !!(prevVisitRef.current && job.datePosted && new Date(job.datePosted) > new Date(prevVisitRef.current));
 
@@ -8945,6 +8957,16 @@ const SMART_APPLY_CONTACT_FIELDS = [
   { issue: "missing_phone", labelKey: "savedJobs.contactFieldPhone" },
 ];
 
+// Deterministic, local re-check — no new AI call. A previously-missing skill
+// is considered resolved once its name appears (case-insensitively) anywhere
+// in the freshly-edited tailored resume text, so the Missing Skills list
+// always reflects the newest version of the resume without re-running the
+// original AI analysis.
+const resolvedMissingSkills = (skills, resumeText) => {
+  const lower = String(resumeText || "").toLowerCase();
+  return (skills || []).filter(s => !lower.includes(String(s).toLowerCase()));
+};
+
 function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
   const { t } = useI18n();
   const [editingField, setEditingField] = useState(null);
@@ -9002,6 +9024,14 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
       if (item.status === "ready" || item.status === "needs_review") {
         const merged = { ...smartApplyDocFieldsFromRow(item), [field]: normalizedText };
         patch.status = validateSmartApplyPackage(merged, country).ok ? "ready" : "needs_review";
+      }
+      // Editing the tailored resume is the one place a Missing Skill can actually
+      // become resolved — re-check locally (no new AI call) and drop any skill
+      // that now appears in the updated text, so the list never shows a skill
+      // the user already addressed.
+      if (field === "tailoredResume" && item.missing_skills?.length) {
+        const stillMissing = resolvedMissingSkills(item.missing_skills, normalizedText);
+        if (stillMissing.length !== item.missing_skills.length) patch.missingSkills = stillMissing;
       }
       await patchQueueItem(item.id, patch);
       setEditingField(null);
@@ -9066,12 +9096,9 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
         <Label>{label}</Label>
         <div style={{ fontSize: 12, fontWeight: 700, color: doc.ok ? C.green : C.red, marginBottom: 8 }}>{statusText}</div>
         {missingContactFields.length > 0 && (
-          <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
             {missingContactFields.map(f => (
-              <div key={f.issue} style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>
-                {t(f.labelKey)}
-                <div style={{ width: 72, borderBottom: `2px solid ${C.red}`, marginTop: 4 }} />
-              </div>
+              <div key={f.issue} style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{t(f.labelKey)}</div>
             ))}
           </div>
         )}
@@ -9182,7 +9209,10 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
       )}
       {item.missing_skills?.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 6 }}>{t("savedJobs.missingSkills")}</div>
+          <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 4 }}>{t("savedJobs.missingSkills")}</div>
+          {/* Makes the score -> missing skills -> resume edit -> higher score connection
+              explicit — presentation only, no change to what generates this list. */}
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>{t("savedJobs.missingSkillsExplainer")}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{item.missing_skills.map(s => <Badge key={s} color={C.red}>{s}</Badge>)}</div>
         </div>
       )}
@@ -10016,6 +10046,9 @@ function ProfilePage({ profile, updateProfile }) {
             </ul>
           </div>
         )}
+        {/* Mirrors the validation summary above: immediate feedback exactly where
+            the user performed the save action, not just at the top of the page. */}
+        {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>{t("profile.savedSuccess")}</div>}
         <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? t("profile.saved") : t("profile.saveChanges")}</Btn>
       </Card>
     </div>

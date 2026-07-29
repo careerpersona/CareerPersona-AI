@@ -217,6 +217,7 @@ export function useSmartApplyQueue(userId) {
     if (patch.recruiterMessage !== undefined) dbPatch.recruiter_message = patch.recruiterMessage;
     if (patch.networkingMessage !== undefined) dbPatch.networking_message = patch.networkingMessage;
     if (patch.jobChangeAnalysis !== undefined) dbPatch.job_change_analysis = patch.jobChangeAnalysis;
+    if (patch.missingSkills !== undefined) dbPatch.missing_skills = patch.missingSkills;
     if (patch.status !== undefined) dbPatch.status = patch.status;
     const { error } = await supabase.from(TABLE).update(dbPatch).eq("id", id);
     if (error) throw error;
