@@ -421,6 +421,7 @@
     workTypeOnsite: "Presencial",
     desiredSalaryLabel: "Salario Deseado",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "Corrige lo siguiente antes de guardar:",
     saved: "✓ ¡Guardado!",
     saveChanges: "💾 Guardar Cambios",
   },

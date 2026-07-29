@@ -475,6 +475,7 @@ export default {
     workTypeOnsite: "On-site",
     desiredSalaryLabel: "Desired Salary",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "Please fix the following before saving:",
     saved: "✓ Saved!",
     saveChanges: "💾 Save Changes",
   },

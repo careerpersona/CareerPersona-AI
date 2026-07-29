@@ -421,6 +421,7 @@
     workTypeOnsite: "출근",
     desiredSalaryLabel: "희망 연봉",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "저장하기 전에 다음 항목을 수정해 주세요:",
     saved: "✓ 저장됨!",
     saveChanges: "💾 변경사항 저장",
   },

@@ -1577,8 +1577,17 @@ function Label({ children }) {
   return <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 7 }}>{children}</div>;
 }
 
-function Input({ label, style = {}, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<input style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", ...style }} {...props} /></div>;
+// error: optional validation message string. Omitted by every existing call
+// site (identical rendering to before); when passed, highlights the field
+// with a red border and shows the message directly beneath it.
+function Input({ label, error, style = {}, ...props }) {
+  return (
+    <div>
+      {label && <Label>{label}</Label>}
+      <input style={{ width: "100%", background: "#ffffff", border: `1.5px solid ${error ? C.red : "#E2E8F0"}`, borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", ...style }} {...props} />
+      {error && <div style={{ fontSize: 12, color: C.red, marginTop: 4, fontWeight: 600 }}>{error}</div>}
+    </div>
+  );
 }
 
 function Textarea({ label, style = {}, ...props }) {
@@ -9814,6 +9823,65 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
 }
 
 // ─── PROFILE PAGE ──────────────────────────────────────────
+// ─── Career Profile — country-aware display helpers ────────────────────────
+// Small built-in tables, same convention as POSTAL_PATTERNS in
+// contactNormalization.js: cover common countries explicitly, fall back to a
+// sensible generic default for the rest, so salary/location examples reflect
+// the profile's selected country instead of always assuming the US.
+const COUNTRY_CURRENCY = {
+  US: "USD", CA: "CAD", GB: "GBP", AU: "AUD", DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR",
+  PT: "EUR", NL: "EUR", IE: "EUR", TR: "TRY", RU: "RUB", JP: "JPY", KR: "KRW", CN: "CNY",
+  IN: "INR", SA: "SAR", AE: "AED", EG: "EGP", MX: "MXN", BR: "BRL", CH: "CHF", SE: "SEK",
+  NO: "NOK", PL: "PLN",
+};
+const COUNTRY_LOCALE = {
+  US: "en-US", CA: "en-CA", GB: "en-GB", AU: "en-AU", DE: "de-DE", FR: "fr-FR", ES: "es-ES",
+  IT: "it-IT", PT: "pt-PT", NL: "nl-NL", IE: "en-IE", TR: "tr-TR", RU: "ru-RU", JP: "ja-JP",
+  KR: "ko-KR", CN: "zh-CN", IN: "hi-IN", SA: "ar-SA", AE: "ar-AE", EG: "ar-EG", MX: "es-MX",
+  BR: "pt-BR", CH: "de-CH", SE: "sv-SE", NO: "nb-NO", PL: "pl-PL",
+};
+const LOCATION_PLACEHOLDER_BY_COUNTRY = {
+  US: "San Francisco, CA", CA: "Toronto, ON", GB: "London", AU: "Sydney, NSW", DE: "Berlin",
+  FR: "Paris", ES: "Madrid", IT: "Milan", PT: "Lisbon", NL: "Amsterdam", IE: "Dublin",
+  TR: "Istanbul", RU: "Moscow", JP: "Tokyo", KR: "Seoul", CN: "Shanghai", IN: "Bengaluru",
+  SA: "Riyadh", AE: "Dubai", EG: "Cairo", MX: "Mexico City", BR: "São Paulo", CH: "Zurich",
+  SE: "Stockholm", NO: "Oslo", PL: "Warsaw",
+};
+// Formats a raw digit string as a localized currency amount for display only
+// — the stored value (form.desired_salary) always stays a plain digit
+// string; this never feeds back into what gets saved. Falls back to
+// USD/en-US for any country not in the table above.
+function formatSalaryDisplay(raw, country) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const currency = COUNTRY_CURRENCY[country] || "USD";
+  const locale = COUNTRY_LOCALE[country] || "en-US";
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(digits));
+  } catch {
+    return digits;
+  }
+}
+
+// Every free-text field on Career Profile goes through the same Contact
+// Normalization Service engine (trim + collapse spacing) — "text" fields
+// never fail validation, they only normalize; full_name/email_address/phone
+// are the only fields that can actually block a save.
+const PROFILE_FIELD_SCHEMA = {
+  full_name: "fullName",
+  email_address: "email",
+  phone: "phone",
+  location: "text",
+  job_title: "text",
+  preferred_job_title: "text",
+  preferred_industry: "text",
+};
+const PROFILE_ERROR_MESSAGE_KEY = {
+  full_name: "profile.fullNameRequired",
+  email_address: "profile.invalidEmail",
+  phone: "profile.invalidPhone",
+};
+
 function ProfilePage({ profile, updateProfile }) {
   const { t, language } = useI18n();
   const [form, setForm] = useState({
@@ -9831,6 +9899,10 @@ function ProfilePage({ profile, updateProfile }) {
   });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [salaryFocused, setSalaryFocused] = useState(false);
   const workTypes = [
     { value: "Remote", label: t("profile.workTypeRemote") },
     { value: "Hybrid", label: t("profile.workTypeHybrid") },
@@ -9841,20 +9913,39 @@ function ProfilePage({ profile, updateProfile }) {
     .map(code => ({ code, label: countryDisplayNames.of(code) }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const save = () => {
-    if (!form.full_name.trim()) { setError(t("profile.fullNameRequired")); return; }
-    const ctx = { country: resolveCountry(form.country) };
-    const { values: normalized, errors } = validateFields(form,
-      { full_name: "fullName", email_address: "email", phone: "phone" }, ctx);
-    const ERROR_KEY = { email_address: "profile.invalidEmail", phone: "profile.invalidPhone" };
-    const firstError = Object.keys(errors)[0];
-    if (firstError) { setError(t(ERROR_KEY[firstError])); return; }
-    setError("");
+  // Re-runs the shared normalization/validation engine over the whole form.
+  // Safe to call on every blur: normalization is idempotent, and the only
+  // fields that can ever fail are full_name/email_address/phone.
+  const runValidation = (values) => {
+    const ctx = { country: resolveCountry(values.country) };
+    const { values: normalized, errors: fieldErrors } = validateFields(values, PROFILE_FIELD_SCHEMA, ctx);
+    if (!normalized.full_name.trim()) fieldErrors.full_name = "required";
+    return { normalized, fieldErrors };
+  };
+
+  const handleFieldBlur = (field) => {
+    setTouched(p => ({ ...p, [field]: true }));
+    const { normalized, fieldErrors } = runValidation(form);
     setForm(normalized);
+    setErrors(fieldErrors);
+  };
+
+  const save = () => {
+    const { normalized, fieldErrors } = runValidation(form);
+    setForm(normalized);
+    setErrors(fieldErrors);
+    setSubmitted(true);
+    const firstError = Object.keys(fieldErrors)[0];
+    if (firstError) { setError(t(PROFILE_ERROR_MESSAGE_KEY[firstError])); return; } // invalid data never reaches the database
+    setError("");
     updateProfile(normalized);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
+
+  // Visible once a field has been blurred at least once, or a save was
+  // attempted (whichever happens first) — never on first render.
+  const fieldError = (field) => ((touched[field] || submitted) && errors[field]) ? t(PROFILE_ERROR_MESSAGE_KEY[field]) : undefined;
 
   return (
     <div>
@@ -9882,24 +9973,24 @@ function ProfilePage({ profile, updateProfile }) {
       <Card style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{t("profile.personalInfo")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
-          <Input label={t("profile.fullNameLabel")} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder={t("profile.fullNamePlaceholder")} />
-          <Input label={t("profile.emailLabel")} value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} placeholder={t("profile.emailPlaceholder")} />
-          <Input label={t("profile.phoneLabel")} placeholder={t("profile.phonePlaceholder")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+          <Input label={t("profile.fullNameLabel")} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} onBlur={() => handleFieldBlur("full_name")} placeholder={t("profile.fullNamePlaceholder")} error={fieldError("full_name")} />
+          <Input label={t("profile.emailLabel")} value={form.email_address} onChange={e => setForm(f => ({ ...f, email_address: e.target.value }))} onBlur={() => handleFieldBlur("email_address")} placeholder={t("profile.emailPlaceholder")} error={fieldError("email_address")} />
+          <Input label={t("profile.phoneLabel")} placeholder={t("profile.phonePlaceholder")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} onBlur={() => handleFieldBlur("phone")} error={fieldError("phone")} />
           <Select label={t("profile.countryLabel")} value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))}>
             <option value="">—</option>
             {countryOptions.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
           </Select>
-          <Input label={t("profile.locationLabel")} placeholder={t("profile.locationPlaceholder")} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+          <Input label={t("profile.locationLabel")} placeholder={LOCATION_PLACEHOLDER_BY_COUNTRY[form.country] || t("profile.locationPlaceholder")} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} onBlur={() => handleFieldBlur("location")} />
         </div>
       </Card>
 
       <Card>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 18 }}>{t("profile.careerInfo")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }} className="two-col">
-          <Input label={t("profile.currentJobTitleLabel")} placeholder={t("profile.currentJobTitlePlaceholder")} value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} />
+          <Input label={t("profile.currentJobTitleLabel")} placeholder={t("profile.currentJobTitlePlaceholder")} value={form.job_title} onChange={e => setForm(f => ({ ...f, job_title: e.target.value }))} onBlur={() => handleFieldBlur("job_title")} />
           <Input label={t("profile.yearsExpLabel")} placeholder={t("profile.yearsExpPlaceholder")} value={form.years_experience} onChange={e => setForm(f => ({ ...f, years_experience: e.target.value }))} />
-          <Input label={t("profile.preferredJobTitleLabel")} placeholder={t("profile.preferredJobTitlePlaceholder")} value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} />
-          <Input label={t("profile.preferredIndustryLabel")} placeholder={t("profile.preferredIndustryPlaceholder")} value={form.preferred_industry} onChange={e => setForm(f => ({ ...f, preferred_industry: e.target.value }))} />
+          <Input label={t("profile.preferredJobTitleLabel")} placeholder={t("profile.preferredJobTitlePlaceholder")} value={form.preferred_job_title} onChange={e => setForm(f => ({ ...f, preferred_job_title: e.target.value }))} onBlur={() => handleFieldBlur("preferred_job_title")} />
+          <Input label={t("profile.preferredIndustryLabel")} placeholder={t("profile.preferredIndustryPlaceholder")} value={form.preferred_industry} onChange={e => setForm(f => ({ ...f, preferred_industry: e.target.value }))} onBlur={() => handleFieldBlur("preferred_industry")} />
           <div>
             <Label>{t("profile.preferredWorkType")}</Label>
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
@@ -9908,8 +9999,23 @@ function ProfilePage({ profile, updateProfile }) {
               ))}
             </div>
           </div>
-          <Input label={t("profile.desiredSalaryLabel")} placeholder={t("profile.desiredSalaryPlaceholder")} value={form.desired_salary} onChange={e => setForm(f => ({ ...f, desired_salary: e.target.value }))} />
+          <Input
+            label={t("profile.desiredSalaryLabel")}
+            placeholder={formatSalaryDisplay(120000, form.country) || t("profile.desiredSalaryPlaceholder")}
+            value={salaryFocused ? form.desired_salary : (formatSalaryDisplay(form.desired_salary, form.country) || form.desired_salary)}
+            onFocus={() => setSalaryFocused(true)}
+            onBlur={() => setSalaryFocused(false)}
+            onChange={e => setForm(f => ({ ...f, desired_salary: e.target.value.replace(/[^\d]/g, "") }))}
+          />
         </div>
+        {submitted && Object.keys(errors).length > 0 && (
+          <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, marginBottom: 14 }}>
+            <div style={{ color: C.red, fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{t("profile.pleaseFixFollowing")}</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {Object.keys(errors).map(field => <li key={field} style={{ color: C.red, fontSize: 13 }}>{t(PROFILE_ERROR_MESSAGE_KEY[field])}</li>)}
+            </ul>
+          </div>
+        )}
         <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? t("profile.saved") : t("profile.saveChanges")}</Btn>
       </Card>
     </div>

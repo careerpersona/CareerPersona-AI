@@ -421,6 +421,7 @@
     workTypeOnsite: "ऑन-साइट",
     desiredSalaryLabel: "वांछित वेतन",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "सहेजने से पहले कृपया निम्नलिखित ठीक करें:",
     saved: "✓ सहेजा गया!",
     saveChanges: "💾 परिवर्तन सहेजें",
   },

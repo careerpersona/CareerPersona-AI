@@ -421,6 +421,7 @@
     workTypeOnsite: "В офисе",
     desiredSalaryLabel: "Желаемая зарплата",
     desiredSalaryPlaceholder: "$120 000",
+    pleaseFixFollowing: "Перед сохранением исправьте следующее:",
     saved: "✓ Сохранено!",
     saveChanges: "💾 Сохранить изменения",
   },

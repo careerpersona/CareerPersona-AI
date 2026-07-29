@@ -421,6 +421,7 @@
     workTypeOnsite: "Ofiste",
     desiredSalaryLabel: "İstenen Maaş",
     desiredSalaryPlaceholder: "$120.000",
+    pleaseFixFollowing: "Kaydetmeden önce lütfen aşağıdakileri düzeltin:",
     saved: "✓ Kaydedildi!",
     saveChanges: "💾 Değişiklikleri Kaydet",
   },

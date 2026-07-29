@@ -421,6 +421,7 @@
     workTypeOnsite: "出社",
     desiredSalaryLabel: "希望年収",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "保存する前に以下を修正してください：",
     saved: "✓ 保存しました！",
     saveChanges: "💾 変更を保存",
   },

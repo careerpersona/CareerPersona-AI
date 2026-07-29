@@ -421,6 +421,7 @@
     workTypeOnsite: "في الموقع",
     desiredSalaryLabel: "الراتب المطلوب",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "يرجى إصلاح ما يلي قبل الحفظ:",
     saved: "✓ تم الحفظ!",
     saveChanges: "💾 حفظ التغييرات",
   },

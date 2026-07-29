@@ -32,22 +32,36 @@ import { parsePhoneNumberFromString, isValidPhoneNumber, getCountries } from "li
 // (e.g. existing users who haven't set one yet).
 // ─────────────────────────────────────────────────────────────────────────
 
-// ─── Full Name ──────────────────────────────────────────────────────────
-// Trim + collapse internal whitespace ONLY. Never touch letter casing —
-// "McDonald", "O'Brien", "DeShawn", or a deliberate ALL-CAPS legal name
-// must pass through byte-for-byte in casing.
-export function normalizeFullName(raw) {
+// ─── Generic safe text ──────────────────────────────────────────────────
+// Trim + collapse internal whitespace ONLY. Never touches letter casing or
+// punctuation — "McDonald", "O'Brien", "Senior UX/UI Designer" must pass
+// through byte-for-byte beyond spacing. This is the one shared engine for
+// every free-text field that has no format of its own to validate (name,
+// location, job title, industry, ...) — see FIELD_TYPES.text below.
+export function normalizeText(raw) {
   if (raw == null) return "";
   return String(raw).trim().replace(/\s+/g, " ");
 }
+
+// Kept as its own export for existing call sites and for semantic clarity
+// at the point of use — identical behavior to normalizeText.
+export const normalizeFullName = normalizeText;
 
 // ─── Email ──────────────────────────────────────────────────────────────
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const EMAIL_FULL_RE = new RegExp(`^${EMAIL_RE.source}$`);
 
+// Trims, lowercases, and removes whitespace that landed directly against an
+// "@" or "." — e.g. "John.Doe @ Gmail . com" -> "john.doe@gmail.com". Never
+// touches whitespace anywhere else in the string (e.g. a stray space inside
+// the local part is left alone), so a genuinely broken address still fails
+// isEmailValid and falls through to manual correction rather than being
+// guessed at.
 export function normalizeEmail(raw) {
   if (raw == null) return "";
-  return String(raw).trim().toLowerCase();
+  return String(raw).trim().toLowerCase()
+    .replace(/\s*@\s*/g, "@")
+    .replace(/\s*\.\s*/g, ".");
 }
 
 // Structured single-field check: empty is fine (presence is the caller's
@@ -233,6 +247,10 @@ export function resolveCountry(...candidates) {
 // would ever require a change to this file, and it's a single new entry.
 export const FIELD_TYPES = {
   fullName: { normalize: (v) => normalizeFullName(v), validate: () => true },
+  // Generic safe-text field: trims/collapses spacing only, no format to
+  // validate. Use for any free-text field with no structure of its own
+  // (location, job title, industry, ...) instead of writing a new type.
+  text: { normalize: (v) => normalizeText(v), validate: () => true },
   email: { normalize: (v) => normalizeEmail(v), validate: (v) => isEmailValid(v) },
   phone: { normalize: (v, ctx) => normalizePhone(v, ctx?.country), validate: (v, ctx) => isPhoneValid(v, ctx?.country) },
   url: { normalize: (v) => normalizeUrl(v), validate: () => true },

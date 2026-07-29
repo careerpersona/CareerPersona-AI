@@ -421,6 +421,7 @@
     workTypeOnsite: "现场办公",
     desiredSalaryLabel: "期望薪资",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "请在保存前修正以下问题：",
     saved: "✓ 已保存！",
     saveChanges: "💾 保存更改",
   },

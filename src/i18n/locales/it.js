@@ -421,6 +421,7 @@
     workTypeOnsite: "In sede",
     desiredSalaryLabel: "Stipendio Desiderato",
     desiredSalaryPlaceholder: "$120.000",
+    pleaseFixFollowing: "Correggi quanto segue prima di salvare:",
     saved: "✓ Salvato!",
     saveChanges: "💾 Salva Modifiche",
   },

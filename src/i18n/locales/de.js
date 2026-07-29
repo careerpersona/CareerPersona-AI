@@ -421,6 +421,7 @@
     workTypeOnsite: "Vor Ort",
     desiredSalaryLabel: "Gewünschtes Gehalt",
     desiredSalaryPlaceholder: "$120.000",
+    pleaseFixFollowing: "Bitte korrigieren Sie Folgendes vor dem Speichern:",
     saved: "✓ Gespeichert!",
     saveChanges: "💾 Änderungen Speichern",
   },

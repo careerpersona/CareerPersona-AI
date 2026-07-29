@@ -421,6 +421,7 @@
     workTypeOnsite: "Sur site",
     desiredSalaryLabel: "Salaire Souhaité",
     desiredSalaryPlaceholder: "$120,000",
+    pleaseFixFollowing: "Veuillez corriger les éléments suivants avant d'enregistrer :",
     saved: "✓ Enregistré !",
     saveChanges: "💾 Enregistrer les Modifications",
   },

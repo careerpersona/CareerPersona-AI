@@ -421,6 +421,7 @@
     workTypeOnsite: "Op locatie",
     desiredSalaryLabel: "Gewenst Salaris",
     desiredSalaryPlaceholder: "$120.000",
+    pleaseFixFollowing: "Los het volgende op voordat je opslaat:",
     saved: "✓ Opgeslagen!",
     saveChanges: "💾 Wijzigingen Opslaan",
   },
