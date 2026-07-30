@@ -8368,6 +8368,16 @@ const STATUSES = ["Applied","Phone Screen","Interview","Final Interview","Offer"
 // Single source of truth for status color -- reused by summary cards, filter chips,
 // the status dropdown, and status badges so all four stay visually in sync.
 const SCOLOR = { Applied: C.blue, "Phone Screen": C.orange, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: C.borderStrong, Ghosted: C.text };
+// Fixed pixel width for the Status Indicator, same principle as NAV_PILL_WIDTH:
+// measured directly against the live rendered pill (gap:0 override + compact
+// padding, so dot/text/arrow spacing isn't wasted) so the longest English
+// label ("Final Interview ▾", ~123px natural) never clips; wider translations
+// clip with an ellipsis and the full label is available via the title
+// tooltip. Keeps View/Edit/Delete from shifting horizontally when the status
+// changes -- same fix as the nav pill stabilization. Sized as tight as the
+// longest label allows so Status/View/Edit/Delete fit a single row on
+// 320px-class phones without needing to scroll.
+const STATUS_INDICATOR_WIDTH = 126;
 // "All" is a view filter, not a hiring status -- kept visually neutral rather than
 // reusing a status color so it doesn't read as an implied 9th status.
 const NEUTRAL_FILTER_COLOR = C.textMuted;
@@ -8559,32 +8569,42 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                 {app.resumeId && resumes && (() => { const r = resumes.find(x => x.id === app.resumeId); return r ? <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>📄 {r.name}{r.version_label ? ` · ${r.version_label}` : ""}</div> : null; })()}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
-                {/* Status Indicator -- the status display IS the status control, same
-                    dropdown-on-click pattern as the Networking module's contact status pill. */}
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <Btn variant="ghost" style={{ borderRadius: 20, padding: "5px 14px", fontSize: 12, background: `${SCOLOR[app.status] || C.textMuted}15`, color: SCOLOR[app.status] || C.textMuted, border: `1px solid ${SCOLOR[app.status] || C.textMuted}30` }} loading={updatingStatusId === app.id} onClick={() => setOpenStatusMenu(openStatusMenu === app.id ? null : app.id)}>
-                    <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: SCOLOR[app.status] || C.textMuted, marginRight: 7, flexShrink: 0 }} />
-                    {app.status ? tStatus(app.status) : t("tracker.statusUnknown")} ▾
-                  </Btn>
-                  {openStatusMenu === app.id && (
-                    <div>
-                      <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
-                      <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
-                        {STATUSES.map(s => (
-                          <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
-                            <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
-                            {tStatus(s)}
-                          </Btn>
-                        ))}
+                {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6, flexShrink: 0 }}>ATS {app.atsScore}</span>}
+                {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>{t("tracker.job")}</a>}
+                {/* Status, View, Edit, Delete always stay together on one row, in a fixed
+                    order and spacing, regardless of viewport or which status is selected.
+                    flexWrap:nowrap guarantees they never break onto separate lines; overflowX
+                    is a scroll fallback (same principle as the summary-chip row above) rather
+                    than letting the row silently overflow on an unusually narrow device. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  {/* Status Indicator -- the status display IS the status control, same
+                      dropdown-on-click pattern as the Networking module's contact status pill. */}
+                  <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
+                    <Btn variant="ghost" title={app.status ? tStatus(app.status) : t("tracker.statusUnknown")} style={{ width: STATUS_INDICATOR_WIDTH, flexShrink: 0, justifyContent: "center", gap: 0, borderRadius: 16, padding: "4px 6px", fontSize: 12, background: `${SCOLOR[app.status] || C.textMuted}15`, color: SCOLOR[app.status] || C.textMuted, border: `1px solid ${SCOLOR[app.status] || C.textMuted}30` }} loading={updatingStatusId === app.id} onClick={() => setOpenStatusMenu(openStatusMenu === app.id ? null : app.id)}>
+                      {/* gap:0 above overrides Btn's base flex gap so this margin is the
+                          ONLY space between the dot and the label -- avoids the two rules
+                          stacking into a double gap. */}
+                      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: SCOLOR[app.status] || C.textMuted, marginRight: 4, flexShrink: 0 }} />
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{app.status ? tStatus(app.status) : t("tracker.statusUnknown")} ▾</span>
+                    </Btn>
+                    {openStatusMenu === app.id && (
+                      <div>
+                        <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
+                        <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
+                          {STATUSES.map(s => (
+                            <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
+                              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
+                              {tStatus(s)}
+                            </Btn>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
+                  <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
+                  <Btn variant="danger" style={{ padding: "5px 9px", fontSize: 12, flexShrink: 0 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
                 </div>
-                {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
-                {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>{t("tracker.job")}</a>}
-                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
-                <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
               </div>
             </div>
           </div>
