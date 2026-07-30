@@ -8365,7 +8365,12 @@ Return ONLY this JSON (no markdown):
 
 // ─── TRACKER PAGE ──────────────────────────────────────────
 const STATUSES = ["Applied","Phone Screen","Interview","Final Interview","Offer","Rejected","Withdrawn","Ghosted"];
-const SCOLOR = { Applied: C.blue, "Phone Screen": C.yellow, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: "#9333EA", Ghosted: C.textMuted };
+// Single source of truth for status color -- reused by summary cards, filter chips,
+// the status dropdown, and status badges so all four stay visually in sync.
+const SCOLOR = { Applied: C.blue, "Phone Screen": C.orange, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: C.borderStrong, Ghosted: C.text };
+// "All" is a view filter, not a hiring status -- kept visually neutral rather than
+// reusing a status color so it doesn't read as an implied 9th status.
+const NEUTRAL_FILTER_COLOR = C.textMuted;
 
 const STATUS_LABEL_KEY = { Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
 
@@ -8379,8 +8384,39 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
   const [deletingId, setDeletingId] = useState(null);
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openStatusMenu, setOpenStatusMenu] = useState(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
+  const [statusToast, setStatusToast] = useState(false);
+  const statusToastTimer = useRef(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = e => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const blankForm = { company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" };
+
+  // Quick status change from the row-level dropdown -- reuses the same saveApplication
+  // (upsert) path as the full edit form, just with only `status` changed, so there is
+  // no second/duplicate write path and no risk of clobbering the app's other fields.
+  const quickUpdateStatus = async (app, newStatus) => {
+    setOpenStatusMenu(null);
+    if (app.status === newStatus) return;
+    setUpdatingStatusId(app.id);
+    setSaveError("");
+    try {
+      await saveApplication({ ...app, status: newStatus });
+      if (statusToastTimer.current) clearTimeout(statusToastTimer.current);
+      setStatusToast(true);
+      statusToastTimer.current = setTimeout(() => setStatusToast(false), 3500);
+    } catch {
+      setSaveError(t("tracker.saveFailed"));
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
 
   const save = async () => {
     const errors = {};
@@ -8459,13 +8495,23 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
     <div>
       {deleteError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{deleteError}</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{saveError}</div>}
+      {/* Quick status-change confirmation -- same fixed-position toast pattern used
+          by Job Tracker's track confirmation, for visual consistency across the app. */}
+      {statusToast && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: isMobile ? "calc(20px + env(safe-area-inset-bottom, 0px))" : 24, display: "flex", justifyContent: isMobile ? "center" : "flex-end", padding: isMobile ? "0 16px" : "0 24px", zIndex: 60, pointerEvents: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: isMobile ? "cp-toast-in-mobile 0.35s ease-out" : "cp-toast-in 0.25s ease-out" }}>
+            <span style={{ fontSize: 16 }}>✓</span>
+            <span>{t("tracker.statusUpdated")}</span>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
         <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p><p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>{t("tracker.workflowHint")}</p></div>
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
       {applications.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
-          <div onClick={() => setFilterStatus("All")} style={{ cursor: "pointer", background: `${C.purple}12`, border: `1.5px solid ${filterStatus === "All" ? C.purple : C.purple + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.purple }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.total")}</div></div>
+          <div onClick={() => setFilterStatus("All")} style={{ cursor: "pointer", background: `${NEUTRAL_FILTER_COLOR}12`, border: `1.5px solid ${filterStatus === "All" ? NEUTRAL_FILTER_COLOR : NEUTRAL_FILTER_COLOR + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: NEUTRAL_FILTER_COLOR }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.total")}</div></div>
           {STATUSES.filter(s => stats[s] > 0).map(s => <div key={s} onClick={() => setFilterStatus(filterStatus === s ? "All" : s)} style={{ cursor: "pointer", background: `${SCOLOR[s]}12`, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] : SCOLOR[s] + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: SCOLOR[s] }}>{stats[s]}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{tStatus(s)}</div></div>)}
           {successRate !== null && <div style={{ background: `${C.green}12`, border: `1.5px solid ${C.green}40`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{successRate}%</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.successRate")}</div></div>}
         </div>
@@ -8476,7 +8522,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
         </div>
       )}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {["All", ...STATUSES].map(s => <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || C.purple : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || C.purple}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || C.purple : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>{s === "All" ? t("tracker.all") : tStatus(s)}</Btn>)}
+        {["All", ...STATUSES].map(s => <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] || NEUTRAL_FILTER_COLOR : C.border}`, background: filterStatus === s ? `${SCOLOR[s] || NEUTRAL_FILTER_COLOR}12` : "#fff", color: filterStatus === s ? SCOLOR[s] || NEUTRAL_FILTER_COLOR : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>{s === "All" ? t("tracker.all") : tStatus(s)}</Btn>)}
       </div>
       {showForm && (
         <Card style={{ marginBottom: 20, border: `1.5px solid ${C.purple}30` }}>
@@ -8489,7 +8535,6 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
             <div><Input label={t("tracker.companyLabel")} placeholder={t("tracker.companyPlaceholder")} value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} style={formErrors.company ? { borderColor: C.red } : {}} />{formErrors.company && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.company}</div>}</div>
             <div><Input label={t("tracker.jobTitleLabel")} placeholder={t("tracker.jobTitlePlaceholder")} value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} style={formErrors.jobTitle ? { borderColor: C.red } : {}} />{formErrors.jobTitle && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.jobTitle}</div>}</div>
-            <Select label={t("tracker.statusLabel")} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>{STATUSES.map(s => <option key={s} value={s}>{tStatus(s)}</option>)}</Select>
             <Input label={t("tracker.dateAppliedLabel")} type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
             <div><Input label={t("tracker.followUpDateLabel")} type="date" value={form.followUpDate} onChange={e => setForm(f => ({ ...f, followUpDate: e.target.value }))} style={formErrors.followUpDate ? { borderColor: C.red } : {}} />{formErrors.followUpDate && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.followUpDate}</div>}</div>
             <div><Input label={t("tracker.atsScoreLabel")} type="number" min="0" max="100" placeholder={t("tracker.atsScorePlaceholder")} value={form.atsScore} onChange={e => setForm(f => ({ ...f, atsScore: e.target.value }))} style={formErrors.atsScore ? { borderColor: C.red } : {}} />{formErrors.atsScore && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.atsScore}</div>}</div>
@@ -8515,10 +8560,30 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6 }}>ATS {app.atsScore}</span>}
-                <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status ? tStatus(app.status) : t("tracker.statusUnknown")}</Badge>
+                {/* Status Indicator -- the status display IS the status control, same
+                    dropdown-on-click pattern as the Networking module's contact status pill. */}
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <Btn variant="ghost" style={{ borderRadius: 20, padding: "5px 14px", fontSize: 12, background: `${SCOLOR[app.status] || C.textMuted}15`, color: SCOLOR[app.status] || C.textMuted, border: `1px solid ${SCOLOR[app.status] || C.textMuted}30` }} loading={updatingStatusId === app.id} onClick={() => setOpenStatusMenu(openStatusMenu === app.id ? null : app.id)}>
+                    <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: SCOLOR[app.status] || C.textMuted, marginRight: 7, flexShrink: 0 }} />
+                    {app.status ? tStatus(app.status) : t("tracker.statusUnknown")} ▾
+                  </Btn>
+                  {openStatusMenu === app.id && (
+                    <div>
+                      <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
+                      <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
+                        {STATUSES.map(s => (
+                          <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
+                            <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
+                            {tStatus(s)}
+                          </Btn>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>{t("tracker.job")}</a>}
-                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.updateApplication")}</Btn>
+                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
                 <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
               </div>
             </div>
