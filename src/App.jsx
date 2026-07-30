@@ -8573,10 +8573,14 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>{t("tracker.job")}</a>}
                 {/* Status, View, Edit, Delete always stay together on one row, in a fixed
                     order and spacing, regardless of viewport or which status is selected.
-                    flexWrap:nowrap guarantees they never break onto separate lines; overflowX
-                    is a scroll fallback (same principle as the summary-chip row above) rather
-                    than letting the row silently overflow on an unusually narrow device. */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    flexWrap:nowrap guarantees they never break onto separate lines. No
+                    overflowX here deliberately: setting overflow-x clips overflow-y too
+                    (CSS spec forces the visible axis to become "auto" once the other isn't
+                    visible), which silently clipped the status dropdown menu -- a real
+                    regression caught in production. Verified via direct measurement (see
+                    STATUS_INDICATOR_WIDTH) that this row fits with zero overflow down to a
+                    320px viewport, so no scroll fallback is needed here. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
                   {/* Status Indicator -- the status display IS the status control, same
                       dropdown-on-click pattern as the Networking module's contact status pill. */}
                   <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
