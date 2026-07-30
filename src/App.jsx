@@ -8370,14 +8370,14 @@ const STATUSES = ["Applied","Phone Screen","Interview","Final Interview","Offer"
 const SCOLOR = { Applied: C.blue, "Phone Screen": C.orange, Interview: C.purple, "Final Interview": "#7C3AED", Offer: C.green, Rejected: C.red, Withdrawn: C.borderStrong, Ghosted: C.text };
 // Fixed pixel width for the Status Indicator, same principle as NAV_PILL_WIDTH:
 // measured directly against the live rendered pill (gap:0 override + compact
-// padding, so dot/text/arrow spacing isn't wasted) so the longest English
-// label ("Final Interview ▾", ~123px natural) never clips; wider translations
-// clip with an ellipsis and the full label is available via the title
-// tooltip. Keeps View/Edit/Delete from shifting horizontally when the status
-// changes -- same fix as the nav pill stabilization. Sized as tight as the
-// longest label allows so Status/View/Edit/Delete fit a single row on
-// 320px-class phones without needing to scroll.
-const STATUS_INDICATOR_WIDTH = 126;
+// horizontal padding, vertical padding matched to View/Edit/Delete's height
+// for visual consistency) so the longest English label ("Final Interview ▾",
+// ~123px natural) never clips; wider translations clip with an ellipsis and
+// the full label is available via the title tooltip. Keeps View/Edit/Delete
+// from shifting horizontally when the status changes -- same fix as the nav
+// pill stabilization. borderRadius:20 matches this app's existing colored
+// status-pill convention (see statusColor/statusBg usage elsewhere).
+const STATUS_INDICATOR_WIDTH = 128;
 // "All" is a view filter, not a hiring status -- kept visually neutral rather than
 // reusing a status color so it doesn't read as an implied 9th status.
 const NEUTRAL_FILTER_COLOR = C.textMuted;
@@ -8568,7 +8568,11 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                 {app.contactName && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>👤 {app.contactName}{app.contactEmail ? ` · ${app.contactEmail}` : ""}</div>}
                 {app.resumeId && resumes && (() => { const r = resumes.find(x => x.id === app.resumeId); return r ? <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>📄 {r.name}{r.version_label ? ` · ${r.version_label}` : ""}</div> : null; })()}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flexBasis: isMobile ? "100%" : "auto", minWidth: 0 }}>
+                {/* flexBasis:100% on mobile makes this whole actions cluster claim the
+                    full card width once it wraps below the info block -- without this,
+                    the inner Status/View/Edit/Delete group's own flexBasis:100% would
+                    only be 100% of THIS wrapper's shrink-to-fit width, not the card's. */}
                 {app.atsScore > 0 && <span style={{ fontSize: 12, color: C.blue, fontWeight: 700, background: C.blueLight, padding: "3px 9px", borderRadius: 6, flexShrink: 0 }}>ATS {app.atsScore}</span>}
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>{t("tracker.job")}</a>}
                 {/* Status, View, Edit, Delete always stay together on one row, in a fixed
@@ -8577,14 +8581,20 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                     overflowX here deliberately: setting overflow-x clips overflow-y too
                     (CSS spec forces the visible axis to become "auto" once the other isn't
                     visible), which silently clipped the status dropdown menu -- a real
-                    regression caught in production. Verified via direct measurement (see
-                    STATUS_INDICATOR_WIDTH) that this row fits with zero overflow down to a
-                    320px viewport, so no scroll fallback is needed here. */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
+                    regression caught in production. The Status pill (below) is therefore
+                    kept OUTSIDE any overflow container, always; only View/Edit/Delete
+                    (plain buttons with no dropdown of their own) sit inside one, as a
+                    genuine fallback for extreme widths rather than something that can
+                    ever reclip the menu. */}
+                <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 0 : 6, flexWrap: "nowrap", flexBasis: isMobile ? "100%" : "auto", minWidth: 0, justifyContent: isMobile ? "space-between" : "flex-start" }}>
                   {/* Status Indicator -- the status display IS the status control, same
-                      dropdown-on-click pattern as the Networking module's contact status pill. */}
+                      dropdown-on-click pattern as the Networking module's contact status pill.
+                      flexBasis:100% on mobile forces this group onto its own full-width line
+                      (pushing any ATS/Job badges above it) and justifyContent:space-between
+                      spreads Status and the View/Edit/Delete cluster across that width instead
+                      of clustering them left with dead space on the right. */}
                   <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
-                    <Btn variant="ghost" title={app.status ? tStatus(app.status) : t("tracker.statusUnknown")} style={{ width: STATUS_INDICATOR_WIDTH, flexShrink: 0, justifyContent: "center", gap: 0, borderRadius: 16, padding: "4px 6px", fontSize: 12, background: `${SCOLOR[app.status] || C.textMuted}15`, color: SCOLOR[app.status] || C.textMuted, border: `1px solid ${SCOLOR[app.status] || C.textMuted}30` }} loading={updatingStatusId === app.id} onClick={() => setOpenStatusMenu(openStatusMenu === app.id ? null : app.id)}>
+                    <Btn variant="ghost" title={app.status ? tStatus(app.status) : t("tracker.statusUnknown")} style={{ width: STATUS_INDICATOR_WIDTH, flexShrink: 0, justifyContent: "center", gap: 0, borderRadius: 20, padding: "5px 6px", fontSize: 12, background: `${SCOLOR[app.status] || C.textMuted}15`, color: SCOLOR[app.status] || C.textMuted, border: `1px solid ${SCOLOR[app.status] || C.textMuted}30` }} loading={updatingStatusId === app.id} onClick={() => setOpenStatusMenu(openStatusMenu === app.id ? null : app.id)}>
                       {/* gap:0 above overrides Btn's base flex gap so this margin is the
                           ONLY space between the dot and the label -- avoids the two rules
                           stacking into a double gap. */}
@@ -8605,9 +8615,14 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                       </div>
                     )}
                   </div>
-                  {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
-                  <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
-                  <Btn variant="danger" style={{ padding: "5px 9px", fontSize: 12, flexShrink: 0 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
+                  {/* View/Edit/Delete have no dropdown or other overflowing descendant, so
+                      it's safe to give this cluster its own scroll fallback -- unlike the
+                      Status pill above, clipping here can never hide an open menu. */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", overflowX: "auto", minWidth: 0 }}>
+                    {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
+                    <Btn variant="ghost" style={{ padding: "5px 8px", fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
+                    <Btn variant="danger" style={{ padding: "5px 9px", fontSize: 12, flexShrink: 0 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
+                  </div>
                 </div>
               </div>
             </div>
