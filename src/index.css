@@ -101,3 +101,21 @@ code {
     transform: translateY(0);
   }
 }
+
+/* Slightly more pronounced entrance for mobile toasts -- a small overshoot
+   draws the eye immediately after a tap, when attention is still on the
+   card rather than the bottom of the screen. */
+@keyframes cp-toast-in-mobile {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.94);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -7033,7 +7033,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     const row = await jobWatchlist.add(job);
     if (trackToastTimer.current) clearTimeout(trackToastTimer.current);
     setTrackToast({ message: t("jobSearch.trackToast").replace("{company}", job.company), undoId: row?.id });
-    trackToastTimer.current = setTimeout(() => setTrackToast(null), 5000);
+    // 8s gives enough time to read the message, register "no application created",
+    // and decide between Undo / View Job Tracker before it auto-dismisses.
+    trackToastTimer.current = setTimeout(() => setTrackToast(null), 8000);
     if (!hasSeenTrackIntro) { setShowTrackIntro(true); setHasSeenTrackIntro(true); }
   };
   const undoTrack = async () => {
@@ -7487,11 +7489,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       )}
       {/* Post-track confirmation toast — instant, local, reversible; never a navigation.
           Fixed-position (bottom-right desktop, bottom-center mobile) so it stays visible
-          regardless of scroll position within the results list. */}
+          regardless of scroll position within the results list. Mobile gets a bolder
+          presentation (badge icon, stronger shadow, overshoot entrance) since that's
+          where it's easiest to miss right after a tap. */}
       {trackToast && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: isMobile ? 16 : 24, display: "flex", justifyContent: isMobile ? "center" : "flex-end", padding: isMobile ? "0 16px" : "0 24px", zIndex: 60, pointerEvents: "none" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: "cp-toast-in 0.25s ease-out" }}>
-            <span style={{ fontSize: 16 }}>✓</span>
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: isMobile ? "calc(20px + env(safe-area-inset-bottom, 0px))" : 24, display: "flex", justifyContent: isMobile ? "center" : "flex-end", padding: isMobile ? "0 16px" : "0 24px", zIndex: 60, pointerEvents: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderLeft: isMobile ? `4px solid ${C.green}` : `1px solid ${C.green}30`, borderRadius: 10, padding: isMobile ? "14px 16px" : "10px 16px", fontSize: isMobile ? 14 : 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: isMobile ? "0 12px 32px rgba(0,0,0,0.22)" : "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: isMobile ? "cp-toast-in-mobile 0.35s ease-out" : "cp-toast-in 0.25s ease-out" }}>
+            {isMobile ? (
+              <span style={{ width: 24, height: 24, borderRadius: "50%", background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>✓</span>
+            ) : (
+              <span style={{ fontSize: 16 }}>✓</span>
+            )}
             <span style={{ flex: 1 }}>{trackToast.message}</span>
             <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={undoTrack}>{t("jobSearch.undo")}</Btn>
             <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={() => onNavigate?.("jobtracker")}>{t("jobSearch.trackIntroViewLink")}</Btn>
