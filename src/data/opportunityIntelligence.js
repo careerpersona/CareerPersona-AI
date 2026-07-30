@@ -61,5 +61,16 @@ export function useCompanyWatchlist(userId) {
     setWatchlist(prev => prev.map(c => c.id === id ? { ...c, notes } : c));
   }, [userId]);
 
-  return { watchlist, loading, add, remove, updateStatus, updateNotes };
+  // Records the best Match % seen among a tracked company's open roles, so a
+  // later, higher-scoring role can be detected as "meaningfully better than
+  // anything seen before" without a second table (Job Tracker Blueprint §8).
+  const updateBestSeenMatch = useCallback(async (id, bestSeenMatch) => {
+    if (!userId) return;
+    const patch = { best_seen_match: bestSeenMatch, last_checked_at: new Date().toISOString() };
+    const { error } = await supabase.from(TABLE).update(patch).eq("id", id).eq("user_id", userId);
+    if (error) throw error;
+    setWatchlist(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  }, [userId]);
+
+  return { watchlist, loading, add, remove, updateStatus, updateNotes, updateBestSeenMatch };
 }

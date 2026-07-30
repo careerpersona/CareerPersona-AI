@@ -21,6 +21,7 @@ import { useUserContext } from "./data/userContext";
 import { loadSkillSynonyms } from "./data/skillSynonyms";
 import { extractSkillKeywords, buildCompatibilityRecord } from "./lib/compatibility";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
+import { useJobWatchlist } from "./data/jobWatchlist";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
 import { LANGUAGES } from "./i18n/languages";
@@ -425,6 +426,11 @@ function _devMockRoute(prompt) {
   // ── Job Change Analysis ───────────────────────────────────────────────────
   if (p.includes("compare these two job descriptions")) {
     return JSON.stringify({ summary: "The employer raised the experience bar and added cloud-native tooling requirements.", newSkills: ["TypeScript", "AWS Lambda"], removedSkills: ["jQuery"], responsibilitiesChanged: "Team leadership added — the role now requires mentoring junior engineers.", experienceChanged: "Minimum experience increased from 3 to 5 years.", educationChanged: null, toolsChanged: ["Docker", "Kubernetes"], workAuthorizationChanged: null, otherChanges: [] });
+  }
+
+  // ── Job Tracker Change Interpretation ─────────────────────────────────────
+  if (p.includes("just changed. facts already computed")) {
+    return "The salary increase brings this role closer to your target, worth a second look.";
   }
 
   // ── Fallback ───────────────────────────────────────────────────────────────
@@ -6898,6 +6904,37 @@ const smartApplyDocFieldsFromRow = (item) => ({
   companyInsight: item.company_insight,
 });
 
+// Job Tracker "why this changed" interpretation (AI Justification Rule):
+// given already-computed deterministic facts about what changed on a
+// tracked job, produce ONE short sentence on whether it matters to this
+// specific user. Never asked to describe or summarize the job posting
+// itself -- that would be narration, not interpretation. Fired only when a
+// real change was detected (event-triggered), never on a timer or per-poll.
+const buildJobTrackerChangePrompt = (facts, profile) =>
+  `A job the user is tracking (a watchlist, not an application) just changed. Facts already computed -- do not restate or describe the job posting itself, only interpret significance:
+${facts.join("\n")}
+
+User's desired salary: ${profile?.desired_salary || "not set"}.
+
+In ONE short sentence (max ~20 words), explain whether this change is meaningful for this specific user and why. If it's not meaningful, say so plainly. Return ONLY that sentence -- no JSON, no preamble, no quotes.`;
+
+async function interpretJobTrackerChange(row, patch, profile) {
+  const facts = [];
+  const salaryBefore = row.salary_min || row.salary_max;
+  const salaryAfter = patch.salary_min || patch.salary_max;
+  if (salaryBefore !== salaryAfter && (salaryBefore || salaryAfter)) {
+    facts.push(`- Salary changed from ${salaryBefore ? `$${salaryBefore}` : "unlisted"} to ${salaryAfter ? `$${salaryAfter}` : "unlisted"}.`);
+  }
+  if ((patch.description || "") !== (row.description || "")) facts.push("- The job's requirements/description text changed.");
+  if (!facts.length) return null;
+  try {
+    const raw = await askClaude(buildJobTrackerChangePrompt(facts, profile), 120, "job_tracker_change");
+    return raw?.trim().replace(/^"|"$/g, "").slice(0, 300) || null;
+  } catch {
+    return null; // interpretation is best-effort -- the change itself is still recorded without it
+  }
+}
+
 const buildJobChangePrompt = (prev, curr) =>
   `Compare these two job descriptions and identify only the meaningful changes that would affect an applicant's materials (cover letter, resume, recruiter message).
 
@@ -6957,7 +6994,7 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
   );
 }
 
-function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume }) {
+function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume, jobWatchlist, companyWatchlist }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "US", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
@@ -6982,7 +7019,27 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
   const prevVisitRef = useRef(lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready" || q.status === "needs_review"));
-  const isTracked = (job) => applications.some(a => a.jobTitle === job.title && a.company === job.company);
+  // Job Tracker (watchlist), fully independent of applications/smart_apply_queue —
+  // see the Explicit Non-Behavior Checklist in the Job Tracker blueprints.
+  const isTracked = (job) => (jobWatchlist?.watchlist || []).some(w => w.job_id === job.id);
+  const [trackToast, setTrackToast] = useState(null); // { message, undo } | null
+  const trackToastTimer = useRef(null);
+  const [hasSeenTrackIntro, setHasSeenTrackIntro] = useStorage("cp_seen_track_intro", false);
+  const [showTrackIntro, setShowTrackIntro] = useState(false);
+  const toggleTrack = async (job) => {
+    if (!jobWatchlist) return;
+    const existing = (jobWatchlist.watchlist || []).find(w => w.job_id === job.id);
+    if (existing) { await jobWatchlist.remove(existing.id); return; }
+    const row = await jobWatchlist.add(job);
+    if (trackToastTimer.current) clearTimeout(trackToastTimer.current);
+    setTrackToast({ message: t("jobSearch.trackToast").replace("{company}", job.company), undoId: row?.id });
+    trackToastTimer.current = setTimeout(() => setTrackToast(null), 5000);
+    if (!hasSeenTrackIntro) { setShowTrackIntro(true); setHasSeenTrackIntro(true); }
+  };
+  const undoTrack = async () => {
+    if (trackToast?.undoId) await jobWatchlist.remove(trackToast.undoId);
+    setTrackToast(null);
+  };
   // Same match key as isTracked, narrowed to a genuine successful application
   // (status "Applied", written by SavedJobsPage's handleMarkApplied) so a job
   // already applied to never lingers in fresh search results.
@@ -7185,7 +7242,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
       // Sync saved job data from fresh API results — Match % itself is computed
       // synchronously by the Career Compatibility Engine (compatibilityByJobId),
       // no Claude call and no explicit trigger needed here.
-      if (newJobs.length > 0) syncSavedJobData(newJobs);
+      if (newJobs.length > 0) { syncSavedJobData(newJobs); syncJobTrackerData(newJobs); }
     } catch (e) {
       setError(t("jobSearch.searchFailed").replace("{message}", e.message));
     } finally {
@@ -7340,6 +7397,59 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     });
   };
 
+  // Job Tracker change detection — passive, fires only when a fresh search
+  // happens to resurface a tracked job/company, the same honest scope as
+  // Employer Change Intelligence above (no scheduled backend polling exists
+  // yet — see Job Tracker Blueprint §8/§12). Never touches saved_jobs,
+  // applications, or smart_apply_queue.
+  const syncJobTrackerData = async (freshJobs) => {
+    if (!jobWatchlist) return;
+    const freshById = new Map(freshJobs.map(j => [j.id, j]));
+
+    for (const row of jobWatchlist.watchlist || []) {
+      const fresh = freshById.get(row.job_id);
+      if (!fresh) continue;
+      const salaryChanged = (fresh.salaryMin ?? null) !== row.salary_min || (fresh.salaryMax ?? null) !== row.salary_max;
+      const descriptionChanged = (fresh.description || "") !== (row.description || "");
+      if (!salaryChanged && !descriptionChanged) continue;
+
+      const salaryIncreased = salaryChanged && ((fresh.salaryMax ?? fresh.salaryMin ?? 0) > (row.salary_max ?? row.salary_min ?? 0));
+      const patch = {
+        salary_min: fresh.salaryMin ?? null,
+        salary_max: fresh.salaryMax ?? null,
+        description: fresh.description || "",
+        previous_salary_min: salaryChanged ? row.salary_min : row.previous_salary_min,
+        previous_salary_max: salaryChanged ? row.salary_max : row.previous_salary_max,
+        previous_description: descriptionChanged ? row.description : row.previous_description,
+        has_unread_change: true,
+      };
+      const summary = await interpretJobTrackerChange(row, patch, profile);
+      if (summary) patch.ai_change_summary = summary;
+      await jobWatchlist.applyChange(row.id, patch);
+      if (salaryIncreased) {
+        insertNotification(profile?.id, { type: "job_tracker", title: t("jobSearch.notifySalaryTitle").replace("{title}", row.job_title), body: t("jobSearch.notifySalaryBody").replace("{company}", row.company), linkPage: "jobtracker" });
+      }
+    }
+
+    if (!companyWatchlist) return;
+    for (const company of companyWatchlist.watchlist || []) {
+      const matches = freshJobs.filter(j => (j.company || "").toLowerCase() === (company.company_name || "").toLowerCase());
+      if (!matches.length) continue;
+      let best = company.best_seen_match ?? null;
+      for (const job of matches) {
+        const cr = resumeText.trim() ? buildCompatibilityRecord({ job, profile, resumeSkills, skillDictionary }) : null;
+        if (cr?.match_score != null && (best == null || cr.match_score > best)) best = cr.match_score;
+      }
+      if (best != null && best !== company.best_seen_match) {
+        const meaningfullyBetter = company.best_seen_match == null || best >= company.best_seen_match + 10;
+        await companyWatchlist.updateBestSeenMatch(company.id, best);
+        if (meaningfullyBetter) {
+          insertNotification(profile?.id, { type: "job_tracker", title: t("jobSearch.notifyBetterMatchTitle").replace("{company}", company.company_name), body: t("jobSearch.notifyBetterMatchBody").replace("{score}", best), linkPage: "jobtracker" });
+        }
+      }
+    }
+  };
+
   const toggleSave = (job) => {
     const s = savedJobs.find(j => j.job_id === job.id);
     if (s) {
@@ -7353,11 +7463,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
     }
   };
   const isSaved = (id) => savedJobs.some(j => j.job_id === id);
-  const addTracker = async (job) => {
-    const newApp = { id: uid(), company: job.company, jobTitle: job.title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", url: job.applyUrl };
-    try { await insertApplicationRow(profile.id, newApp); } catch (e) { console.error("[JobSearch] addTracker DB insert failed:", e.message); }
-    setApplications(p => [newApp, ...p]);
-  };
   const fmtSalary = (min, max) => { if (!min && !max) return t("jobSearch.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("jobSearch.upTo").replace("{v}", f(max)); };
 
   return (
@@ -7368,6 +7473,25 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: C.text, fontWeight: 500 }}>
           <span style={{ fontSize: 16 }}>✨</span>
           <span>{t("jobSearch.aiUnlockGuidance")}</span>
+        </div>
+      )}
+      {/* First-click Job Tracker intro — shown automatically once, then never again.
+          No modal, no "don't show again" checkbox, per the Job Tracker UX blueprint. */}
+      {showTrackIntro && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: C.text, fontWeight: 500 }}>
+          <span style={{ fontSize: 16 }}>👁️</span>
+          <span style={{ flex: 1 }}>{t("jobSearch.trackIntro")}</span>
+          <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={() => onNavigate?.("jobtracker")}>{t("jobSearch.trackIntroViewLink")}</Btn>
+          <button onClick={() => setShowTrackIntro(false)} style={{ border: "none", background: "none", color: C.textMuted, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+        </div>
+      )}
+      {/* Post-track confirmation toast — instant, local, reversible; never a navigation. */}
+      {trackToast && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: C.text, fontWeight: 500 }}>
+          <span style={{ fontSize: 16 }}>✓</span>
+          <span style={{ flex: 1 }}>{trackToast.message}</span>
+          <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={undoTrack}>{t("jobSearch.undo")}</Btn>
+          <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={() => onNavigate?.("jobtracker")}>{t("jobSearch.trackIntroViewLink")}</Btn>
         </div>
       )}
       <Card style={{ marginBottom: 20 }}>
@@ -7480,9 +7604,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                     {/* Row 1: Save | Track */}
                     <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
-                      {isTracked(job)
-                        ? <Btn variant="ghost" disabled style={{ flex: 1, fontSize: 11, padding: "7px 4px", opacity: 1, color: C.green, minWidth: 0, whiteSpace: "nowrap" }}>{t("jobSearch.tracked")}</Btn>
-                        : <Btn variant="secondary" style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
+                      <Btn variant={isTracked(job) ? "danger" : "secondary"} style={{ flex: 1, fontSize: 11, padding: "7px 4px", minWidth: 0, whiteSpace: "nowrap" }} onClick={() => toggleTrack(job)}>{isTracked(job) ? t("jobSearch.tracked") : t("jobSearch.track")}</Btn>
                     </div>
                     {/* Row 2: Smart Apply — full width, state machine */}
                     <div>
@@ -7521,9 +7643,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, setApplications, applications,
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
-                      {isTracked(job)
-                        ? <Btn variant="ghost" disabled style={{ fontSize: 13, padding: "9px 14px", opacity: 1, color: C.green }}>{t("jobSearch.tracked")}</Btn>
-                        : <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => addTracker(job)}>{t("jobSearch.track")}</Btn>}
+                      <Btn variant={isTracked(job) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleTrack(job)}>{isTracked(job) ? t("jobSearch.tracked") : t("jobSearch.track")}</Btn>
                       {smartApplying === job.id ? (
                         <Btn variant="secondary" loading style={{ fontSize: 13, padding: "9px 14px" }}>{t("jobSearch.preparingAiPackage")}</Btn>
                       ) : isSmartApplied(job) ? (
@@ -10262,7 +10382,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             {saved.length > 0 && (
               <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("saved")}>{t("opportunity.allSavedJobs")}</Btn>
-                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("tracker")}>{t("opportunity.jobTracker")}</Btn>
+                <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("tracker")}>{t("opportunity.applicationTracker")}</Btn>
               </div>
             )}
           </Card>
@@ -10426,7 +10546,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
           <Card style={{ background: C.bgSoft }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("opportunity.continueInApp")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[[t("opportunity.quickLinkResume"), "resume"], [t("opportunity.quickLinkInterview"), "interview"], [t("opportunity.quickLinkSalary"), "salary"], [t("opportunity.quickLinkNetworking"), "network"], [t("opportunity.quickLinkSmartApply"), "saved"], [t("opportunity.quickLinkTracker"), "tracker"], [t("opportunity.quickLinkBriefing"), "briefing"], [t("opportunity.quickLinkPlan"), "plan"]].map(([label, pid]) => (
+              {[[t("opportunity.quickLinkResume"), "resume"], [t("opportunity.quickLinkInterview"), "interview"], [t("opportunity.quickLinkSalary"), "salary"], [t("opportunity.quickLinkNetworking"), "network"], [t("opportunity.quickLinkSmartApply"), "saved"], [t("opportunity.quickLinkApplicationTracker"), "tracker"], [t("opportunity.quickLinkBriefing"), "briefing"], [t("opportunity.quickLinkPlan"), "plan"]].map(([label, pid]) => (
                 <Btn key={pid} variant="secondary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setPage(pid)}>{label} →</Btn>
               ))}
             </div>
@@ -10694,6 +10814,243 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       <div style={{ textAlign: "center", paddingTop: 32 }}>
         <button onClick={() => setPage("dashboard")} style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{t("opportunity.backToDashboard")}</button>
       </div>
+    </div>
+  );
+}
+
+// ─── JOB TRACKER PAGE ──────────────────────────────────────
+// Job Tracker is a watchlist, not an application tool. Per the locked
+// architecture and the Explicit Non-Behavior Checklist, this page and every
+// handler in it must never read from or write to applications or
+// smart_apply_queue, and must never use the Application Tracker's status
+// vocabulary (Applied, Phone Screen, Interview, ...). It only ever writes to
+// job_watchlist / company_watchlist, both fully independent tables.
+const JOB_TRACKER_STATUS_FILTERS = ["All", "Updated", "New Match", "Closed"];
+
+function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jobWatchlist, setPage }) {
+  const { t, language } = useI18n();
+  const [tab, setTab] = useSessionState("cp_tracker_tab", "opportunities");
+  const [filterStatus, setFilterStatus] = useSessionState("cp_jobtracker_filter", "All");
+  const [search, setSearch] = useSessionState("cp_jobtracker_search", "");
+  const [sortBy, setSortBy] = useSessionState("cp_jobtracker_sort", "changed");
+  const [addCompanyInput, setAddCompanyInput] = useState("");
+  const [addingCompany, setAddingCompany] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [removingId, setRemovingId] = useState(null);
+
+  const [skillDictionary, setSkillDictionary] = useState({});
+  useEffect(() => { loadSkillSynonyms().then(setSkillDictionary); }, []);
+  const activeResume = useMemo(() => (resumes || []).find(r => r.id === activeResumeId) || null, [resumes, activeResumeId]);
+  const resumeText = activeResume?.content || "";
+  const resumeSkills = useMemo(() => extractSkillKeywords(resumeText), [resumeText]);
+  const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
+  const fmtSal = (min, max) => { if (!min && !max) return null; const f = n => `$${Math.round(n / 1000)}K`; return min && max ? `${f(min)}–${f(max)}` : f(min || max); };
+
+  const jobs = useMemo(() => jobWatchlist.watchlist || [], [jobWatchlist.watchlist]);
+  const companies = useMemo(() => companyWatchlist.watchlist || [], [companyWatchlist.watchlist]);
+
+  // Live Match % via the same deterministic Compatibility Engine used
+  // everywhere else -- zero AI calls. Skills are re-extracted from the
+  // stored description snapshot since job_watchlist doesn't duplicate the
+  // worker's server-side skills array.
+  const jobsWithMatch = useMemo(() => jobs.map(row => {
+    const job = { id: row.job_id, title: row.job_title, company: row.company, location: row.location, salaryMin: row.salary_min, salaryMax: row.salary_max, remote: row.remote, skills: extractSkillKeywords(row.description || "") };
+    const cr = resumeText.trim() ? buildCompatibilityRecord({ job, profile, resumeSkills, skillDictionary }) : null;
+    return { ...row, matchScore: cr?.match_score ?? null };
+  }), [jobs, profile, resumeSkills, skillDictionary, resumeText]);
+
+  const filteredJobs = jobsWithMatch.filter(row => {
+    if (filterStatus === "Updated" && !row.has_unread_change) return false;
+    if (filterStatus === "Closed" && row.status !== "closed") return false;
+    if (filterStatus === "New Match" && !(row.matchScore != null && row.matchScore >= 80)) return false;
+    const q = search.trim().toLowerCase();
+    if (q && !(row.job_title || "").toLowerCase().includes(q) && !(row.company || "").toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === "match") return (b.matchScore ?? -1) - (a.matchScore ?? -1);
+    if (sortBy === "date") return new Date(b.created_at) - new Date(a.created_at);
+    if (!!b.has_unread_change !== !!a.has_unread_change) return b.has_unread_change ? 1 : -1;
+    return new Date(b.last_checked_at || b.created_at) - new Date(a.last_checked_at || a.created_at);
+  });
+
+  const filteredCompanies = companies.filter(c => {
+    const q = search.trim().toLowerCase();
+    return !q || (c.company_name || "").toLowerCase().includes(q);
+  });
+
+  const updatedCount = jobs.filter(j => j.has_unread_change).length;
+
+  const handleAddCompany = async () => {
+    if (!addCompanyInput.trim()) return;
+    setAddingCompany(true); setAddError("");
+    try { await companyWatchlist.add(addCompanyInput.trim()); setAddCompanyInput(""); }
+    catch { setAddError(t("jobTracker.addCompanyFailed")); }
+    finally { setAddingCompany(false); }
+  };
+  const handleRemoveJob = async (id) => { setRemovingId(id); try { await jobWatchlist.remove(id); } catch {} finally { setRemovingId(null); } };
+  const handleRemoveCompany = async (id) => { setRemovingId(id); try { await companyWatchlist.remove(id); } catch {} finally { setRemovingId(null); } };
+  const markSeen = (row) => { if (row.has_unread_change) jobWatchlist.applyChange(row.id, { has_unread_change: false }); };
+
+  const activity = jobs.filter(j => j.has_unread_change)
+    .map(j => ({ id: `job-${j.id}`, title: j.job_title, company: j.company, summary: j.ai_change_summary, date: j.last_checked_at }))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  const tabs = [
+    { id: "opportunities", label: `${t("jobTracker.tabOpportunities")}${jobs.length ? ` (${jobs.length})` : ""}` },
+    { id: "companies", label: `${t("jobTracker.tabCompanies")}${companies.length ? ` (${companies.length})` : ""}` },
+    { id: "activity", label: `${t("jobTracker.tabActivity")}${activity.length ? ` (${activity.length})` : ""}` },
+  ];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("jobTracker.heading")}</h1>
+        <p style={{ color: C.textMuted, fontSize: 14 }}>{t("jobTracker.summaryLine").replace("{n}", jobs.length + companies.length).replace("{u}", updatedCount)}</p>
+      </div>
+
+      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 20, overflowX: "auto" }} className="two-col">
+        {tabs.map(tItem => (
+          <button key={tItem.id} onClick={() => setTab(tItem.id)} style={{ border: "none", background: "none", padding: "10px 16px", fontSize: 14, fontWeight: tab === tItem.id ? 700 : 500, color: tab === tItem.id ? C.purple : C.textMuted, cursor: "pointer", borderBottom: `2px solid ${tab === tItem.id ? C.purple : "transparent"}`, marginBottom: -1, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            {tItem.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "opportunities" && (
+        <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            {JOB_TRACKER_STATUS_FILTERS.map(s => (
+              <Btn key={s} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterStatus === s ? C.purple : C.border}`, background: filterStatus === s ? C.purpleLight : "#fff", color: filterStatus === s ? C.purple : C.textMuted, fontSize: 12, fontWeight: 600 }} onClick={() => setFilterStatus(s)}>
+                {s === "All" ? t("jobTracker.filterAll") : s === "Updated" ? t("jobTracker.filterUpdated") : s === "New Match" ? t("jobTracker.filterNewMatch") : t("jobTracker.filterClosed")}
+              </Btn>
+            ))}
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ marginLeft: "auto", fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
+              <option value="changed">{t("jobTracker.sortChanged")}</option>
+              <option value="match">{t("jobTracker.sortMatch")}</option>
+              <option value="date">{t("jobTracker.sortDate")}</option>
+            </select>
+          </div>
+          {jobs.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("jobTracker.searchPlaceholder")} style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+            </div>
+          )}
+
+          {filteredJobs.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 56 }}>
+              <div style={{ fontSize: 40, marginBottom: 14 }}>👁️</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{jobs.length === 0 ? t("jobTracker.emptyOpportunitiesTitle") : t("jobTracker.noMatchesFound")}</div>
+              <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 16 }}>{jobs.length === 0 ? t("jobTracker.emptyOpportunitiesHint") : t("jobTracker.tryDifferentSearch")}</div>
+              {jobs.length === 0 && <Btn onClick={() => setPage("jobs")} style={{ padding: "10px 20px" }}>{t("jobTracker.goToJobSearch")}</Btn>}
+            </Card>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {filteredJobs.map(row => {
+                const salaryChanged = row.previous_salary_min != null && (row.previous_salary_min !== row.salary_min || row.previous_salary_max !== row.salary_max);
+                return (
+                  <Card key={row.id} onClick={() => markSeen(row)} style={{ borderLeft: row.has_unread_change ? `3px solid ${C.purple}` : undefined, cursor: row.has_unread_change ? "pointer" : "default" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{row.job_title}</div>
+                          {row.has_unread_change && <Badge color={C.purple}>{t("jobTracker.updatedBadge")}</Badge>}
+                          {row.status === "closed" && <Badge color={C.textMuted}>{t("jobTracker.closedBadge")}</Badge>}
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 6 }}>{row.company}{row.location ? ` · ${row.location}` : ""}</div>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          {fmtSal(row.salary_min, row.salary_max) && <span style={{ fontSize: 13, color: C.green, fontWeight: 700 }}>{salaryChanged ? "↑ " : ""}{fmtSal(row.salary_min, row.salary_max)}</span>}
+                          {salaryChanged && <span style={{ fontSize: 11, color: C.textMuted }}>{t("jobTracker.wasSalary").replace("{v}", fmtSal(row.previous_salary_min, row.previous_salary_max) || "—")}</span>}
+                          <span style={{ fontSize: 11, color: C.textMuted }}>{t("jobTracker.trackedSince").replace("{date}", fmtDate(row.created_at))}</span>
+                        </div>
+                        {row.ai_change_summary && <div style={{ fontSize: 12, color: C.purple, marginTop: 8, fontStyle: "italic" }}>💡 {row.ai_change_summary}</div>}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+                        {row.matchScore != null && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: matchScoreColor(row.matchScore) }}>{row.matchScore}%</div>
+                            <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>{t("jobTracker.matchLabel")}</div>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {row.apply_url && <a href={row.apply_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.purple, fontWeight: 600, textDecoration: "none" }}>{t("jobTracker.viewPosting")}</a>}
+                          <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={removingId === row.id} onClick={(e) => { e.stopPropagation(); handleRemoveJob(row.id); }}>{t("jobTracker.stopTracking")}</Btn>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "companies" && (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>{t("jobTracker.trackCompanyTitle")}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={addCompanyInput} onChange={e => setAddCompanyInput(e.target.value)} placeholder={t("jobTracker.trackCompanyPlaceholder")} onKeyDown={e => e.key === "Enter" && handleAddCompany()} style={{ flex: 1, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+              <Btn onClick={handleAddCompany} loading={addingCompany} style={{ padding: "10px 18px" }}>{t("jobTracker.trackBtn")}</Btn>
+            </div>
+            {addError && <div style={{ fontSize: 12, color: C.red, marginTop: 8 }}>{addError}</div>}
+          </Card>
+
+          {filteredCompanies.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 56 }}>
+              <div style={{ fontSize: 40, marginBottom: 14 }}>🏢</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{t("jobTracker.emptyCompaniesTitle")}</div>
+              <div style={{ fontSize: 14, color: C.textMuted }}>{t("jobTracker.emptyCompaniesHint")}</div>
+            </Card>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {filteredCompanies.map(c => (
+                <Card key={c.id} style={{ borderLeft: c.status === "new_activity" ? `3px solid ${C.purple}` : undefined }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>{c.company_name}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{t("jobTracker.watchingSince").replace("{date}", fmtDate(c.created_at))}</div>
+                      {c.notes && <div style={{ fontSize: 13, color: C.textMid }}>{c.notes}</div>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+                      {c.best_seen_match != null && (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: matchScoreColor(c.best_seen_match) }}>{c.best_seen_match}%</div>
+                          <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>{t("jobTracker.bestMatchLabel")}</div>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setPage("jobs")}>{t("jobTracker.viewOpenRoles")}</Btn>
+                        <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={removingId === c.id} onClick={() => handleRemoveCompany(c.id)}>{t("jobTracker.stopTracking")}</Btn>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "activity" && (
+        activity.length === 0 ? (
+          <Card style={{ textAlign: "center", padding: 56 }}>
+            <div style={{ fontSize: 40, marginBottom: 14 }}>📭</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>{t("jobTracker.emptyActivityTitle")}</div>
+            <div style={{ fontSize: 14, color: C.textMuted }}>{t("jobTracker.emptyActivityHint")}</div>
+          </Card>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {activity.map(a => (
+              <Card key={a.id}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{a.title} — {a.company}</div>
+                {a.summary && <div style={{ fontSize: 13, color: C.textMid, marginTop: 4 }}>{a.summary}</div>}
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{fmtDate(a.date)}</div>
+              </Card>
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -11000,7 +11357,7 @@ export default function App() {
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const [billingState, setBillingState] = useState(null);
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","interview","tracker","salary","network","pricing","profile","settings","opportunity","jobintel"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","pricing","profile","settings","opportunity","jobintel"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -11097,11 +11454,17 @@ export default function App() {
 
   const { language, setLanguage, t } = useLanguagePreference(profile?.preferred_language, (code) => updateProfile({ preferred_language: code }));
 
+  const companyWatchlistHook = useCompanyWatchlist(profile?.id);
+  const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = companyWatchlistHook;
+  // Job Tracker (job-level half) -- fully independent of applications/smart_apply_queue.
+  const jobWatchlistHook = useJobWatchlist(profile?.id);
+
   const nav = [
     { id: "dashboard", icon: "📊", label: t("nav.dashboard") },
     { id: "resume", icon: "⚡", label: t("nav.resume") },
     { id: "jobs", icon: "🔍", label: t("nav.jobSearch") },
     { id: "saved", icon: "♥", label: `${t("nav.saved")}${savedJobs.length > 0 ? ` (${savedJobs.length})` : ""}` },
+    { id: "jobtracker", icon: "👁️", label: `${t("nav.jobTracker")}${(jobWatchlistHook.watchlist.length + companyWatchlistHook.watchlist.length) > 0 ? ` (${jobWatchlistHook.watchlist.length + companyWatchlistHook.watchlist.length})` : ""}` },
     { id: "interview", icon: "🎤", label: t("nav.interview") },
     { id: "tracker", icon: "📋", label: `${t("nav.tracker")}${applications.length > 0 ? ` (${applications.length})` : ""}` },
     { id: "salary", icon: "💰", label: t("nav.salary") },
@@ -11166,7 +11529,6 @@ export default function App() {
   const { data: rootSalaryData } = useSalaryResearch(profile?.id);
   const [rootNetworkContacts, , refreshRootNetworkContacts] = useNetworkingContacts(profile?.id);
   const networkingSessionCtx = useNetworkingSession(profile?.id);
-  const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = useCompanyWatchlist(profile?.id);
 
   // Re-sync root hook instances whenever user navigates to the dashboard.
   // Page components (InterviewPage, NetworkingPage) write via their own hook
@@ -11336,8 +11698,9 @@ export default function App() {
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
-        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} />}
+        {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
+        {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
