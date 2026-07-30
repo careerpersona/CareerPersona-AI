@@ -7485,13 +7485,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           <button onClick={() => setShowTrackIntro(false)} style={{ border: "none", background: "none", color: C.textMuted, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
       )}
-      {/* Post-track confirmation toast — instant, local, reversible; never a navigation. */}
+      {/* Post-track confirmation toast — instant, local, reversible; never a navigation.
+          Fixed-position (bottom-right desktop, bottom-center mobile) so it stays visible
+          regardless of scroll position within the results list. */}
       {trackToast && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: C.text, fontWeight: 500 }}>
-          <span style={{ fontSize: 16 }}>✓</span>
-          <span style={{ flex: 1 }}>{trackToast.message}</span>
-          <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={undoTrack}>{t("jobSearch.undo")}</Btn>
-          <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={() => onNavigate?.("jobtracker")}>{t("jobSearch.trackIntroViewLink")}</Btn>
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: isMobile ? 16 : 24, display: "flex", justifyContent: isMobile ? "center" : "flex-end", padding: isMobile ? "0 16px" : "0 24px", zIndex: 60, pointerEvents: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: "cp-toast-in 0.25s ease-out" }}>
+            <span style={{ fontSize: 16 }}>✓</span>
+            <span style={{ flex: 1 }}>{trackToast.message}</span>
+            <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={undoTrack}>{t("jobSearch.undo")}</Btn>
+            <Btn variant="ghost" style={{ fontSize: 12, padding: "4px 10px", flexShrink: 0 }} onClick={() => onNavigate?.("jobtracker")}>{t("jobSearch.trackIntroViewLink")}</Btn>
+          </div>
         </div>
       )}
       <Card style={{ marginBottom: 20 }}>
