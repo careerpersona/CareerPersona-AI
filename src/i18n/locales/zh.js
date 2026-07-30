@@ -430,6 +430,7 @@
   tracker: {
     heading: "求职追踪",
     applicationsTracked: "已追踪 {n} 个申请",
+    workflowHint: "添加或追踪一个申请，然后在状态发生变化时使用「更新申请」——电话面试、面试、录用等。",
     addApplication: "+ 添加申请",
     total: "总计",
     successRate: "成功率",
@@ -472,7 +473,7 @@
     followUp: "⏰ 跟进：{date}",
     view: "📄 查看",
     job: "🔗 职位",
-    edit: "编辑",
+    updateApplication: "更新申请",
     tailoredResume: "定制简历",
     pdf: "📄 PDF",
     copy: "📋 复制",

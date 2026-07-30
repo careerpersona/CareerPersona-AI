@@ -430,6 +430,7 @@
   tracker: {
     heading: "متتبع الطلبات",
     applicationsTracked: "{n} طلب متتبَع",
+    workflowHint: "أضف طلبك أو تتبعه، ثم استخدم زر تحديث الطلب كلما تغيّرت حالتك — مقابلة هاتفية، مقابلة شخصية، عرض عمل، وغير ذلك.",
     addApplication: "+ إضافة طلب",
     total: "الإجمالي",
     successRate: "معدل النجاح",
@@ -472,7 +473,7 @@
     followUp: "⏰ المتابعة: {date}",
     view: "📄 عرض",
     job: "🔗 الوظيفة",
-    edit: "تعديل",
+    updateApplication: "تحديث الطلب",
     tailoredResume: "السيرة الذاتية المخصصة",
     pdf: "📄 PDF",
     copy: "📋 نسخ",

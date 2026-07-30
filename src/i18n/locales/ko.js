@@ -430,6 +430,7 @@
   tracker: {
     heading: "지원 현황 추적",
     applicationsTracked: "{n}개의 지원 현황 추적 중",
+    workflowHint: "지원 내역을 추가하거나 추적한 후, 전형 상태가 바뀔 때마다 지원 업데이트를 사용하세요 — 전화 면접, 면접, 합격 등.",
     addApplication: "+ 지원 추가",
     total: "전체",
     successRate: "성공률",
@@ -472,7 +473,7 @@
     followUp: "⏰ 후속 조치: {date}",
     view: "📄 보기",
     job: "🔗 채용공고",
-    edit: "수정",
+    updateApplication: "지원 업데이트",
     tailoredResume: "맞춤형 이력서",
     pdf: "📄 PDF",
     copy: "📋 복사",

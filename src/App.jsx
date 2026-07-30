@@ -8460,7 +8460,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
       {deleteError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{deleteError}</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{saveError}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
-        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p></div>
+        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p><p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>{t("tracker.workflowHint")}</p></div>
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
       {applications.length > 0 && (
@@ -8518,7 +8518,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                 <Badge color={SCOLOR[app.status] || C.textMuted}>{app.status ? tStatus(app.status) : t("tracker.statusUnknown")}</Badge>
                 {(app.resume || app.coverLetter || app.notes) && <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => setViewApp(viewApp?.id === app.id ? null : app)}>{t("tracker.view")}</Btn>}
                 {app.url && <a href={app.url} target="_blank" rel="noreferrer" className="btn-link" style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, background: "transparent", padding: "5px 12px", border: `1px solid ${C.border}`, borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>{t("tracker.job")}</a>}
-                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.edit")}</Btn>
+                <Btn variant="ghost" style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => edit(app)}>{t("tracker.updateApplication")}</Btn>
                 <Btn variant="danger" style={{ padding: "5px 12px", fontSize: 12 }} loading={deletingId === app.id} onClick={() => del(app.id)}>✕</Btn>
               </div>
             </div>

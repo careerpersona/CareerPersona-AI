@@ -430,6 +430,7 @@
   tracker: {
     heading: "Seguimiento de Solicitudes",
     applicationsTracked: "{n} solicitudes registradas",
+    workflowHint: "Añade o sigue una solicitud y usa Actualizar Solicitud cuando cambie tu estado — entrevista telefónica, entrevista, oferta y más.",
     addApplication: "+ Añadir Solicitud",
     total: "Total",
     successRate: "Tasa de Éxito",
@@ -472,7 +473,7 @@
     followUp: "⏰ Seguimiento: {date}",
     view: "📄 Ver",
     job: "🔗 Empleo",
-    edit: "Editar",
+    updateApplication: "Actualizar Solicitud",
     tailoredResume: "Currículum Personalizado",
     pdf: "📄 PDF",
     copy: "📋 Copiar",

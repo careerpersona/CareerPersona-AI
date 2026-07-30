@@ -430,6 +430,7 @@
   tracker: {
     heading: "Suivi des Candidatures",
     applicationsTracked: "{n} candidatures suivies",
+    workflowHint: "Ajoutez ou suivez une candidature, puis utilisez Mettre à jour la candidature à chaque changement de statut — entretien téléphonique, entretien, offre, et plus encore.",
     addApplication: "+ Ajouter une Candidature",
     total: "Total",
     successRate: "Taux de Réussite",
@@ -472,7 +473,7 @@
     followUp: "⏰ Relance : {date}",
     view: "📄 Voir",
     job: "🔗 Offre",
-    edit: "Modifier",
+    updateApplication: "Mettre à jour la candidature",
     tailoredResume: "CV Personnalisé",
     pdf: "📄 PDF",
     copy: "📋 Copier",

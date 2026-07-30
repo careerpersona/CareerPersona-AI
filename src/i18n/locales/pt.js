@@ -430,6 +430,7 @@
   tracker: {
     heading: "Rastreador de Candidaturas",
     applicationsTracked: "{n} candidaturas registadas",
+    workflowHint: "Adicione ou acompanhe uma candidatura e use Atualizar Candidatura sempre que o seu estado mudar — triagem telefónica, entrevista, oferta e mais.",
     addApplication: "+ Adicionar Candidatura",
     total: "Total",
     successRate: "Taxa de Sucesso",
@@ -472,7 +473,7 @@
     followUp: "⏰ Acompanhamento: {date}",
     view: "📄 Ver",
     job: "🔗 Vaga",
-    edit: "Editar",
+    updateApplication: "Atualizar Candidatura",
     tailoredResume: "Currículo Personalizado",
     pdf: "📄 PDF",
     copy: "📋 Copiar",

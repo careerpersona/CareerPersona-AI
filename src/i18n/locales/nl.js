@@ -430,6 +430,7 @@
   tracker: {
     heading: "Sollicitatie Tracker",
     applicationsTracked: "{n} sollicitaties bijgehouden",
+    workflowHint: "Voeg een sollicitatie toe of volg er een, en gebruik Sollicitatie Bijwerken zodra je status verandert — telefonisch interview, gesprek, aanbod en meer.",
     addApplication: "+ Sollicitatie Toevoegen",
     total: "Totaal",
     successRate: "Succespercentage",
@@ -472,7 +473,7 @@
     followUp: "⏰ Opvolgen: {date}",
     view: "📄 Bekijken",
     job: "🔗 Vacature",
-    edit: "Bewerken",
+    updateApplication: "Sollicitatie Bijwerken",
     tailoredResume: "Aangepast Cv",
     pdf: "📄 PDF",
     copy: "📋 Kopiëren",

@@ -430,6 +430,7 @@
   tracker: {
     heading: "Bewerbungs-Tracker",
     applicationsTracked: "{n} Bewerbungen erfasst",
+    workflowHint: "Fügen Sie eine Bewerbung hinzu oder verfolgen Sie sie, und nutzen Sie „Bewerbung aktualisieren“, sobald sich Ihr Status ändert – Telefoninterview, Vorstellungsgespräch, Angebot und mehr.",
     addApplication: "+ Bewerbung hinzufügen",
     total: "Gesamt",
     successRate: "Erfolgsquote",
@@ -472,7 +473,7 @@
     followUp: "⏰ Nachfassen: {date}",
     view: "📄 Ansehen",
     job: "🔗 Stelle",
-    edit: "Bearbeiten",
+    updateApplication: "Bewerbung aktualisieren",
     tailoredResume: "Maßgeschneiderter Lebenslauf",
     pdf: "📄 PDF",
     copy: "📋 Kopieren",

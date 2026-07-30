@@ -430,6 +430,7 @@
   tracker: {
     heading: "आवेदन ट्रैकर",
     applicationsTracked: "{n} आवेदन ट्रैक किए गए",
+    workflowHint: "आवेदन जोड़ें या ट्रैक करें, फिर जब भी आपकी स्थिति बदले — फ़ोन स्क्रीन, इंटरव्यू, ऑफ़र और उससे आगे — आवेदन अपडेट करें का उपयोग करें।",
     addApplication: "+ आवेदन जोड़ें",
     total: "कुल",
     successRate: "सफलता दर",
@@ -472,7 +473,7 @@
     followUp: "⏰ फॉलो-अप: {date}",
     view: "📄 देखें",
     job: "🔗 नौकरी",
-    edit: "संपादित करें",
+    updateApplication: "आवेदन अपडेट करें",
     tailoredResume: "अनुकूलित रिज़्यूमे",
     pdf: "📄 PDF",
     copy: "📋 कॉपी करें",

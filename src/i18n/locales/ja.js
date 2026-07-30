@@ -430,6 +430,7 @@
   tracker: {
     heading: "応募管理",
     applicationsTracked: "{n}件の応募を管理中",
+    workflowHint: "応募を追加または追跡し、選考状況が変わるたびに「応募を更新」をご利用ください — 電話面接、面接、内定など。",
     addApplication: "+ 応募を追加",
     total: "合計",
     successRate: "成功率",
@@ -472,7 +473,7 @@
     followUp: "⏰ フォローアップ：{date}",
     view: "📄 表示",
     job: "🔗 求人",
-    edit: "編集",
+    updateApplication: "応募を更新",
     tailoredResume: "カスタマイズした履歴書",
     pdf: "📄 PDF",
     copy: "📋 コピー",

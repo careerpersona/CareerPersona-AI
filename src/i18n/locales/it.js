@@ -430,6 +430,7 @@
   tracker: {
     heading: "Monitoraggio Candidature",
     applicationsTracked: "{n} candidature monitorate",
+    workflowHint: "Aggiungi o monitora una candidatura, poi usa Aggiorna Candidatura ogni volta che il tuo stato cambia — colloquio telefonico, colloquio, offerta e oltre.",
     addApplication: "+ Aggiungi Candidatura",
     total: "Totale",
     successRate: "Tasso di Successo",
@@ -472,7 +473,7 @@
     followUp: "⏰ Follow-up: {date}",
     view: "📄 Visualizza",
     job: "🔗 Offerta",
-    edit: "Modifica",
+    updateApplication: "Aggiorna Candidatura",
     tailoredResume: "Curriculum Personalizzato",
     pdf: "📄 PDF",
     copy: "📋 Copia",

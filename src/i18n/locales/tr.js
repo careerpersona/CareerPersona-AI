@@ -430,6 +430,7 @@
   tracker: {
     heading: "Başvuru Takibi",
     applicationsTracked: "{n} başvuru takip ediliyor",
+    workflowHint: "Bir başvuru ekleyin veya takip edin, ardından durumunuz değiştiğinde — telefon görüşmesi, mülakat, teklif ve daha fazlası — Başvuruyu Güncelle'yi kullanın.",
     addApplication: "+ Başvuru Ekle",
     total: "Toplam",
     successRate: "Başarı Oranı",
@@ -472,7 +473,7 @@
     followUp: "⏰ Takip: {date}",
     view: "📄 Görüntüle",
     job: "🔗 İlan",
-    edit: "Düzenle",
+    updateApplication: "Başvuruyu Güncelle",
     tailoredResume: "Özelleştirilmiş Özgeçmiş",
     pdf: "📄 PDF",
     copy: "📋 Kopyala",

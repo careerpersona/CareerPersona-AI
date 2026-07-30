@@ -484,6 +484,7 @@ export default {
   tracker: {
     heading: "Application Tracker",
     applicationsTracked: "{n} applications tracked",
+    workflowHint: "Add or track an application, then use Update Application whenever your status changes — phone screen, interview, offer, and beyond.",
     addApplication: "+ Add Application",
     total: "Total",
     successRate: "Success rate",
@@ -526,7 +527,7 @@ export default {
     followUp: "⏰ Follow up: {date}",
     view: "📄 View",
     job: "🔗 Job",
-    edit: "Edit",
+    updateApplication: "Update Application",
     tailoredResume: "Tailored Resume",
     pdf: "📄 PDF",
     copy: "📋 Copy",
