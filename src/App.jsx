@@ -1408,27 +1408,6 @@ function AppName({ size = 18, onClick, className }) {
   );
 }
 
-// Fixed pixel widths per button, measured at 11.5px Inter on 1280px viewport.
-// Values ≥ English natural width (English never clips). Wider translations
-// render invisibly clipped by overflow:hidden; the icon always shows and
-// the full label is in the title tooltip on hover.
-const NAV_PILL_WIDTH = {
-  dashboard: 110, resume: 89, jobs: 112, saved: 80,
-  interview: 98, tracker: 88, salary: 79, network: 95, pricing: 84,
-};
-
-function NavPills({ nav, page, setPage, navigateToResume }) {
-  return (
-    <nav className="nav-pills" style={{ display: "flex", gap: 4, background: C.bgSoft, borderRadius: 11, padding: "3px" }}>
-      {nav.map(n => (
-        <button key={n.id} title={n.label} className="nav-pill" style={{ width: NAV_PILL_WIDTH[n.id], flexShrink: 0, overflow: "hidden", padding: "6px 11px", borderRadius: 8, border: "none", background: page === n.id ? "#fff" : "transparent", color: page === n.id ? C.purple : C.navText, opacity: 1, fontSize: 11.5, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, whiteSpace: "nowrap", boxShadow: page === n.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } }}>
-          <span style={{ fontSize: 13, flexShrink: 0 }}>{n.icon}</span><span className="nav-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
-        </button>
-      ))}
-    </nav>
-  );
-}
-
 function UserMenu({ profile, page, setPage, onLogout }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -11506,6 +11485,16 @@ export default function App() {
 
   const [page, setPageRaw] = useState(getInitialPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Separate from mobileMenuOpen on purpose -- desktop and mobile nav must be
+  // independently openable/closable and never share state, per the desktop
+  // nav architecture refactor (both read the same `nav` array, though).
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!desktopMenuOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setDesktopMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [desktopMenuOpen]);
 
   // Keep `profile` in sync with whatever useAuth resolves (fake local account,
   // or a real Supabase session synced via onAuthStateChange) and land on the
@@ -11708,7 +11697,6 @@ export default function App() {
         select { background: #ffffff !important; color: #0F172A !important; font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
         @keyframes spin { to { transform: rotate(360deg); } } textarea { background: white !important; color: #0F172A !important; } input[type=text], input[type=email], input[type=password], input[type=number] { background: white !important; color: #0F172A !important; }
         button:hover:not(:disabled), .btn-link:hover { opacity: 0.88; transform: translateY(-1px); }
-        .nav-pill:hover { color: ${C.navHover} !important; opacity: 1 !important; }
         button:active:not(:disabled), .btn-link:active { transform: translateY(0); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
         @media (max-width: 400px) {
@@ -11752,6 +11740,7 @@ export default function App() {
 @media (max-width: 1024px) {
   .nav-label { display: none; }
   .desktop-nav { display: none !important; }
+  .desktop-hamburger-wrap { display: none !important; }
   .mobile-logo-row { gap: 2px !important; padding: 10px 4px 0 !important; }
   .hamburger-btn { display: block !important; width: 50px !important; height: 50px !important; font-size: 35px !important; line-height: 34px !important; }
   .subscription-badge { display: flex !important; align-items: center !important; }
@@ -11762,21 +11751,30 @@ export default function App() {
   .logo-block { gap: 5px !important; }
 }
 @media (min-width: 1025px) {
-  /* 3-column grid: logo pinned left (auto), nav centered (1fr), utility pinned right (auto).
-     justify-self:center on nav-pills keeps the gray pill background snug around buttons
-     instead of expanding to fill the full 1fr column. grid-column:1 overrides the inline
-     gridColumn:2 that mobile-logo-row sets on logo-block for its own mobile grid. */
+  /* 3-column grid: hamburger pinned left (auto), logo centered (1fr), utility pinned
+     right (auto). grid-column:1/2 override the inline gridColumn the mobile-logo-row
+     grid sets on these same elements for their own mobile-only 3-col layout. */
   .hamburger-btn { display: none !important; }
   .subscription-badge { display: none !important; }
   header { display: grid !important; grid-template-columns: auto 1fr auto !important; align-items: center !important; padding: 8px 14px !important; column-gap: 8px !important; }
   .mobile-logo-row { display: contents !important; }
-  .logo-block { grid-column: 1 !important; grid-row: 1 !important; justify-self: start !important; justify-content: flex-start !important; white-space: nowrap !important; gap: 7px !important; }
+  .desktop-hamburger-wrap { display: block !important; grid-column: 1 !important; grid-row: 1 !important; justify-self: start !important; }
+  /* Absolute + translate, not grid-column:2/justify-self:center -- the left (hamburger)
+     and right (language/notifications/user) columns are different widths, so centering
+     within the middle 1fr grid track alone would not be centered relative to the whole
+     header. header has position:sticky, which already establishes the containing block
+     this needs. */
+  /* grid-column/row: auto is required here -- an absolutely-positioned grid item that
+     still has explicit grid-line placement (the inline gridColumn:2 from the mobile
+     layout) keeps using that grid AREA as its containing block for left:50%, not the
+     full header, which silently re-introduces the exact off-center bug this was meant
+     to fix. Resetting placement to auto makes left:50% resolve against the header. */
+  .logo-block { position: absolute !important; grid-column: auto !important; grid-row: auto !important; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%) !important; justify-content: center !important; white-space: nowrap !important; gap: 7px !important; }
   .brand-logo { width: 38px !important; height: 38px !important; }
   .brand-logo-glyph { font-size: 17px !important; }
   .brand-name { font-size: 20px !important; }
   .brand-name-badge { font-size: 13px !important; margin-left: 0 !important; }
   .desktop-nav { display: contents !important; }
-  .nav-pills { grid-column: 2 !important; grid-row: 1 !important; justify-self: center !important; gap: 4px !important; padding: 3px !important; }
   .nav-utility { grid-column: 3 !important; grid-row: 1 !important; justify-self: end !important; gap: 0 !important; }
   .nav-utility button { padding: 6px 4px !important; }
 }
@@ -11787,6 +11785,26 @@ export default function App() {
         {/* Row 1: Hamburger (left) + Logo (center) + Subscription badge (right) — grid keeps the logo centered regardless of side-element width */}
         <div className="mobile-logo-row" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 6, padding: "10px 16px 0" }}>
           <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", gridColumn: 1, justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
+          {/* Desktop-only hamburger trigger — completely separate element/state from the
+              mobile hamburger above (mobileMenuOpen). Hidden by default; shown only at
+              >=1025px via .desktop-hamburger-wrap in the <style> block below, where it's
+              also placed in the header's left grid column. Reuses the same `nav` array
+              as the mobile menu and the old NavPills bar — single source of truth. */}
+          <div className="desktop-hamburger-wrap" style={{ display: "none", position: "relative" }}>
+            <button aria-haspopup="true" aria-expanded={desktopMenuOpen} aria-label={t("nav.menu")} onClick={() => setDesktopMenuOpen(m => !m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, fontSize: 24, color: "#6B21E8", width: 40, height: 40, lineHeight: "24px", textAlign: "center" }}>☰</button>
+            {desktopMenuOpen && (
+              <div>
+                <div onClick={() => setDesktopMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 149 }} />
+                <div role="menu" style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
+                  {nav.map(n => (
+                    <button key={n.id} role="menuitem" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>{n.icon}</span>{n.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
@@ -11797,10 +11815,10 @@ export default function App() {
             </span>
           </button>
         </div>
-        {/* Row 2: Nav + Utility */}
+        {/* Row 2: Utility only -- desktop navigation now lives in the hamburger menu
+            in Row 1 (.desktop-hamburger-wrap), not a horizontal pill bar here. */}
         <div className="desktop-nav" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 16px 8px", gap: 4 }}>
-          <NavPills nav={nav} page={page} setPage={setPage} navigateToResume={navigateToResume} />
-          <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 6 }}>
+          <div className="nav-utility" style={{ display: "flex", alignItems: "center", gap: 2 }}>
             <LanguageMenu variant="icon" />
             <NotificationsMenu variant="icon" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} unreadCount={unreadCount} />
             <UserMenu profile={profile} page={page} setPage={setPage} onLogout={handleLogout} />

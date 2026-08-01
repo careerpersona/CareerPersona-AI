@@ -3,7 +3,7 @@
     dashboard: "Панель управления",
     resume: "Резюме",
     jobSearch: "Поиск работы",
-    saved: "Сохранённые",
+    saved: "Сохранённые вакансии",
     jobTracker: "Трекер Вакансий",
     interview: "Собеседование",
     tracker: "Отслеживание",
@@ -11,6 +11,7 @@
     network: "Нетворкинг",
     pricing: "Тарифы",
     upgrade: "Улучшить",
+    menu: "Меню",
   },
   userMenu: {
     profile: "Профиль",
