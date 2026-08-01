@@ -11798,7 +11798,15 @@ export default function App() {
                 <div role="menu" style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
                   {nav.map(n => (
                     <button key={n.id} role="menuitem" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
-                      <span style={{ fontSize: 16, flexShrink: 0 }}>{n.icon}</span>{n.label}
+                      {/* Fixed-width, centered icon slot -- not a per-item fix. Every nav
+                          icon here is a wide-presentation emoji (~22px natural width)
+                          except "♥" (Saved Jobs), which renders as a narrow text-style
+                          glyph without an emoji variation selector, so its un-contained
+                          span was ~12px narrower than every other icon and shifted its
+                          label left. A shared fixed-width slot makes every item's label
+                          start at the same x-coordinate regardless of the icon's own
+                          natural glyph width, current and future. */}
+                      <span style={{ fontSize: 16, flexShrink: 0, width: 22, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n.icon}</span>{n.label}
                     </button>
                   ))}
                 </div>
