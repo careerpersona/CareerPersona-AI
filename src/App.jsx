@@ -8604,7 +8604,13 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                     {openStatusMenu === app.id && (
                       <div>
                         <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
-                        <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
+                        {/* left:0 (not right:0) so the menu's left edge aligns with the
+                            trigger's left edge, opening directly beneath the pill --
+                            matches the Networking module's contact status dropdown. The
+                            trigger is now the leftmost item in a full-width mobile row, so
+                            right-anchoring would extend the menu off the left edge of the
+                            card instead of sitting under the pill. */}
+                        <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
                           {STATUSES.map(s => (
                             <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
                               <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
