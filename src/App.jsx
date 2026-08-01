@@ -9348,7 +9348,22 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
           <div style={{ fontSize: 12, color: C.red, fontWeight: 600, marginBottom: 10 }}>{t("savedJobs.placeholderReviewMessage")}</div>
         )}
         {editingField === field ? (
-          <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Plain <textarea> can't render inline red-underlined highlights the way
+                ContentDisplay does, so the still-outstanding placeholder tokens are
+                listed here as chips instead -- same validation state (doc.placeholderTokens,
+                unaffected by edit mode), just a rendering form the textarea can carry. This
+                keeps "what still needs attention" visible while editing, per the requirement
+                that entering edit mode must never make issue indicators disappear. */}
+            {doc.placeholderTokens.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {doc.placeholderTokens.map((tok, i) => (
+                  <span key={i} style={{ fontSize: 11, fontWeight: 700, color: C.red, background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 6, padding: "2px 8px" }}>{tok}</span>
+                ))}
+              </div>
+            )}
+            <textarea value={editText} onChange={e => setEditText(e.target.value)} style={{ ...taStyle, minHeight }} />
+          </div>
         ) : (
           <ContentDisplay content={storedValue} highlightTokens={doc.placeholderTokens} />
         )}
