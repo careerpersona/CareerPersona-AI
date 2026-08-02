@@ -8640,6 +8640,74 @@ function RecommendationResults({ evaluations, t, language }) {
   );
 }
 
+// Permanent explainer for what this feature does. Renders in full before any real
+// analysis exists; collapses to a small expandable panel once one does -- it must
+// never disappear entirely, so the user always has a reminder of the feature's value.
+function OutcomeIntelligenceIntro({ collapsed, t }) {
+  // Starts closed. Deliberately NOT derived from `collapsed` at mount time: `collapsed`
+  // depends on an async-loaded analysis (useOutcomeAnalyses fetches after first render),
+  // so it's still false on mount and only flips true later -- a useState(!collapsed)
+  // initializer would capture that stale first value and never re-collapse once the
+  // analysis loads. The uncollapsed branch below ignores `open` entirely, so this
+  // default only ever governs the already-collapsed panel, where "closed by default" is
+  // exactly the desired behavior.
+  const [open, setOpen] = useState(false);
+  const bullets = [
+    t("tracker.oiIntroBullet1"),
+    t("tracker.oiIntroBullet2"),
+    t("tracker.oiIntroBullet3"),
+    t("tracker.oiIntroBullet4"),
+    t("tracker.oiIntroBullet5"),
+  ];
+  const body = (
+    <>
+      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 12 }}>{t("tracker.oiIntroBody")}</div>
+      <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+        {bullets.map((b, i) => <li key={i} style={{ fontSize: 13, color: C.textMid }}>{b}</li>)}
+      </ul>
+    </>
+  );
+  if (!collapsed) {
+    return (
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>📈 {t("tracker.oiIntroTitle")}</div>
+        {body}
+      </Card>
+    );
+  }
+  return (
+    <Card style={{ padding: 0, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: C.text, textAlign: "left" }}>
+        {t("tracker.oiIntroTitle")}<span>{open ? "−" : "+"}</span>
+      </button>
+      {open && <div style={{ padding: "0 18px 18px" }}>{body}</div>}
+    </Card>
+  );
+}
+
+// Illustrative-only examples shown before a real analysis exists, so the user can see
+// the kind of value they're building toward. Visually distinguished (dashed border +
+// EXAMPLE badge) so they can never be mistaken for the user's own data.
+function OutcomeExampleInsights({ t }) {
+  const examples = [t("tracker.oiExample1"), t("tracker.oiExample2"), t("tracker.oiExample3"), t("tracker.oiExample4"), t("tracker.oiExample5")];
+  return (
+    <Card style={{ border: `1px dashed ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("tracker.oiExampleHeading")}</div>
+        <span style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, background: C.bgSoft, padding: "2px 8px", borderRadius: 8, letterSpacing: 0.5 }}>{t("tracker.oiExampleBadge")}</span>
+      </div>
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, fontStyle: "italic" }}>{t("tracker.oiExampleDisclaimer")}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {examples.map((ex, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: C.textMid, opacity: 0.8 }}>
+            <span>•</span><span>{ex}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, profile, isPremium, patternsHook, analysesHook, recommendationEvalHook }) {
   const { t, language } = useI18n();
   const [running, setRunning] = useState(false);
@@ -8682,6 +8750,14 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Permanent explainer -- full before any real analysis exists, collapses to a
+          small expandable panel once one does, but never disappears entirely. */}
+      <OutcomeIntelligenceIntro collapsed={!!latestAnalysis} t={t} />
+
+      {/* Illustrative-only examples of the value being built toward -- removed once
+          a real analysis exists, since the real Top Insights zone replaces them. */}
+      {!latestAnalysis && <OutcomeExampleInsights t={t} />}
+
       {/* Zone 1 -- Funnel Overview: real data, not AI, always visible regardless of tier */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
@@ -8708,7 +8784,8 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
         <Card style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
           <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 6 }}>{t("tracker.oiNotEnoughDataTitle")}</div>
-          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{t("tracker.oiNotEnoughDataBody").replace("{n}", Math.max(0, 5 - outcomesLoggedCount))}</div>
+          <div style={{ fontSize: 14, color: C.text, fontWeight: 600, marginBottom: 2 }}>{t("tracker.oiProgressLogged").replace("{n}", outcomesLoggedCount)}</div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{t("tracker.oiProgressRemaining").replace("{n}", Math.max(0, 5 - outcomesLoggedCount))}</div>
           <LearningMilestones outcomesLoggedCount={outcomesLoggedCount} t={t} />
         </Card>
       )}

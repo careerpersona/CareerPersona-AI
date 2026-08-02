@@ -101,9 +101,13 @@ const APPLICATIONS = [
   await page.waitForTimeout(500);
   bodyText = await page.evaluate(() => document.body.innerText);
 
+  check('Insights page shows the permanent "What is Application Outcome Intelligence?" intro', bodyText.includes('What is Application Outcome Intelligence?'));
+  check('Insights page shows illustrative Example Insights, clearly badged', bodyText.includes('Example Insights') && bodyText.includes('EXAMPLE') && bodyText.includes('Illustrative examples only'));
+  check('Example Insights includes the sample insight copy', bodyText.includes('Resume Version 3 generated more interviews than Version 1.'));
   check('Insights page shows raw funnel counts (Applied 3)', /Applied[\s\S]{0,10}3/.test(bodyText));
   check('Insights page shows "Not enough data yet" title', bodyText.includes('Not enough data yet'));
-  check('Insights page tells user exactly 2 more outcomes needed (5 - 3)', bodyText.includes('Log 2 more application outcomes'));
+  check('Insights page shows dynamic progress: "You\'ve logged 3 outcomes."', bodyText.includes("You've logged 3 outcomes."));
+  check('Insights page tells user exactly 2 more outcomes needed (5 - 3)', bodyText.includes('Log 2 more to unlock your first AI-powered analysis.'));
   check('Insights page shows the locked milestone roadmap (Application Funnel unlocked, Early Pattern Analysis locked at 5)', bodyText.includes('Application Funnel') && bodyText.includes('Unlocks at 5'));
   check('Insights page does NOT show "Top AI Insights"', !bodyText.includes('Top AI Insights'));
   check('Insights page does NOT show "What\'s Working" section', !bodyText.includes("What's Working"));
@@ -150,6 +154,8 @@ const APPLICATIONS = [
   const runBtnAt5 = page.getByRole('button', { name: 'Run Analysis' });
   check('At 5 outcomes, Run Analysis button is now enabled', !(await runBtnAt5.isDisabled()));
   check('At 5 outcomes, still no AI content rendered (no analysis has been generated/saved yet)', !bodyText.includes('Top AI Insights') && !bodyText.includes('Analysis Deep Dives'));
+  check('At 5 outcomes (no analysis yet), the intro is still shown in FULL (not collapsed)', bodyText.includes('CareerPersona AI learns from every application outcome you record'));
+  check('At 5 outcomes (no analysis yet), Example Insights are still shown', bodyText.includes('Example Insights'));
 
   await page.goto('http://localhost:5173/#dashboard');
   await page.reload();
@@ -157,6 +163,47 @@ const APPLICATIONS = [
   bodyText = await page.evaluate(() => document.body.innerText);
   check('At 5 outcomes, Dashboard STILL shows "Log more outcomes" (gates on last saved analysis tier, not live count)', bodyText.includes('Log more outcomes to unlock pattern insights'));
   check('At 5 outcomes, Dashboard still shows no AI What\'s Working / What to Change lines', !bodyText.includes("What's Working:") && !bodyText.includes('What to Change:'));
+
+  // ===== ONCE A REAL ANALYSIS EXISTS: intro collapses, examples disappear =====
+  const FAKE_ANALYSIS_ROW = {
+    id: 'analysis-1', user_id: FAKE_UID, period_start: daysAgo(90), period_end: daysAgo(0),
+    application_count: 5, outcomes_logged_count: 5, confidence_tier: 'early_signal',
+    generated_at: new Date().toISOString(),
+    analysis: {
+      v: 1, confidenceTier: 'early_signal',
+      analyses: {
+        responsePattern: { finding: 'Sample finding', evidence: 'Sample evidence' },
+        funnelStage: { finding: 'Sample finding', evidence: 'Sample evidence' },
+        companyProfileFit: { finding: 'Sample finding', evidence: 'Sample evidence' },
+        applicationQuality: { finding: 'Sample finding', evidence: 'Sample evidence' },
+        resumeVersion: { finding: 'Sample finding', evidence: 'Sample evidence' },
+        strategicPrediction: { targeting: 'x', approachChanges: 'x', resumeSignals: 'x', opportunityCost: 'x' },
+      },
+      topInsights: [{ text: 'Real AI insight text', evidence: 'Real evidence' }],
+      whatWorking: ['Real what-working line'],
+      whatToChange: ['Real what-to-change line'],
+    },
+  };
+  await context.route(`**/${SUPABASE_HOST}/rest/v1/outcome_analyses*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([FAKE_ANALYSIS_ROW]) }));
+
+  console.log('\n=== ONCE A REAL ANALYSIS EXISTS ===');
+  await page.goto('http://localhost:5173/#tracker');
+  await page.reload();
+  await page.waitForTimeout(1200);
+  await page.getByRole('button', { name: /Insights/ }).click();
+  await page.waitForTimeout(500);
+  bodyText = await page.evaluate(() => document.body.innerText);
+
+  check('With a real analysis, the intro title is STILL present (never disappears)', bodyText.includes('What is Application Outcome Intelligence?'));
+  check('With a real analysis, the intro body is collapsed (bullet list not visible by default)', !bodyText.includes('Which resume version performs best'));
+  check('With a real analysis, Example Insights section is gone (replaced by real content)', !bodyText.includes('Example Insights'));
+  check('With a real analysis, the real Top AI Insights section renders', bodyText.includes('Top AI Insights') && bodyText.includes('Real AI insight text'));
+
+  // Expand the collapsed intro and confirm the explanatory content is still reachable.
+  await page.getByRole('button', { name: 'What is Application Outcome Intelligence?' }).click();
+  await page.waitForTimeout(300);
+  bodyText = await page.evaluate(() => document.body.innerText);
+  check('The collapsed intro expands on click to reveal the same explanatory bullets', bodyText.includes('Which resume version performs best'));
 
   console.log('\n=== SUMMARY ===');
   const failed = results.filter(r => !r.pass);
