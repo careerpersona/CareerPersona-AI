@@ -1,0 +1,32 @@
+[
+  {
+    "id": "networking-phase2-structural",
+    "path": "scripts/verify/verify-networking-phase2-structural.cjs",
+    "feature": "referral-intelligence",
+    "description": "NetworkingPage structural integration -- existing Outreach tab and its 4 sub-tabs unaffected by the new Intelligence tab."
+  },
+  {
+    "id": "referral-intelligence-ui",
+    "path": "scripts/verify/verify-referral-intelligence-phase6.cjs",
+    "feature": "referral-intelligence",
+    "description": "Referral Intelligence panel UI: Premium gating, Snapshot, deep dives, Run Analysis flow."
+  },
+  {
+    "id": "opportunity-integration",
+    "path": "scripts/verify/verify-opportunity-phase7.cjs",
+    "feature": "referral-intelligence",
+    "description": "OpportunityPage as a pure consumer of the shared scoringEngine.js."
+  },
+  {
+    "id": "referral-intelligence-rc",
+    "path": "scripts/verify/verify-referral-intelligence-rc.cjs",
+    "feature": "referral-intelligence",
+    "description": "Full functional verification matrix across 4 primary data-state scenarios plus error handling."
+  },
+  {
+    "id": "referral-intelligence-responsive",
+    "path": "scripts/verify/verify-referral-intelligence-responsive.cjs",
+    "feature": "referral-intelligence",
+    "description": "Desktop/tablet/375px mobile responsive checks for Referral Intelligence."
+  }
+]

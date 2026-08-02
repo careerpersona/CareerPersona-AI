@@ -27,5 +27,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.wrangler/ 
-worker-backup.js 
+.wrangler/
+worker-backup.js
+
+# Developer toolkit generated output (docs/architecture/Developer-Toolkit-Architecture.md) --
+# report artifacts are reproducible from the tools themselves, not source.
+tools/reports/
+
+# verify-referral-intelligence-responsive.cjs's screenshot output -- regenerated
+# every run (including via tools/regression-runner), throwaway by design.
+scripts/verify/_rc_screens/

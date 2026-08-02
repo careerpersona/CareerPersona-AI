@@ -1,0 +1,5 @@
+{
+  "localesDir": "src/i18n/locales",
+  "sourceLocale": "en",
+  "locales": ["ar", "de", "es", "fr", "hi", "it", "ja", "ko", "nl", "pt", "ru", "tr", "zh"]
+}
