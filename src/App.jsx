@@ -3,6 +3,9 @@ import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supa
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
+import { useReferralAnalyses } from "./data/referralIntelligence";
+import ReferralIntelligencePanel from "./components/ReferralIntelligencePanel";
+import { matchContactsToCompany, computeTargetCompanies, computeCompanyReadiness, rankByScore } from "./lib/referralIntelligence/scoringEngine";
 import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, computeAnalysisAvailability, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
@@ -33,7 +36,7 @@ import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Awar
 // browser from jumping to the last scroll position on page refresh.
 if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
 
-const C = {
+export const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
   purple: "#6B21E8", purpleLight: "#F3EEFF", purpleMid: "#9B59F5", text: "#0F172A", textMid: "#334155",
   textMuted: "#64748B", green: "#059669", greenLight: "#ECFDF5", red: "#DC2626", redLight: "#FEF2F2",
@@ -47,7 +50,7 @@ const useStorage = (key, initial) => {
   return [val, set];
 };
 
-const useSessionState = (key, initial) => {
+export const useSessionState = (key, initial) => {
   const [val, setVal] = useState(() => { try { const d = sessionStorage.getItem(key); return d !== null ? JSON.parse(d) : initial; } catch { return initial; } });
   const set = useCallback((v) => { setVal(prev => { const next = typeof v === "function" ? v(prev) : v; try { sessionStorage.setItem(key, JSON.stringify(next)); } catch {} return next; }); }, [key]);
   return [val, set];
@@ -217,7 +220,7 @@ const DEV_MODE = import.meta.env.DEV;
 
 const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
 
-async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
+export async function askClaude(prompt, maxTokens = 2500, feature = "ai_request") {
   if (DEV_MODE) {
     // Simulate realistic network latency so all loading states, progress bars,
     // banners, and animations behave exactly as they do in production.
@@ -472,6 +475,23 @@ function _devMockRoute(prompt) {
       whatWorking: ["Mid-size, remote-friendly companies are responding well to your applications."],
       whatToChange: ["Send a tailored cover letter with every application where possible."],
     });
+  }
+
+  // ── Referral Intelligence ───────────────────────────────────────────────────
+  // Same availability-aware shape as the Outcome Intelligence mock above: only
+  // return a key if its marker is actually present in the prompt, mirroring exactly
+  // what the real prompt would have asked for.
+  if (p.includes("referral intelligence analyst")) {
+    const ALL_SECTIONS = {
+      topOpportunities: { marker: "analysis 1: top referral opportunities", data: { finding: "Your strongest referral opportunity right now is at the company where you have a warm, recently-engaged contact and an active target signal.", evidence: "Based on your computed company readiness scores." } },
+      outreachTiming: { marker: "analysis 2: outreach timing guidance", data: { finding: "Reach out to your warmest contacts within the next few days while the relationship is still fresh — waiting too long lets engagement cool off.", evidence: "Based on your logged relationship scores." } },
+      relationshipBuilding: { marker: "analysis 3: relationship building guidance", data: { finding: "For target companies where you don't have a contact yet, start with a low-pressure coffee-chat request rather than asking for a referral outright.", evidence: "Based on your target companies with no contact yet." } },
+    };
+    const analyses = {};
+    for (const [key, cfg] of Object.entries(ALL_SECTIONS)) {
+      if (p.includes(cfg.marker)) analyses[key] = cfg.data;
+    }
+    return JSON.stringify({ v: 1, analyses });
   }
 
   // ── Fallback ───────────────────────────────────────────────────────────────
@@ -1583,7 +1603,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
   );
 }
 
-function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title }) {
+export function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title }) {
   const isDisabled = disabled || loading;
   const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: isDisabled ? "not-allowed" : "pointer", opacity: disabled && !loading ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" };
   const variants = { primary: { background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff" }, secondary: { background: C.bgSoft, color: C.textMid, border: `1px solid ${C.border}` }, green: { background: C.green, color: "#fff" }, ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` }, danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}40` }, blue: { background: C.blue, color: "#fff" } };
@@ -1595,7 +1615,7 @@ function Btn({ children, onClick, variant = "primary", disabled, loading, style 
   );
 }
 
-function Card({ children, style = {}, onClick, ...rest }) {
+export function Card({ children, style = {}, onClick, ...rest }) {
   return <div onClick={onClick} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", ...style }} {...rest}>{children}</div>;
 }
 
@@ -9419,8 +9439,13 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 }
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
-function NetworkingPage({ profile, applications, savedJobs }) {
+function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist, referralPatterns, referralAnalysesHook }) {
   const { t } = useI18n();
+  // Outer tab: Outreach (everything that already existed, untouched below) vs.
+  // Intelligence (new, Phase 2 stub only -- real functionality lands in Phase 6).
+  // Separate from `tab` (the existing linkedin/email/followup/tips selector) so
+  // neither state touches the other.
+  const [mainTab, setMainTab] = useSessionState("cp_net_maintab", "outreach");
   const { form, setForm, results, setResults, draft, setDraft, emailTo, setEmailTo, emailSent, setEmailSent } = useNetworkingSession(profile?.id, { yourBackground: profile?.job_title ? (profile.full_name ? profile.full_name + ", " : "") + profile.job_title + (profile.years_experience ? " with " + profile.years_experience + " years experience" : "") : "" });
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [tab, setTab] = useSessionState("cp_net_tab", "linkedin");
   const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
@@ -9565,6 +9590,17 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("networking.title")}</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("networking.subtitle")}</p>
+
+      {/* Phase 2 (structural only): new outer tab, sibling to the existing
+          linkedin/email/followup/tips selector below, which is completely
+          untouched inside the "outreach" branch. */}
+      <div style={{ display: "flex", gap: 8, borderBottom: `1px solid ${C.border}`, marginBottom: 20 }}>
+        <button onClick={() => setMainTab("outreach")} style={{ padding: "10px 4px", marginRight: 16, background: "none", border: "none", borderBottom: mainTab === "outreach" ? `2px solid ${C.purple}` : "2px solid transparent", color: mainTab === "outreach" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("networking.outreachTab")}</button>
+        <button onClick={() => setMainTab("intelligence")} style={{ padding: "10px 4px", background: "none", border: "none", borderBottom: mainTab === "intelligence" ? `2px solid ${C.purple}` : "2px solid transparent", color: mainTab === "intelligence" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("networking.intelligenceTab")}</button>
+      </div>
+
+      {mainTab === "outreach" && (
+      <>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
           <Input label={t("networking.theirName")} placeholder={t("networking.theirNamePlaceholder")} value={form.targetName} onChange={e => setForm(f => ({ ...f, targetName: e.target.value }))} />
@@ -9740,6 +9776,21 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
             </div>
           )}
         </div>
+      )}
+      </>
+      )}
+
+      {mainTab === "intelligence" && (
+        <ReferralIntelligencePanel
+          contacts={savedContacts}
+          watchlist={watchlist}
+          savedJobs={savedJobs}
+          applications={applications}
+          referralPatterns={referralPatterns}
+          profile={profile}
+          isPremium={isPremium}
+          referralAnalysesHook={referralAnalysesHook}
+        />
       )}
     </div>
   );
@@ -10909,7 +10960,7 @@ function ProfilePage({ profile, updateProfile }) {
 
 
 // ─── OPPORTUNITY INTELLIGENCE PAGE ─────────────────────────
-function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus }) {
+function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus, referralPatterns, referralAnalysesHook }) {
   const { t } = useI18n();
   const [tab, setTab] = useState("opportunities");
   const [analysis, setAnalysis] = useState(null);
@@ -10925,6 +10976,7 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   const saved = savedJobs || [];
   const apps = applications || [];
   const contacts = networkContacts || [];
+  const wl = watchlist || [];
 
   // ── Better Job Opportunities ──────────────────────────────
   const scoredJobs = saved.filter(j => j.matchScore != null).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
@@ -10943,10 +10995,22 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   }).sort((a, b) => (b.salaryMax || b.salaryMin || 0) - (a.salaryMax || a.salaryMin || 0));
 
   // ── Referral Opportunities ────────────────────────────────
-  const referralJobs = saved.map(j => {
-    const contact = contacts.find(c => c.company && j.company && c.company.toLowerCase() === j.company.toLowerCase());
-    return contact ? { ...j, referralContact: contact } : null;
-  }).filter(Boolean);
+  // Single source of truth: every company match, score, and rank below comes from
+  // Referral Intelligence's scoringEngine.js (LOCKED as the only referral-scoring
+  // implementation) -- this page never recomputes a match, score, or ranking of its
+  // own, it only reads what the shared engine already produced.
+  const referralPattern = (referralPatterns || []).find(p => p.pattern_type === "referral" && p.pattern_value === "used") || null;
+  const referralTargetCompanies = computeTargetCompanies({ watchlist: wl, savedJobs: saved, applications: apps });
+  const referralReadinessList = referralTargetCompanies.map(tc => computeCompanyReadiness({
+    companyName: tc.companyName, contacts, watchlistEntry: tc.watchlistEntry, hasSavedOrAppliedJob: tc.hasSavedOrAppliedJob, referralPattern,
+  }));
+  const referralOpportunities = rankByScore(referralReadinessList.filter(Boolean)).map(rc => ({
+    ...rc,
+    job: saved.find(j => j.company && j.company.toLowerCase() === rc.companyName.toLowerCase()) || null,
+  }));
+  // Referral Intelligence's persisted AI narrative, read directly -- never recomputed
+  // or re-derived here.
+  const referralInsight = referralAnalysesHook?.latest?.content?.analyses?.topOpportunities?.finding || null;
 
   // ── Trending Skills from saved jobs ──────────────────────
   const skillFreq = {};
@@ -10959,11 +11023,10 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   const frequentCompanies = Object.entries(coFreq).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
 
   // ── Watchlist with saved job counts ──────────────────────
-  const wl = watchlist || [];
   const watchlistEnriched = wl.map(w => ({
     ...w,
     jobCount: saved.filter(j => j.company && j.company.toLowerCase() === w.company_name.toLowerCase()).length,
-    hasContact: contacts.some(c => c.company && c.company.toLowerCase() === w.company_name.toLowerCase()),
+    hasContact: matchContactsToCompany(w.company_name, contacts).length > 0,
   }));
 
   const userContext = useUserContext({ profile, applications, savedJobs, networkContacts: contacts, companyWatchlist: wl });
@@ -11084,7 +11147,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                   const sal = fmtSal(j.salaryMin, j.salaryMax);
                   const applied = appliedCompanies.has((j.company || "").toLowerCase());
                   const watched = wl.some(w => w.company_name?.toLowerCase() === (j.company || "").toLowerCase());
-                  const refCon = contacts.find(c => c.company && j.company && c.company.toLowerCase() === j.company.toLowerCase());
+                  const refCon = matchContactsToCompany(j.company, contacts)[0];
                   return (
                     <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < betterJobs.length - 1 ? `1px solid ${C.border}` : "none", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 200 }}>
@@ -11182,7 +11245,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
               </div>
               <Btn variant="secondary" style={{ padding: "5px 12px", fontSize: 12, flexShrink: 0 }} onClick={() => setPage("network")}>{t("opportunity.manageNetwork")}</Btn>
             </div>
-            {referralJobs.length === 0 ? (
+            {referralOpportunities.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted, padding: "12px 0" }}>
                 {contacts.length === 0 ? t("opportunity.referralEmpty1") : t("opportunity.referralEmpty2")}
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -11192,18 +11255,24 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {referralJobs.slice(0, 5).map((j, i) => (
-                  <div key={j.job_id || i} style={{ background: C.greenLight, border: `1px solid ${C.green}20`, borderRadius: 10, padding: "12px 14px" }}>
+                {referralInsight && (
+                  <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: C.textMid, lineHeight: 1.6 }}>
+                    <span style={{ fontWeight: 700, color: C.purple }}>{t("opportunity.referralAiInsightLabel")}</span> {referralInsight}
+                  </div>
+                )}
+                {referralOpportunities.slice(0, 5).map(rc => (
+                  <div key={rc.companyName} style={{ background: C.greenLight, border: `1px solid ${C.green}20`, borderRadius: 10, padding: "12px 14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{j.title} — {j.company}</div>
-                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{t("opportunity.contactWorksHere").replace("{name}", j.referralContact.name)}</div>
-                        {j.referralContact.email && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{j.referralContact.email}</div>}
-                        {j.matchScore != null && <div style={{ fontSize: 12, color: matchColor(j.matchScore), fontWeight: 600, marginTop: 4 }}>{t("opportunity.matchPct").replace("{pct}", j.matchScore)}</div>}
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{rc.job ? `${rc.job.title} — ${rc.companyName}` : rc.companyName}</div>
+                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{t("opportunity.contactWorksHere").replace("{name}", rc.bestContact.contact.name)}</div>
+                        {rc.bestContact.contact.email && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{rc.bestContact.contact.email}</div>}
+                        {rc.job?.matchScore != null && <div style={{ fontSize: 12, color: matchColor(rc.job.matchScore), fontWeight: 600, marginTop: 4 }}>{t("opportunity.matchPct").replace("{pct}", rc.job.matchScore)}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                         <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("network")}>{t("opportunity.draftMessage")}</Btn>
-                        {j.applyUrl && <a href={j.applyUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Btn style={{ fontSize: 12, padding: "5px 12px" }}>{t("opportunity.applyBtn")}</Btn></a>}
+                        {rc.job?.applyUrl && <a href={rc.job.applyUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Btn style={{ fontSize: 12, padding: "5px 12px" }}>{t("opportunity.applyBtn")}</Btn></a>}
+                        {!rc.job && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>{t("opportunity.findJobs")}</Btn>}
                       </div>
                     </div>
                   </div>
@@ -12204,6 +12273,8 @@ export default function App() {
   const outcomePatternsHook = useOutcomePatterns(profile?.id);
   const outcomeAnalysesHook = useOutcomeAnalyses(profile?.id);
   const recommendationEvalHook = useRecommendationEvaluations(profile?.id);
+  // Referral Intelligence (Premium Feature #3).
+  const referralAnalysesHook = useReferralAnalyses(profile?.id);
   // One-shot override so the Dashboard's "Full Analysis" button always lands on the
   // Insights tab, regardless of cp_tracker_tab's remembered value. TrackerPage consumes
   // it once (via onForceInsightsTabHandled) so normal in-Tracker tab navigation keeps
@@ -12496,9 +12567,9 @@ export default function App() {
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
+        {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
-        {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} />}
+        {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
