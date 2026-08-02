@@ -4,6 +4,22 @@ import { supabase } from "../lib/supabaseClient";
 const TABLE = "applications";
 const LOCAL_KEY = "cp_apps";
 
+// Application Outcome Intelligence's response_status is derived from the Tracker's
+// own (richer) status, never entered separately -- avoids maintaining two parallel
+// status fields that could drift. See docs/Application Outcome Intelligence Locked
+// Blueprint.md, "Locked Implementation Decisions".
+export const RESPONSE_STATUS_FROM_STATUS = {
+  Applied: "pending",
+  "Phone Screen": "interview_invited",
+  Interview: "interview_invited",
+  "Final Interview": "interview_invited",
+  Offer: "offer",
+  Rejected: "rejected",
+  Withdrawn: "withdrawn",
+  Ghosted: "ghosted",
+};
+export const isInterviewStage = (status) => status === "Phone Screen" || status === "Interview" || status === "Final Interview";
+
 const toRow = (a, userId) => ({
   id: a.id,
   user_id: userId,
@@ -20,6 +36,22 @@ const toRow = (a, userId) => ({
   resume_used: a.resume || null,
   cover_letter: a.coverLetter || null,
   resume_id: a.resumeId || null,
+  response_status: RESPONSE_STATUS_FROM_STATUS[a.status] || "pending",
+  response_received_at: a.responseReceivedAt || null,
+  rejection_stage: a.rejectionStage || null,
+  first_interview_at: a.firstInterviewAt || null,
+  application_source: a.applicationSource || null,
+  cover_letter_sent: !!a.coverLetterSent,
+  smart_apply_used: !!a.smartApplyUsed,
+  smart_apply_queue_item_id: a.smartApplyQueueItemId || null,
+  smart_apply_score: a.smartApplyScore ?? null,
+  days_since_posted: a.daysSincePosted ?? null,
+  company_size_estimate: a.companySizeEstimate || null,
+  industry: a.industry || null,
+  remote_policy: a.remotePolicy || null,
+  referral_used: !!a.referralUsed,
+  salary_range_min: a.salaryRangeMin ?? null,
+  salary_range_max: a.salaryRangeMax ?? null,
 });
 
 const fromRow = (r) => ({
@@ -37,6 +69,22 @@ const fromRow = (r) => ({
   resume: r.resume_used || "",
   coverLetter: r.cover_letter || "",
   resumeId: r.resume_id || null,
+  responseStatus: r.response_status || "pending",
+  responseReceivedAt: r.response_received_at || null,
+  rejectionStage: r.rejection_stage || "",
+  firstInterviewAt: r.first_interview_at || null,
+  applicationSource: r.application_source || "",
+  coverLetterSent: !!r.cover_letter_sent,
+  smartApplyUsed: !!r.smart_apply_used,
+  smartApplyQueueItemId: r.smart_apply_queue_item_id || null,
+  smartApplyScore: r.smart_apply_score ?? null,
+  daysSincePosted: r.days_since_posted ?? null,
+  companySizeEstimate: r.company_size_estimate || "",
+  industry: r.industry || "",
+  remotePolicy: r.remote_policy || "",
+  referralUsed: !!r.referral_used,
+  salaryRangeMin: r.salary_range_min != null ? String(r.salary_range_min) : "",
+  salaryRangeMax: r.salary_range_max != null ? String(r.salary_range_max) : "",
 });
 
 export function useApplications(userId) {

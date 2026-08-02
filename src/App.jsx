@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
-import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow } from "./data/applications";
+import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
+import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
+import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
 import { useSmartApplyQueue } from "./data/smartApply";
@@ -431,6 +433,34 @@ function _devMockRoute(prompt) {
   // ── Job Tracker Change Interpretation ─────────────────────────────────────
   if (p.includes("just changed. facts already computed")) {
     return "The salary increase brings this role closer to your target, worth a second look.";
+  }
+
+  // ── Application Outcome Intelligence ───────────────────────────────────────
+  if (p.includes("application outcome intelligence analyst")) {
+    const tierMatch = p.match(/confidence tier for this run is "(\w+)"/);
+    const tier = tierMatch ? tierMatch[1] : "early_signal";
+    return JSON.stringify({
+      v: 1, confidenceTier: tier,
+      analyses: {
+        responsePattern: { finding: "Applications to mid-size companies are responding at a notably higher rate than applications to enterprise companies in your history.", evidence: "Based on your logged outcomes so far." },
+        funnelStage: { finding: "Most of your rejections are happening early in the process rather than after an interview, which usually points to a resume or keyword-matching gap rather than an interview-skills gap.", evidence: "Based on logged rejection stages." },
+        companyProfileFit: { finding: "Mid-size, remote-friendly companies show your strongest response signal so far.", evidence: "Based on company size and remote policy patterns." },
+        applicationQuality: { finding: "Applications sent with a cover letter are trending toward a better response rate than those without one.", evidence: "Based on cover-letter-sent patterns." },
+        resumeVersion: { finding: "Not enough resume-version-linked outcome data yet to compare versions directly.", evidence: "Requires Smart Apply submissions with a recorded resume version." },
+        strategicPrediction: {
+          targeting: "Consider prioritizing mid-size and remote-friendly companies for your next batch of applications.",
+          approachChanges: "Sending a tailored cover letter appears to correlate with better outcomes for you — worth doing consistently.",
+          resumeSignals: "No single resume change stands out yet from the current data.",
+          opportunityCost: "A few saved jobs and prepared Smart Apply packages haven't been submitted yet — following up on those is low-effort upside.",
+        },
+      },
+      topInsights: [
+        { text: "Mid-size companies are your strongest-responding segment so far.", evidence: "Early signal based on your logged outcomes." },
+        { text: "Cover letters appear to correlate with better response rates.", evidence: "Early signal — keep tracking to confirm." },
+      ],
+      whatWorking: ["Mid-size, remote-friendly companies are responding well to your applications."],
+      whatToChange: ["Send a tailored cover letter with every application where possible."],
+    });
   }
 
   // ── Fallback ───────────────────────────────────────────────────────────────
@@ -2566,6 +2596,126 @@ Return ONLY this JSON, no markdown:
   };
 }
 
+// ─── APPLICATION OUTCOME INTELLIGENCE ───────────────────────────────────────
+// The six analyses (blueprint §8) are narrative synthesis ONLY -- confidence tiers,
+// pattern direction/stability/response-rates are computed deterministically by
+// src/lib/outcomeIntelligence/patternEngine.js and handed to Claude as DATA blocks,
+// same "facts computed in code, AI only interprets" convention as buildJobIntelligencePayload.
+function fmtPattern(p) {
+  return `${p.pattern_value} (${Math.round(p.response_rate * 100)}% response, n=${p.sample_size}, ${p.direction}/${p.stability}/${p.confidence})`;
+}
+
+async function buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier }) {
+  const byType = (type) => patterns.filter(p => p.pattern_type === type);
+
+  const d1 = [
+    `Overall funnel: ${funnel.applied} applied, ${funnel.responded} responded (${Math.round(funnel.responseRate * 100)}%), ${funnel.interviewed} interviewed, ${funnel.offered} offered.`,
+    patterns.length ? `All patterns observed: ${patterns.map(fmtPattern).join("; ")}.` : "No patterns available yet.",
+  ].join(" ");
+
+  const d2 = [
+    `Interview rate from response: ${Math.round(funnel.interviewRate * 100)}%. Offer rate from interview: ${Math.round(funnel.offerRate * 100)}%.`,
+    rejectionStages.totalLogged > 0
+      ? `Logged rejection stages (${rejectionStages.totalLogged} total): ${Object.entries(rejectionStages.counts).map(([k, v]) => `${k}: ${v}`).join(", ")}.`
+      : "No rejection stages logged yet -- users can log where in the process a rejection occurred when editing a rejected application.",
+  ].join(" ");
+
+  const d3 = [
+    byType("company_size").length ? `Company size patterns: ${byType("company_size").map(fmtPattern).join("; ")}.` : "No company size data logged yet.",
+    byType("industry").length ? `Industry patterns: ${byType("industry").map(fmtPattern).join("; ")}.` : "No industry data logged yet.",
+    byType("remote_policy").length ? `Remote policy patterns: ${byType("remote_policy").map(fmtPattern).join("; ")}.` : "No remote policy data logged yet.",
+  ].join(" ");
+
+  const d4 = [
+    byType("smart_apply").length ? `Smart Apply usage patterns: ${byType("smart_apply").map(fmtPattern).join("; ")}.` : "No Smart Apply usage data logged yet.",
+    byType("cover_letter").length ? `Cover letter patterns: ${byType("cover_letter").map(fmtPattern).join("; ")}.` : "No cover letter data logged yet.",
+    byType("referral").length ? `Referral patterns: ${byType("referral").map(fmtPattern).join("; ")}.` : "No referral data logged yet.",
+  ].join(" ");
+
+  const d5 = byType("resume_version").length
+    ? `Resume version patterns: ${byType("resume_version").map(fmtPattern).join("; ")}.`
+    : "No resume-version-linked outcome data yet -- this requires applications submitted via Smart Apply with a resume version recorded.";
+
+  const appliedJobKeys = new Set(eligibleApplications(applications).map(a => `${(a.company || "").toLowerCase()}|${(a.jobTitle || "").toLowerCase()}`));
+  const unappliedSaved = (savedJobs || []).filter(j => !appliedJobKeys.has(`${(j.company || "").toLowerCase()}|${(j.title || "").toLowerCase()}`));
+  const abandonedQueue = (smartApplyQueue || []).filter(q => q.status === "ready");
+  const d6 = [
+    `Saved jobs never applied to: ${unappliedSaved.length} of ${(savedJobs || []).length} saved.`,
+    `Smart Apply packages prepared but never submitted: ${abandonedQueue.length}.`,
+    `Overall confidence tier for this analysis: ${confidenceTier}.`,
+  ].join(" ");
+
+  const raw = await askClaude(
+    `You are CareerPersona AI — Application Outcome Intelligence Analyst. Generate 6 independent AI analyses of a user's job application outcomes, per the locked Application Outcome Intelligence blueprint.
+
+CRITICAL RULES:
+- Each analysis must derive exclusively from its own DATA block. Do NOT cross-reference other sections.
+- Confidence tier for this run is "${confidenceTier}". At "early_signal", phrase findings as hedged hypotheses ("early evidence suggests"), never as firm conclusions. At "emerging" or "high_confidence", confident recommendations are appropriate.
+- Never fabricate numbers not present in the DATA blocks. If a DATA block says no data is available, say so plainly instead of inventing a finding.
+- Withdrawn applications have already been excluded from every number below -- do not mention them.
+
+=== ANALYSIS 1: RESPONSE PATTERN ANALYSIS ===
+DATA: ${d1}
+Task: What do applications that received responses have in common? Identify the largest gap between responded and non-responded applications. Use ONLY the DATA above.
+
+=== ANALYSIS 2: FUNNEL STAGE INTELLIGENCE ===
+DATA: ${d2}
+Task: Identify which pipeline stage has the biggest conversion leak, and if rejection stage data exists, route the finding toward the relevant fix (ATS/keyword issue, interview prep, technical depth, culture fit). Use ONLY the DATA above.
+
+=== ANALYSIS 3: COMPANY PROFILE FIT ===
+DATA: ${d3}
+Task: Build a "responsive company profile" and a "low-response profile" from the patterns given. Use ONLY the DATA above.
+
+=== ANALYSIS 4: APPLICATION QUALITY CORRELATION ===
+DATA: ${d4}
+Task: Does Smart Apply, a cover letter, or a referral correlate with better outcomes for this user? Use ONLY the DATA above.
+
+=== ANALYSIS 5: RESUME VERSION EFFECTIVENESS ===
+DATA: ${d5}
+Task: Which resume version (if any) is outperforming others, and by how much? Use ONLY the DATA above.
+
+=== ANALYSIS 6: STRATEGIC PREDICTION ENGINE ===
+DATA: ${d6}
+Task: Synthesize the other five analyses into forward-looking guidance: targeting recalibration, application approach changes, and resume/skills signals. Include an Opportunity Cost Intelligence finding using the saved-jobs and abandoned-package numbers given. Use ONLY the DATA above.
+
+Return ONLY this JSON, no markdown:
+{"v":1,"confidenceTier":"${confidenceTier}","analyses":{"responsePattern":{"finding":"<2-3 sentences>","evidence":"<1 sentence citing sample size>"},"funnelStage":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"companyProfileFit":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"applicationQuality":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"resumeVersion":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"strategicPrediction":{"targeting":"<1-2 sentences>","approachChanges":"<1-2 sentences>","resumeSignals":"<1-2 sentences>","opportunityCost":"<1-2 sentences>"}},"topInsights":[{"text":"<finding>","evidence":"<basis>"},{"text":"<finding>","evidence":"<basis>"}],"whatWorking":["<point 1>","<point 2>"],"whatToChange":["<point 1>","<point 2>"]}`,
+    2000, "outcome_intelligence"
+  );
+
+  try {
+    const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
+    const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
+    return parsed?.v === 1 ? parsed : null;
+  } catch { return null; }
+}
+
+// Orchestrates one full analysis run: computes deterministic patterns/funnel, calls the
+// AI for narrative synthesis, persists both the full record and the derived patterns.
+async function runOutcomeAnalysis({ applications, savedJobs, smartApplyQueue, saveAnalysis, savePatterns, userId }) {
+  const outcomesLoggedCount = computeOutcomesLoggedCount(applications);
+  const confidenceTier = computeConfidenceTier(outcomesLoggedCount);
+  const funnel = computeFunnel(applications);
+  if (!confidenceTier) {
+    return { confidenceTier: null, funnel, analysis: null, outcomesLoggedCount };
+  }
+  const patterns = computeAllPatterns(applications);
+  const rejectionStages = computeRejectionStageBreakdown(applications);
+  const analysis = await buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier });
+  const eligible = eligibleApplications(applications);
+  const dates = eligible.map(a => a.date).filter(Boolean).sort();
+  await saveAnalysis(userId, {
+    periodStart: dates[0] ? new Date(dates[0]).toISOString() : new Date().toISOString(),
+    periodEnd: new Date().toISOString(),
+    applicationCount: eligible.length,
+    outcomesLoggedCount,
+    confidenceTier,
+    analysis,
+  });
+  if (patterns.length) await savePatterns(userId, patterns);
+  return { confidenceTier, funnel, analysis, outcomesLoggedCount, patterns };
+}
+
 // ─── MARKDOWN TEXT RENDERER ──────────────────────────────────
 function MarkdownText({ text }) {
   if (!text) return null;
@@ -2635,7 +2785,7 @@ function MarkdownText({ text }) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume, isPremium, latestOutcomeAnalysis }) {
   const { t, language } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -3143,6 +3293,37 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           <Btn variant="secondary" style={{ padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("opportunity")}>{t("dashboard.viewOpportunities")}</Btn>
         </Card>
       </div>
+
+      {/* Application Outcome Intelligence -- Premium Feature #2. Dashboard = hiring
+          pulse (one What's Working + one What to Change line); full analysis lives in
+          the Application Tracker's Insights tab. */}
+      {isPremium && (() => {
+        const oiFunnel = computeFunnel(applications);
+        const oiAnalysis = latestOutcomeAnalysis?.analysis;
+        const belowEmerging = !latestOutcomeAnalysis || latestOutcomeAnalysis.confidence_tier === "early_signal";
+        return (
+          <Card style={{ padding: "16px 18px", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText }}>{t("dashboard.oiTitle")}</div>
+              <button onClick={() => setPage("tracker")} style={{ background: "none", border: "none", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>{t("dashboard.oiFullAnalysis")} ↗</button>
+            </div>
+            <div style={{ display: "flex", gap: 16, marginBottom: belowEmerging ? 0 : 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.oiApplied")} <strong style={{ color: C.text }}>{oiFunnel.applied}</strong></div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.oiResponse")} <strong style={{ color: C.text }}>{oiFunnel.responded} ({Math.round(oiFunnel.responseRate * 100)}%)</strong></div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.oiInterview")} <strong style={{ color: C.text }}>{oiFunnel.interviewed} ({Math.round(oiFunnel.interviewRate * 100)}%)</strong></div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.oiOffer")} <strong style={{ color: C.text }}>{oiFunnel.offered}</strong></div>
+            </div>
+            {belowEmerging ? (
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>{t("dashboard.oiLogMore")}</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {oiAnalysis?.whatWorking?.[0] && <div style={{ fontSize: 12, color: C.green }}><strong>{t("dashboard.oiWorking")}:</strong> {oiAnalysis.whatWorking[0]}</div>}
+                {oiAnalysis?.whatToChange?.[0] && <div style={{ fontSize: 12, color: C.orange }}><strong>{t("dashboard.oiChange")}:</strong> {oiAnalysis.whatToChange[0]}</div>}
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* ROW 3: Resume + Job + Interview Intelligence */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
@@ -8363,9 +8544,250 @@ const NEUTRAL_FILTER_COLOR = C.textMuted;
 
 const STATUS_LABEL_KEY = { Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
 
-function TrackerPage({ applications, deleteApplication, saveApplication, resumes }) {
+// ─── APPLICATION OUTCOME INTELLIGENCE PANEL (Premium Feature #2) ────────────
+const OI_MILESTONES = [
+  { key: "funnel", threshold: 1 },
+  { key: "earlyPattern", threshold: 5 },
+  { key: "industry", threshold: 10 },
+  { key: "companyProfile", threshold: 15 },
+  { key: "predictiveScoring", threshold: 30 },
+];
+
+function LearningMilestones({ outcomesLoggedCount, t }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {OI_MILESTONES.map(m => {
+        const unlocked = outcomesLoggedCount >= m.threshold;
+        return (
+          <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: unlocked ? C.text : C.textMuted }}>
+            <span>{unlocked ? "🔓" : "🔒"}</span>
+            <span style={{ flex: 1, textAlign: "left" }}>{t(`tracker.oiMilestone_${m.key}`)}</span>
+            <span style={{ fontSize: 11, color: C.textMuted }}>{unlocked ? t("tracker.oiUnlocked") : t("tracker.oiUnlocksAt").replace("{n}", m.threshold)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OutcomeAnalysisDeepDives({ analysis, t }) {
+  const [openKey, setOpenKey] = useState(null);
+  const sections = [
+    { key: "responsePattern", title: t("tracker.oiAnalysis01") },
+    { key: "funnelStage", title: t("tracker.oiAnalysis02") },
+    { key: "companyProfileFit", title: t("tracker.oiAnalysis03") },
+    { key: "applicationQuality", title: t("tracker.oiAnalysis04") },
+    { key: "resumeVersion", title: t("tracker.oiAnalysis05") },
+    { key: "strategicPrediction", title: t("tracker.oiAnalysis06") },
+  ];
+  return (
+    <Card>
+      <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiDeepDivesHeading")}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {sections.map(s => {
+          const data = analysis.analyses?.[s.key];
+          if (!data) return null;
+          const open = openKey === s.key;
+          return (
+            <div key={s.key} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              <button onClick={() => setOpenKey(open ? null : s.key)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.text, textAlign: "left" }}>
+                {s.title}<span>{open ? "−" : "+"}</span>
+              </button>
+              {open && (
+                <div style={{ padding: "0 14px 14px", fontSize: 13, color: C.textMid, lineHeight: 1.7 }}>
+                  {s.key === "strategicPrediction" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div><strong>{t("tracker.oiTargeting")}:</strong> {data.targeting}</div>
+                      <div><strong>{t("tracker.oiApproachChanges")}:</strong> {data.approachChanges}</div>
+                      <div><strong>{t("tracker.oiResumeSignals")}:</strong> {data.resumeSignals}</div>
+                      <div><strong>{t("tracker.oiOpportunityCost")}:</strong> {data.opportunityCost}</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 6 }}>{data.finding}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted }}>{data.evidence}</div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function RecommendationResults({ evaluations, t, language }) {
+  if (!evaluations.length) return null;
+  const resultLabel = { confirmed: t("tracker.oiConfirmed"), no_change: t("tracker.oiNoChange"), insufficient_data: t("tracker.oiPending") };
+  const resultColor = { confirmed: C.green, no_change: C.textMuted, insufficient_data: C.yellow };
+  return (
+    <Card>
+      <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiRecommendationResultsHeading")}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {evaluations.map(ev => (
+          <div key={ev.id} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 13, color: C.text, marginBottom: 6 }}>{ev.recommendation_text}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: C.textMuted }}>{new Date(ev.applied_at).toLocaleDateString(language)}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: resultColor[ev.evaluation_result || "insufficient_data"] }}>{resultLabel[ev.evaluation_result || "insufficient_data"]}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, profile, isPremium, patternsHook, analysesHook, recommendationEvalHook }) {
+  const { t, language } = useI18n();
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState("");
+  const { savePatterns } = patternsHook;
+  const { analyses, latest, saveAnalysis } = analysesHook;
+  const { evaluations } = recommendationEvalHook;
+
+  const funnel = useMemo(() => computeFunnel(applications), [applications]);
+  const outcomesLoggedCount = useMemo(() => computeOutcomesLoggedCount(applications), [applications]);
+  const confidenceTier = computeConfidenceTier(outcomesLoggedCount);
+
+  const runAnalysis = async () => {
+    if (!isPremium || !profile?.id) return;
+    setRunning(true); setRunError("");
+    try {
+      await runOutcomeAnalysis({ applications, savedJobs, smartApplyQueue, saveAnalysis, savePatterns, userId: profile.id });
+    } catch (e) {
+      console.error("[OutcomeIntelligence]", e);
+      setRunError(t("tracker.oiRunFailed"));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (!isPremium) {
+    return (
+      <Card style={{ textAlign: "center", padding: 48 }}>
+        <div style={{ fontSize: 40, marginBottom: 14 }}>📈</div>
+        <div style={{ fontWeight: 700, fontSize: 18, color: C.text, marginBottom: 8 }}>{t("tracker.oiPremiumTitle")}</div>
+        <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 20, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>{t("tracker.oiPremiumBody")}</div>
+        <Btn onClick={() => { window.location.hash = "#pricing"; }}>{t("tracker.oiUpgradeBtn")}</Btn>
+      </Card>
+    );
+  }
+
+  const latestAnalysis = latest?.analysis;
+  const tierLabel = { early_signal: t("tracker.tierEarlySignal"), emerging: t("tracker.tierEmerging"), high_confidence: t("tracker.tierHighConfidence") };
+  const tierColor = { early_signal: C.yellow, emerging: C.blue, high_confidence: C.green };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Zone 1 -- Funnel Overview: real data, not AI, always visible regardless of tier */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("tracker.oiFunnelHeading")}</div>
+          <Btn onClick={runAnalysis} loading={running} disabled={outcomesLoggedCount < 5} style={{ fontSize: 12, padding: "7px 14px" }}>{t("tracker.oiRunAnalysis")}</Btn>
+        </div>
+        {runError && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{runError}</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="two-col">
+          {[
+            { label: t("tracker.oiApplied"), value: String(funnel.applied) },
+            { label: t("tracker.oiResponded"), value: `${funnel.responded} (${Math.round(funnel.responseRate * 100)}%)` },
+            { label: t("tracker.oiInterviewed"), value: `${funnel.interviewed} (${Math.round(funnel.interviewRate * 100)}%)` },
+            { label: t("tracker.oiOffered"), value: `${funnel.offered} (${Math.round(funnel.offerRate * 100)}%)` },
+          ].map((f, i) => (
+            <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{f.value}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{f.label}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {!confidenceTier && (
+        <Card style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 6 }}>{t("tracker.oiNotEnoughDataTitle")}</div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{t("tracker.oiNotEnoughDataBody").replace("{n}", Math.max(0, 5 - outcomesLoggedCount))}</div>
+          <LearningMilestones outcomesLoggedCount={outcomesLoggedCount} t={t} />
+        </Card>
+      )}
+
+      {confidenceTier && !latestAnalysis && (
+        <Card style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 13, color: C.textMuted }}>{t("tracker.oiReadyToAnalyze")}</div>
+        </Card>
+      )}
+
+      {confidenceTier && latestAnalysis && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted, flexWrap: "wrap" }}>
+            <span style={{ background: `${tierColor[latest.confidence_tier]}15`, color: tierColor[latest.confidence_tier], fontWeight: 700, padding: "3px 10px", borderRadius: 12 }}>{tierLabel[latest.confidence_tier]}</span>
+            <span>{t("tracker.oiLastAnalyzed").replace("{date}", new Date(latest.generated_at).toLocaleDateString(language))}</span>
+          </div>
+
+          {/* Zone 2 -- Top AI Insights */}
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(latestAnalysis.topInsights || []).map((ins, i) => (
+                <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>{ins.text}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted }}>{ins.evidence}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Zone 3 -- What's Working / What to Change */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, color: C.green, marginBottom: 10 }}>✓ {t("tracker.oiWhatsWorking")}</div>
+              {(latestAnalysis.whatWorking || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+            </Card>
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, color: C.orange, marginBottom: 10 }}>→ {t("tracker.oiWhatToChange")}</div>
+              {(latestAnalysis.whatToChange || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+            </Card>
+          </div>
+
+          {/* Zone 4 -- Six Analysis Deep Dives */}
+          <OutcomeAnalysisDeepDives analysis={latestAnalysis} t={t} />
+
+          {/* Zone 5 -- Recommendation Results */}
+          <RecommendationResults evaluations={evaluations} t={t} language={language} />
+
+          {/* Zone 6 -- Learning Milestones */}
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiMilestonesHeading")}</div>
+            <LearningMilestones outcomesLoggedCount={outcomesLoggedCount} t={t} />
+          </Card>
+
+          {/* Zone 7 -- Analysis History */}
+          {analyses.length > 1 && (
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {analyses.map(a => (
+                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <span>{new Date(a.generated_at).toLocaleDateString(language)}</span>
+                    <span style={{ color: tierColor[a.confidence_tier] }}>{tierLabel[a.confidence_tier]}</span>
+                    <span>{t("tracker.oiOutcomesLogged").replace("{n}", a.outcomes_logged_count)}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TrackerPage({ applications, deleteApplication, saveApplication, resumes, savedJobs, smartApplyQueue, profile, isPremium, outcomePatternsHook, outcomeAnalysesHook, recommendationEvalHook }) {
   const { t } = useI18n();
   const tStatus = s => t(`tracker.${STATUS_LABEL_KEY[s]}`, s);
+  const [tab, setTab] = useSessionState("cp_tracker_tab", "applications");
   const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useSessionState("cp_tracker_filter", "All"); const [viewApp, setViewApp] = useState(null);
   const [formErrors, setFormErrors] = useState({});
   const [search, setSearch] = useSessionState("cp_tracker_search", "");
@@ -8385,7 +8807,19 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  const blankForm = { company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" };
+  const blankForm = { company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "", rejectionStage: "", applicationSource: "", coverLetterSent: false, companySizeEstimate: "", industry: "", remotePolicy: "", referralUsed: false, salaryRangeMin: "", salaryRangeMax: "" };
+
+  // Application Outcome Intelligence: response_received_at / first_interview_at are
+  // set once, on first occurrence, never overwritten -- derived here (not in toRow,
+  // which has no access to prior state) so both the quick-status dropdown and the
+  // full edit form share one first-occurrence rule instead of two.
+  const withOutcomeTimestamps = (existingApp, newStatus) => {
+    const now = new Date().toISOString();
+    const patch = {};
+    if (newStatus !== "Applied" && !existingApp.responseReceivedAt) patch.responseReceivedAt = now;
+    if (isInterviewStage(newStatus) && !existingApp.firstInterviewAt) patch.firstInterviewAt = now;
+    return patch;
+  };
 
   // Quick status change from the row-level dropdown -- reuses the same saveApplication
   // (upsert) path as the full edit form, just with only `status` changed, so there is
@@ -8396,7 +8830,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
     setUpdatingStatusId(app.id);
     setSaveError("");
     try {
-      await saveApplication({ ...app, status: newStatus });
+      await saveApplication({ ...app, status: newStatus, ...withOutcomeTimestamps(app, newStatus) });
       if (statusToastTimer.current) clearTimeout(statusToastTimer.current);
       setStatusToast(true);
       statusToastTimer.current = setTimeout(() => setStatusToast(false), 3500);
@@ -8436,10 +8870,13 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
     setFormErrors({});
     setSaveError("");
 
-    const cleanForm = { ...form, atsScore: atsClean, contactName: contactValues.contactName, contactEmail: contactValues.contactEmail };
+    const salaryMinClean = form.salaryRangeMin !== "" && form.salaryRangeMin != null ? Number(form.salaryRangeMin) : null;
+    const salaryMaxClean = form.salaryRangeMax !== "" && form.salaryRangeMax != null ? Number(form.salaryRangeMax) : null;
+    const cleanForm = { ...form, atsScore: atsClean, contactName: contactValues.contactName, contactEmail: contactValues.contactEmail, salaryRangeMin: salaryMinClean, salaryRangeMax: salaryMaxClean };
+    const priorApp = editId ? (applications.find(a => a.id === editId) || {}) : {};
     const fullApp = editId
-      ? { ...(applications.find(a => a.id === editId) || {}), ...cleanForm }
-      : { ...cleanForm, id: uid() };
+      ? { ...priorApp, ...cleanForm, ...withOutcomeTimestamps(priorApp, cleanForm.status) }
+      : { ...cleanForm, id: uid(), ...withOutcomeTimestamps({}, cleanForm.status) };
 
     setSaving(true);
     try {
@@ -8498,13 +8935,33 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
         <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p><p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>{t("tracker.workflowHint")}</p></div>
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
-      {applications.length > 0 && (
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+        <button onClick={() => setTab("applications")} style={{ padding: "10px 4px", marginRight: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "applications" ? C.purple : "transparent"}`, color: tab === "applications" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("tracker.applicationsTab")}</button>
+        <button onClick={() => setTab("insights")} style={{ padding: "10px 4px", marginRight: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "insights" ? C.purple : "transparent"}`, color: tab === "insights" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+          {t("tracker.insightsTab")}
+          {!isPremium && <span style={{ fontSize: 10, fontWeight: 800, color: C.purple, background: C.purpleLight, padding: "2px 7px", borderRadius: 10 }}>{t("tracker.premiumBadge")}</span>}
+        </button>
+      </div>
+      {tab === "insights" && (
+        <OutcomeIntelligencePanel
+          applications={applications}
+          savedJobs={savedJobs}
+          smartApplyQueue={smartApplyQueue}
+          profile={profile}
+          isPremium={isPremium}
+          patternsHook={outcomePatternsHook}
+          analysesHook={outcomeAnalysesHook}
+          recommendationEvalHook={recommendationEvalHook}
+        />
+      )}
+      {tab === "applications" && applications.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
           <div onClick={() => setFilterStatus("All")} style={{ cursor: "pointer", background: `${NEUTRAL_FILTER_COLOR}12`, border: `1.5px solid ${filterStatus === "All" ? NEUTRAL_FILTER_COLOR : NEUTRAL_FILTER_COLOR + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: NEUTRAL_FILTER_COLOR }}>{applications.length}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.total")}</div></div>
           {STATUSES.filter(s => stats[s] > 0).map(s => <div key={s} onClick={() => setFilterStatus(filterStatus === s ? "All" : s)} style={{ cursor: "pointer", background: `${SCOLOR[s]}12`, border: `1.5px solid ${filterStatus === s ? SCOLOR[s] : SCOLOR[s] + "30"}`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: SCOLOR[s] }}>{stats[s]}</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{tStatus(s)}</div></div>)}
           {successRate !== null && <div style={{ background: `${C.green}12`, border: `1.5px solid ${C.green}40`, borderRadius: 12, padding: "10px 18px", flexShrink: 0, textAlign: "center" }}><div style={{ fontSize: 22, fontWeight: 800, color: C.green }}>{successRate}%</div><div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{t("tracker.successRate")}</div></div>}
         </div>
       )}
+      {tab === "applications" && <>
       {applications.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("tracker.searchPlaceholder")} style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
@@ -8530,6 +8987,59 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
             <Input label={t("tracker.contactNameLabel")} placeholder={t("tracker.contactNamePlaceholder")} value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} />
             <div><Input label={t("tracker.contactEmailLabel")} type="email" placeholder={t("tracker.contactEmailPlaceholder")} value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} style={formErrors.contactEmail ? { borderColor: C.red } : {}} />{formErrors.contactEmail && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{formErrors.contactEmail}</div>}</div>
             <div style={{ gridColumn: "1 / -1" }}><Input label={t("tracker.jobUrlLabel")} placeholder={t("tracker.jobUrlPlaceholder")} value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} /></div>
+          </div>
+          {/* Optional -- powers Application Outcome Intelligence pattern analysis. Never
+              required, since the feature is designed to degrade gracefully with partial
+              data (see blueprint §3, data completeness factor). */}
+          <div style={{ marginTop: 4, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 10 }}>{t("tracker.outcomeDetailsHeading")}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
+              <Select label={t("tracker.applicationSourceLabel")} value={form.applicationSource} onChange={e => setForm(f => ({ ...f, applicationSource: e.target.value }))}>
+                <option value="">{t("tracker.notSpecified")}</option>
+                <option value="linkedin">{t("tracker.sourceLinkedin")}</option>
+                <option value="indeed">{t("tracker.sourceIndeed")}</option>
+                <option value="company_website">{t("tracker.sourceCompanyWebsite")}</option>
+                <option value="referral">{t("tracker.sourceReferral")}</option>
+                <option value="direct">{t("tracker.sourceDirect")}</option>
+              </Select>
+              <Select label={t("tracker.companySizeLabel")} value={form.companySizeEstimate} onChange={e => setForm(f => ({ ...f, companySizeEstimate: e.target.value }))}>
+                <option value="">{t("tracker.notSpecified")}</option>
+                <option value="startup">{t("tracker.sizeStartup")}</option>
+                <option value="small">{t("tracker.sizeSmall")}</option>
+                <option value="mid">{t("tracker.sizeMid")}</option>
+                <option value="large">{t("tracker.sizeLarge")}</option>
+                <option value="enterprise">{t("tracker.sizeEnterprise")}</option>
+              </Select>
+              <Input label={t("tracker.industryLabel")} placeholder={t("tracker.industryPlaceholder")} value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} />
+              <Select label={t("tracker.remotePolicyLabel")} value={form.remotePolicy} onChange={e => setForm(f => ({ ...f, remotePolicy: e.target.value }))}>
+                <option value="">{t("tracker.notSpecified")}</option>
+                <option value="remote">{t("tracker.policyRemote")}</option>
+                <option value="hybrid">{t("tracker.policyHybrid")}</option>
+                <option value="onsite">{t("tracker.policyOnsite")}</option>
+              </Select>
+              <Input label={t("tracker.salaryRangeMinLabel")} type="number" min="0" placeholder="120000" value={form.salaryRangeMin} onChange={e => setForm(f => ({ ...f, salaryRangeMin: e.target.value }))} />
+              <Input label={t("tracker.salaryRangeMaxLabel")} type="number" min="0" placeholder="160000" value={form.salaryRangeMax} onChange={e => setForm(f => ({ ...f, salaryRangeMax: e.target.value }))} />
+              {form.status === "Rejected" && (
+                <Select label={t("tracker.rejectionStageLabel")} value={form.rejectionStage} onChange={e => setForm(f => ({ ...f, rejectionStage: e.target.value }))}>
+                  <option value="">{t("tracker.notSpecified")}</option>
+                  <option value="ats">{t("tracker.stageAts")}</option>
+                  <option value="phone_screen">{t("tracker.stagePhoneScreen")}</option>
+                  <option value="technical">{t("tracker.stageTechnical")}</option>
+                  <option value="final_round">{t("tracker.stageFinalRound")}</option>
+                  <option value="offer_stage">{t("tracker.stageOfferStage")}</option>
+                </Select>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.textMid, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.coverLetterSent} onChange={e => setForm(f => ({ ...f, coverLetterSent: e.target.checked }))} />
+                {t("tracker.coverLetterSentLabel")}
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.textMid, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.referralUsed} onChange={e => setForm(f => ({ ...f, referralUsed: e.target.checked }))} />
+                {t("tracker.referralUsedLabel")}
+              </label>
+            </div>
           </div>
           <div style={{ marginBottom: 16 }}><Textarea label={t("tracker.notesLabel")} placeholder={t("tracker.notesPlaceholder")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 200 }} /></div>
           <div style={{ display: "flex", gap: 10 }}><Btn onClick={save} disabled={saving}>{saving ? t("tracker.saving") : t("tracker.saveApplication")}</Btn><Btn variant="secondary" onClick={closeForm} disabled={saving}>{t("tracker.cancel")}</Btn></div>
@@ -8625,6 +9135,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
           {viewApp.notes && <div><Label>{t("tracker.notes")}</Label><div style={{ fontSize: 14, lineHeight: 1.7, color: C.text, padding: "12px 0" }}>{viewApp.notes}</div></div>}
         </Card>
       )}
+      </>}
     </div>
   );
 }
@@ -11584,6 +12095,10 @@ export default function App() {
   const { watchlist: companyWatchlist, add: watchlistAdd, remove: watchlistRemove, updateStatus: watchlistUpdateStatus } = companyWatchlistHook;
   // Job Tracker (job-level half) -- fully independent of applications/smart_apply_queue.
   const jobWatchlistHook = useJobWatchlist(profile?.id);
+  // Application Outcome Intelligence (Premium Feature #2).
+  const outcomePatternsHook = useOutcomePatterns(profile?.id);
+  const outcomeAnalysesHook = useOutcomeAnalyses(profile?.id);
+  const recommendationEvalHook = useRecommendationEvaluations(profile?.id);
 
   const nav = [
     { id: "dashboard", icon: "📊", label: t("nav.dashboard") },
@@ -11601,6 +12116,9 @@ export default function App() {
   const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro", pro_cancelled: "Pro", premium_active: "Premium", admin: "Admin" };
   const planName = SUB_LABEL[subStatus] || "Free";
   const isPaidPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
+  // Application Outcome Intelligence is "Gate: Premium Only" per its locked blueprint --
+  // distinct from isPaidPlan, which also includes the Pro tier.
+  const isPremium = ["premium_active", "admin"].includes(subStatus);
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -11856,7 +12374,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
@@ -11865,7 +12383,7 @@ export default function App() {
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} />}
+        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
