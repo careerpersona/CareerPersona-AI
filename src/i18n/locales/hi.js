@@ -440,7 +440,8 @@
   tracker: {
     heading: "आवेदन ट्रैकर",
     applicationsTracked: "{n} आवेदन ट्रैक किए गए",
-    workflowHint: "जैसे-जैसे आप भर्ती प्रक्रिया में आगे बढ़ें, अपने आवेदन की स्थिति को अपडेट रखें — आपके द्वारा लॉग किया गया हर परिणाम Application Outcome Intelligence को पैटर्न खोजने और आपके करियर इनसाइट्स को बेहतर बनाने में मदद करता है।",
+    workflowHintAction: "भर्ती प्रक्रिया के हर चरण के बाद अपनी स्थिति अपडेट करें।",
+    workflowHintWhy: "इससे Application Outcome Intelligence बेहतर होता है।",
     addApplication: "+ आवेदन जोड़ें",
     total: "कुल",
     successRate: "सफलता दर",

@@ -440,7 +440,8 @@
   tracker: {
     heading: "Трекер заявок",
     applicationsTracked: "Отслеживается заявок: {n}",
-    workflowHint: "Поддерживайте статус заявки в актуальном состоянии по мере продвижения в процессе найма — каждый отмеченный вами результат помогает Application Outcome Intelligence находить закономерности и улучшать вашу карьерную аналитику.",
+    workflowHintAction: "Обновляйте статус после каждого этапа найма.",
+    workflowHintWhy: "Это улучшает Application Outcome Intelligence.",
     addApplication: "+ Добавить заявку",
     total: "Всего",
     successRate: "Процент успеха",

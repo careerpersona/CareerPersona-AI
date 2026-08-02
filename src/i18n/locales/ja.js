@@ -440,7 +440,8 @@
   tracker: {
     heading: "応募管理",
     applicationsTracked: "{n}件の応募を管理中",
-    workflowHint: "選考プロセスが進むにつれて応募状況を最新の状態に保ちましょう — 記録した結果はそれぞれApplication Outcome Intelligenceがパターンを発見し、あなたのキャリアインサイトを磨く助けになります。",
+    workflowHintAction: "採用プロセスの各段階の後にステータスを更新してください。",
+    workflowHintWhy: "これによりApplication Outcome Intelligenceが向上します。",
     addApplication: "+ 応募を追加",
     total: "合計",
     successRate: "成功率",

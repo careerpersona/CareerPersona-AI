@@ -440,7 +440,8 @@
   tracker: {
     heading: "متتبع الطلبات",
     applicationsTracked: "{n} طلب متتبَع",
-    workflowHint: "حافظ على تحديث حالة طلبك مع تقدمك في عملية التوظيف — فكل نتيجة تسجّلها تساعد Application Outcome Intelligence على اكتشاف الأنماط وتحسين رؤاك المهنية.",
+    workflowHintAction: "حدّث حالتك بعد كل خطوة في عملية التوظيف.",
+    workflowHintWhy: "هذا يحسّن Application Outcome Intelligence.",
     addApplication: "+ إضافة طلب",
     total: "الإجمالي",
     successRate: "معدل النجاح",

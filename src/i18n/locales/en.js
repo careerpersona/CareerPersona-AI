@@ -494,7 +494,8 @@ export default {
   tracker: {
     heading: "Application Tracker",
     applicationsTracked: "{n} applications tracked",
-    workflowHint: "Keep your application status up to date as you progress through the hiring process — every outcome you log helps Application Outcome Intelligence discover patterns and sharpen your career insights.",
+    workflowHintAction: "Update your Status Indicator after each hiring step.",
+    workflowHintWhy: "It improves Application Outcome Intelligence.",
     addApplication: "+ Add Application",
     total: "Total",
     successRate: "Success rate",

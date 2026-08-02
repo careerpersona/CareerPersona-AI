@@ -440,7 +440,8 @@
   tracker: {
     heading: "求职追踪",
     applicationsTracked: "已追踪 {n} 个申请",
-    workflowHint: "随着招聘流程的推进，请及时更新您的申请状态——您记录的每一条结果都能帮助 Application Outcome Intelligence 发现规律，提升您的职业洞察。",
+    workflowHintAction: "在招聘流程的每个阶段后更新您的状态。",
+    workflowHintWhy: "这有助于提升 Application Outcome Intelligence。",
     addApplication: "+ 添加申请",
     total: "总计",
     successRate: "成功率",

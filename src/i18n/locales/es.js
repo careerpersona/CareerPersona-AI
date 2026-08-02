@@ -440,7 +440,8 @@
   tracker: {
     heading: "Seguimiento de Solicitudes",
     applicationsTracked: "{n} solicitudes registradas",
-    workflowHint: "Mantén actualizado el estado de tu solicitud a medida que avanzas en el proceso de contratación — cada resultado que registras ayuda a Application Outcome Intelligence a descubrir patrones y perfeccionar tus perspectivas profesionales.",
+    workflowHintAction: "Actualiza tu estado después de cada etapa del proceso de contratación.",
+    workflowHintWhy: "Esto mejora Application Outcome Intelligence.",
     addApplication: "+ Añadir Solicitud",
     total: "Total",
     successRate: "Tasa de Éxito",

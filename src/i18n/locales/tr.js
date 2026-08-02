@@ -440,7 +440,8 @@
   tracker: {
     heading: "Başvuru Takibi",
     applicationsTracked: "{n} başvuru takip ediliyor",
-    workflowHint: "İşe alım süreci ilerledikçe başvurunuzun durumunu güncel tutun — kaydettiğiniz her sonuç, Application Outcome Intelligence'ın kalıpları keşfetmesine ve kariyer içgörülerinizi geliştirmesine yardımcı olur.",
+    workflowHintAction: "Her işe alım adımından sonra durumunuzu güncelleyin.",
+    workflowHintWhy: "Bu, Application Outcome Intelligence'ı geliştirir.",
     addApplication: "+ Başvuru Ekle",
     total: "Toplam",
     successRate: "Başarı Oranı",

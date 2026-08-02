@@ -440,7 +440,8 @@
   tracker: {
     heading: "Suivi des Candidatures",
     applicationsTracked: "{n} candidatures suivies",
-    workflowHint: "Gardez le statut de votre candidature à jour au fil de votre progression dans le processus de recrutement — chaque résultat que vous enregistrez aide Application Outcome Intelligence à découvrir des tendances et à affiner vos perspectives de carrière.",
+    workflowHintAction: "Mettez à jour votre statut après chaque étape du processus de recrutement.",
+    workflowHintWhy: "Cela améliore Application Outcome Intelligence.",
     addApplication: "+ Ajouter une Candidature",
     total: "Total",
     successRate: "Taux de Réussite",

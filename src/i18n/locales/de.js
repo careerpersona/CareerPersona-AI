@@ -440,7 +440,8 @@
   tracker: {
     heading: "Bewerbungs-Tracker",
     applicationsTracked: "{n} Bewerbungen erfasst",
-    workflowHint: "Halten Sie Ihren Bewerbungsstatus während des gesamten Einstellungsprozesses aktuell – jedes von Ihnen erfasste Ergebnis hilft Application Outcome Intelligence dabei, Muster zu erkennen und Ihre Karriere-Einblicke zu schärfen.",
+    workflowHintAction: "Aktualisieren Sie Ihren Status nach jedem Schritt im Bewerbungsprozess.",
+    workflowHintWhy: "Das verbessert Application Outcome Intelligence.",
     addApplication: "+ Bewerbung hinzufügen",
     total: "Gesamt",
     successRate: "Erfolgsquote",

@@ -9009,7 +9009,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
         </div>
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
-        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p><p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>{t("tracker.workflowHint")}</p></div>
+        <div><h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 4 }}>{t("tracker.heading")}</h1><p style={{ color: C.textMuted, fontSize: 15 }}>{t("tracker.applicationsTracked").replace("{n}", applications.length)}</p><p style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>{t("tracker.workflowHintAction")}</p><p style={{ color: C.textMuted, fontSize: 13 }}>{t("tracker.workflowHintWhy")}</p></div>
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>

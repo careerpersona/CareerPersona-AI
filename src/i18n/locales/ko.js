@@ -440,7 +440,8 @@
   tracker: {
     heading: "지원 현황 추적",
     applicationsTracked: "{n}개의 지원 현황 추적 중",
-    workflowHint: "채용 과정이 진행되는 동안 지원 현황을 최신 상태로 유지하세요 — 기록하는 모든 결과는 Application Outcome Intelligence가 패턴을 발견하고 회원님의 커리어 인사이트를 발전시키는 데 도움이 됩니다.",
+    workflowHintAction: "채용 과정의 각 단계 후에 상태를 업데이트하세요.",
+    workflowHintWhy: "이는 Application Outcome Intelligence를 향상시킵니다.",
     addApplication: "+ 지원 추가",
     total: "전체",
     successRate: "성공률",

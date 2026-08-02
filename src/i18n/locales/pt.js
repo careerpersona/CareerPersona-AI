@@ -440,7 +440,8 @@
   tracker: {
     heading: "Rastreador de Candidaturas",
     applicationsTracked: "{n} candidaturas registadas",
-    workflowHint: "Mantenha o estado da sua candidatura atualizado à medida que avança no processo de contratação — cada resultado que regista ajuda a Application Outcome Intelligence a descobrir padrões e a aprimorar as suas informações de carreira.",
+    workflowHintAction: "Atualize o seu estado após cada etapa do processo de contratação.",
+    workflowHintWhy: "Isto melhora a Application Outcome Intelligence.",
     addApplication: "+ Adicionar Candidatura",
     total: "Total",
     successRate: "Taxa de Sucesso",
