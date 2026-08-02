@@ -3,7 +3,7 @@ import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supa
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
-import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
+import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, computeAnalysisAvailability, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
 import { useSmartApplyQueue } from "./data/smartApply";
@@ -436,24 +436,35 @@ function _devMockRoute(prompt) {
   }
 
   // ── Application Outcome Intelligence ───────────────────────────────────────
+  // The real prompt only includes an "=== ANALYSIS N: ..." block for sections whose
+  // data requirement is actually met (see computeAnalysisAvailability) -- mirror that
+  // here by only returning keys for markers actually present in the prompt, so DEV_MODE
+  // testing exercises the same "fewer than 6 keys" shape production will produce.
   if (p.includes("application outcome intelligence analyst")) {
     const tierMatch = p.match(/confidence tier for this run is "(\w+)"/);
     const tier = tierMatch ? tierMatch[1] : "early_signal";
-    return JSON.stringify({
-      v: 1, confidenceTier: tier,
-      analyses: {
-        responsePattern: { finding: "Applications to mid-size companies are responding at a notably higher rate than applications to enterprise companies in your history.", evidence: "Based on your logged outcomes so far." },
-        funnelStage: { finding: "Most of your rejections are happening early in the process rather than after an interview, which usually points to a resume or keyword-matching gap rather than an interview-skills gap.", evidence: "Based on logged rejection stages." },
-        companyProfileFit: { finding: "Mid-size, remote-friendly companies show your strongest response signal so far.", evidence: "Based on company size and remote policy patterns." },
-        applicationQuality: { finding: "Applications sent with a cover letter are trending toward a better response rate than those without one.", evidence: "Based on cover-letter-sent patterns." },
-        resumeVersion: { finding: "Not enough resume-version-linked outcome data yet to compare versions directly.", evidence: "Requires Smart Apply submissions with a recorded resume version." },
-        strategicPrediction: {
+    const ALL_ANALYSES = {
+      responsePattern: { marker: "analysis 1: response pattern analysis", data: { finding: "Applications to mid-size companies are responding at a notably higher rate than applications to enterprise companies in your history.", evidence: "Based on your logged outcomes so far." } },
+      funnelStage: { marker: "analysis 2: funnel stage intelligence", data: { finding: "Most of your rejections are happening early in the process rather than after an interview, which usually points to a resume or keyword-matching gap rather than an interview-skills gap.", evidence: "Based on logged rejection stages." } },
+      companyProfileFit: { marker: "analysis 3: company profile fit", data: { finding: "Mid-size, remote-friendly companies show your strongest response signal so far.", evidence: "Based on company size and remote policy patterns." } },
+      applicationQuality: { marker: "analysis 4: application quality correlation", data: { finding: "Applications sent with a cover letter are trending toward a better response rate than those without one.", evidence: "Based on cover-letter-sent patterns." } },
+      resumeVersion: { marker: "analysis 5: resume version effectiveness", data: { finding: "Resume version 2 is outperforming version 1 in your logged outcomes so far.", evidence: "Based on resume-version-linked outcome data." } },
+      strategicPrediction: {
+        marker: "analysis 6: strategic prediction engine",
+        data: {
           targeting: "Consider prioritizing mid-size and remote-friendly companies for your next batch of applications.",
           approachChanges: "Sending a tailored cover letter appears to correlate with better outcomes for you — worth doing consistently.",
           resumeSignals: "No single resume change stands out yet from the current data.",
           opportunityCost: "A few saved jobs and prepared Smart Apply packages haven't been submitted yet — following up on those is low-effort upside.",
         },
       },
+    };
+    const analyses = {};
+    for (const [key, cfg] of Object.entries(ALL_ANALYSES)) {
+      if (p.includes(cfg.marker)) analyses[key] = cfg.data;
+    }
+    return JSON.stringify({
+      v: 1, confidenceTier: tier, analyses,
       topInsights: [
         { text: "Mid-size companies are your strongest-responding segment so far.", evidence: "Early signal based on your logged outcomes." },
         { text: "Cover letters appear to correlate with better response rates.", evidence: "Early signal — keep tracking to confirm." },
@@ -2605,7 +2616,7 @@ function fmtPattern(p) {
   return `${p.pattern_value} (${Math.round(p.response_rate * 100)}% response, n=${p.sample_size}, ${p.direction}/${p.stability}/${p.confidence})`;
 }
 
-async function buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier }) {
+async function buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier, availability }) {
   const byType = (type) => patterns.filter(p => p.pattern_type === type);
 
   const d1 = [
@@ -2645,8 +2656,47 @@ async function buildOutcomeIntelligencePayload({ applications, savedJobs, smartA
     `Overall confidence tier for this analysis: ${confidenceTier}.`,
   ].join(" ");
 
+  // Each of the six blueprint analyses is only included in the prompt -- and only
+  // requested in the response schema -- once ITS OWN data requirement is met
+  // (computeAnalysisAvailability, decided deterministically before this call, never by
+  // the AI). A section either has real data behind it or it isn't asked about at all;
+  // the DATA-block text and Task instructions for every included section are byte-for-
+  // byte unchanged from before this migration.
+  const SECTIONS = [
+    {
+      key: "responsePattern", available: availability.responsePattern,
+      block: `=== ANALYSIS 1: RESPONSE PATTERN ANALYSIS ===\nDATA: ${d1}\nTask: What do applications that received responses have in common? Identify the largest gap between responded and non-responded applications. Use ONLY the DATA above.`,
+      schema: `"responsePattern":{"finding":"<2-3 sentences>","evidence":"<1 sentence citing sample size>"}`,
+    },
+    {
+      key: "funnelStage", available: availability.funnelStage,
+      block: `=== ANALYSIS 2: FUNNEL STAGE INTELLIGENCE ===\nDATA: ${d2}\nTask: Identify which pipeline stage has the biggest conversion leak, and if rejection stage data exists, route the finding toward the relevant fix (ATS/keyword issue, interview prep, technical depth, culture fit). Use ONLY the DATA above.`,
+      schema: `"funnelStage":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"}`,
+    },
+    {
+      key: "companyProfileFit", available: availability.companyProfileFit,
+      block: `=== ANALYSIS 3: COMPANY PROFILE FIT ===\nDATA: ${d3}\nTask: Build a "responsive company profile" and a "low-response profile" from the patterns given. Use ONLY the DATA above.`,
+      schema: `"companyProfileFit":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"}`,
+    },
+    {
+      key: "applicationQuality", available: availability.applicationQuality,
+      block: `=== ANALYSIS 4: APPLICATION QUALITY CORRELATION ===\nDATA: ${d4}\nTask: Does Smart Apply, a cover letter, or a referral correlate with better outcomes for this user? Use ONLY the DATA above.`,
+      schema: `"applicationQuality":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"}`,
+    },
+    {
+      key: "resumeVersion", available: availability.resumeVersion,
+      block: `=== ANALYSIS 5: RESUME VERSION EFFECTIVENESS ===\nDATA: ${d5}\nTask: Which resume version (if any) is outperforming others, and by how much? Use ONLY the DATA above.`,
+      schema: `"resumeVersion":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"}`,
+    },
+    {
+      key: "strategicPrediction", available: availability.strategicPrediction,
+      block: `=== ANALYSIS 6: STRATEGIC PREDICTION ENGINE ===\nDATA: ${d6}\nTask: Synthesize the other five analyses into forward-looking guidance: targeting recalibration, application approach changes, and resume/skills signals. Include an Opportunity Cost Intelligence finding using the saved-jobs and abandoned-package numbers given. Use ONLY the DATA above.`,
+      schema: `"strategicPrediction":{"targeting":"<1-2 sentences>","approachChanges":"<1-2 sentences>","resumeSignals":"<1-2 sentences>","opportunityCost":"<1-2 sentences>"}`,
+    },
+  ].filter(s => s.available);
+
   const raw = await askClaude(
-    `You are CareerPersona AI — Application Outcome Intelligence Analyst. Generate 6 independent AI analyses of a user's job application outcomes, per the locked Application Outcome Intelligence blueprint.
+    `You are CareerPersona AI — Application Outcome Intelligence Analyst. Generate ${SECTIONS.length} independent AI ${SECTIONS.length === 1 ? "analysis" : "analyses"} of a user's job application outcomes, per the locked Application Outcome Intelligence blueprint.
 
 CRITICAL RULES:
 - Each analysis must derive exclusively from its own DATA block. Do NOT cross-reference other sections.
@@ -2654,32 +2704,10 @@ CRITICAL RULES:
 - Never fabricate numbers not present in the DATA blocks. If a DATA block says no data is available, say so plainly instead of inventing a finding.
 - Withdrawn applications have already been excluded from every number below -- do not mention them.
 
-=== ANALYSIS 1: RESPONSE PATTERN ANALYSIS ===
-DATA: ${d1}
-Task: What do applications that received responses have in common? Identify the largest gap between responded and non-responded applications. Use ONLY the DATA above.
-
-=== ANALYSIS 2: FUNNEL STAGE INTELLIGENCE ===
-DATA: ${d2}
-Task: Identify which pipeline stage has the biggest conversion leak, and if rejection stage data exists, route the finding toward the relevant fix (ATS/keyword issue, interview prep, technical depth, culture fit). Use ONLY the DATA above.
-
-=== ANALYSIS 3: COMPANY PROFILE FIT ===
-DATA: ${d3}
-Task: Build a "responsive company profile" and a "low-response profile" from the patterns given. Use ONLY the DATA above.
-
-=== ANALYSIS 4: APPLICATION QUALITY CORRELATION ===
-DATA: ${d4}
-Task: Does Smart Apply, a cover letter, or a referral correlate with better outcomes for this user? Use ONLY the DATA above.
-
-=== ANALYSIS 5: RESUME VERSION EFFECTIVENESS ===
-DATA: ${d5}
-Task: Which resume version (if any) is outperforming others, and by how much? Use ONLY the DATA above.
-
-=== ANALYSIS 6: STRATEGIC PREDICTION ENGINE ===
-DATA: ${d6}
-Task: Synthesize the other five analyses into forward-looking guidance: targeting recalibration, application approach changes, and resume/skills signals. Include an Opportunity Cost Intelligence finding using the saved-jobs and abandoned-package numbers given. Use ONLY the DATA above.
+${SECTIONS.map(s => s.block).join("\n\n")}
 
 Return ONLY this JSON, no markdown:
-{"v":1,"confidenceTier":"${confidenceTier}","analyses":{"responsePattern":{"finding":"<2-3 sentences>","evidence":"<1 sentence citing sample size>"},"funnelStage":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"companyProfileFit":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"applicationQuality":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"resumeVersion":{"finding":"<2-3 sentences>","evidence":"<1 sentence>"},"strategicPrediction":{"targeting":"<1-2 sentences>","approachChanges":"<1-2 sentences>","resumeSignals":"<1-2 sentences>","opportunityCost":"<1-2 sentences>"}},"topInsights":[{"text":"<finding>","evidence":"<basis>"},{"text":"<finding>","evidence":"<basis>"}],"whatWorking":["<point 1>","<point 2>"],"whatToChange":["<point 1>","<point 2>"]}`,
+{"v":1,"confidenceTier":"${confidenceTier}","analyses":{${SECTIONS.map(s => s.schema).join(",")}},"topInsights":[{"text":"<finding>","evidence":"<basis>"},{"text":"<finding>","evidence":"<basis>"}],"whatWorking":["<point 1>","<point 2>"],"whatToChange":["<point 1>","<point 2>"]}`,
     2000, "outcome_intelligence"
   );
 
@@ -2701,7 +2729,8 @@ async function runOutcomeAnalysis({ applications, savedJobs, smartApplyQueue, sa
   }
   const patterns = computeAllPatterns(applications);
   const rejectionStages = computeRejectionStageBreakdown(applications);
-  const analysis = await buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier });
+  const availability = computeAnalysisAvailability({ outcomesLoggedCount, funnel, rejectionStages, patterns });
+  const analysis = await buildOutcomeIntelligencePayload({ applications, savedJobs, smartApplyQueue, patterns, funnel, rejectionStages, confidenceTier, availability });
   const eligible = eligibleApplications(applications);
   const dates = eligible.map(a => a.date).filter(Boolean).sort();
   await saveAnalysis(userId, {
@@ -8545,31 +8574,23 @@ const NEUTRAL_FILTER_COLOR = C.textMuted;
 const STATUS_LABEL_KEY = { Applied: "statusApplied", "Phone Screen": "statusPhoneScreen", Interview: "statusInterview", "Final Interview": "statusFinalInterview", Offer: "statusOffer", Rejected: "statusRejected", Withdrawn: "statusWithdrawn", Ghosted: "statusGhosted" };
 
 // ─── APPLICATION OUTCOME INTELLIGENCE PANEL (Premium Feature #2) ────────────
-const OI_MILESTONES = [
-  { key: "funnel", threshold: 1 },
-  { key: "earlyPattern", threshold: 5 },
-  { key: "industry", threshold: 10 },
-  { key: "companyProfile", threshold: 15 },
-  { key: "predictiveScoring", threshold: 30 },
-];
+// Each of the six fixed analyses becomes available based on ITS OWN data requirement
+// (computeAnalysisAvailability in patternEngine.js), never a global application or
+// outcome count. The copy here explains what enables each one -- positive and
+// forward-looking, never "locked"/"unlocks at N".
+const OI_AVAILABILITY_COPY = {
+  responsePattern: "oiAvailableResponsePattern",
+  funnelStage: "oiAvailableFunnelStage",
+  companyProfileFit: "oiAvailableCompanyProfileFit",
+  applicationQuality: "oiAvailableApplicationQuality",
+  resumeVersion: "oiAvailableResumeVersion",
+  strategicPrediction: "oiAvailableStrategicPrediction",
+};
 
-function LearningMilestones({ outcomesLoggedCount, t }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {OI_MILESTONES.map(m => {
-        const unlocked = outcomesLoggedCount >= m.threshold;
-        return (
-          <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: unlocked ? C.text : C.textMuted }}>
-            <span>{unlocked ? "🔓" : "🔒"}</span>
-            <span style={{ flex: 1, textAlign: "left" }}>{t(`tracker.oiMilestone_${m.key}`)}</span>
-            <span style={{ fontSize: 11, color: C.textMuted }}>{unlocked ? t("tracker.oiUnlocked") : t("tracker.oiUnlocksAt").replace("{n}", m.threshold)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
+// Always renders all six section rows, regardless of whether any analysis has ever
+// been generated -- `analysis` may be null/undefined (before the first run). Each row
+// independently shows its real finding if present in the last generated analysis, or
+// its own positive availability message if not, with no dependency on the others.
 function OutcomeAnalysisDeepDives({ analysis, t }) {
   const [openKey, setOpenKey] = useState(null);
   const sections = [
@@ -8585,8 +8606,15 @@ function OutcomeAnalysisDeepDives({ analysis, t }) {
       <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiDeepDivesHeading")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {sections.map(s => {
-          const data = analysis.analyses?.[s.key];
-          if (!data) return null;
+          const data = analysis?.analyses?.[s.key];
+          if (!data) {
+            return (
+              <div key={s.key} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{t(`tracker.${OI_AVAILABILITY_COPY[s.key]}`)}</div>
+              </div>
+            );
+          }
           const open = openKey === s.key;
           return (
             <div key={s.key} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
@@ -8758,11 +8786,12 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
           a real analysis exists, since the real Top Insights zone replaces them. */}
       {!latestAnalysis && <OutcomeExampleInsights t={t} />}
 
-      {/* Zone 1 -- Funnel Overview: real data, not AI, always visible regardless of tier */}
+      {/* Zone 1 -- Funnel Overview: real data, not AI, always visible regardless of tier.
+          Always available from the first tracked application. */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("tracker.oiFunnelHeading")}</div>
-          <Btn onClick={runAnalysis} loading={running} disabled={outcomesLoggedCount < 5} style={{ fontSize: 12, padding: "7px 14px" }}>{t("tracker.oiRunAnalysis")}</Btn>
+          <Btn onClick={runAnalysis} loading={running} disabled={outcomesLoggedCount < 1} style={{ fontSize: 12, padding: "7px 14px" }}>{t("tracker.oiRunAnalysis")}</Btn>
         </div>
         {runError && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{runError}</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="two-col">
@@ -8780,82 +8809,73 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
         </div>
       </Card>
 
-      {!confidenceTier && (
-        <Card style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 6 }}>{t("tracker.oiNotEnoughDataTitle")}</div>
-          <div style={{ fontSize: 14, color: C.text, fontWeight: 600, marginBottom: 2 }}>{t("tracker.oiProgressLogged").replace("{n}", outcomesLoggedCount)}</div>
-          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>{t("tracker.oiProgressRemaining").replace("{n}", Math.max(0, 5 - outcomesLoggedCount))}</div>
-          <LearningMilestones outcomesLoggedCount={outcomesLoggedCount} t={t} />
-        </Card>
-      )}
-
+      {/* At 0 decided outcomes there's nothing to synthesize yet -- no separate locked
+          panel; the six analysis cards below already explain what's coming and why,
+          independently of each other. */}
       {confidenceTier && !latestAnalysis && (
         <Card style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 13, color: C.textMuted }}>{t("tracker.oiReadyToAnalyze")}</div>
         </Card>
       )}
 
-      {confidenceTier && latestAnalysis && (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted, flexWrap: "wrap" }}>
-            <span style={{ background: `${tierColor[latest.confidence_tier]}15`, color: tierColor[latest.confidence_tier], fontWeight: 700, padding: "3px 10px", borderRadius: 12 }}>{tierLabel[latest.confidence_tier]}</span>
-            <span>{t("tracker.oiLastAnalyzed").replace("{date}", new Date(latest.generated_at).toLocaleDateString(language))}</span>
-          </div>
+      {latestAnalysis && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted, flexWrap: "wrap" }}>
+          <span style={{ background: `${tierColor[latest.confidence_tier]}15`, color: tierColor[latest.confidence_tier], fontWeight: 700, padding: "3px 10px", borderRadius: 12 }}>{tierLabel[latest.confidence_tier]}</span>
+          <span>{t("tracker.oiLastAnalyzed").replace("{date}", new Date(latest.generated_at).toLocaleDateString(language))}</span>
+        </div>
+      )}
 
-          {/* Zone 2 -- Top AI Insights */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {(latestAnalysis.topInsights || []).map((ins, i) => (
-                <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>{ins.text}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted }}>{ins.evidence}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Zone 3 -- What's Working / What to Change */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, color: C.green, marginBottom: 10 }}>✓ {t("tracker.oiWhatsWorking")}</div>
-              {(latestAnalysis.whatWorking || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
-            </Card>
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, color: C.orange, marginBottom: 10 }}>→ {t("tracker.oiWhatToChange")}</div>
-              {(latestAnalysis.whatToChange || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
-            </Card>
-          </div>
-
-          {/* Zone 4 -- Six Analysis Deep Dives */}
-          <OutcomeAnalysisDeepDives analysis={latestAnalysis} t={t} />
-
-          {/* Zone 5 -- Recommendation Results */}
-          <RecommendationResults evaluations={evaluations} t={t} language={language} />
-
-          {/* Zone 6 -- Learning Milestones */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiMilestonesHeading")}</div>
-            <LearningMilestones outcomesLoggedCount={outcomesLoggedCount} t={t} />
-          </Card>
-
-          {/* Zone 7 -- Analysis History */}
-          {analyses.length > 1 && (
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {analyses.map(a => (
-                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <span>{new Date(a.generated_at).toLocaleDateString(language)}</span>
-                    <span style={{ color: tierColor[a.confidence_tier] }}>{tierLabel[a.confidence_tier]}</span>
-                    <span>{t("tracker.oiOutcomesLogged").replace("{n}", a.outcomes_logged_count)}</span>
-                  </div>
-                ))}
+      {/* Zone 2 -- Top AI Insights */}
+      {latestAnalysis && (
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(latestAnalysis.topInsights || []).map((ins, i) => (
+              <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>{ins.text}</div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{ins.evidence}</div>
               </div>
-            </Card>
-          )}
-        </>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Zone 3 -- What's Working / What to Change */}
+      {latestAnalysis && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 14, color: C.green, marginBottom: 10 }}>✓ {t("tracker.oiWhatsWorking")}</div>
+            {(latestAnalysis.whatWorking || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 14, color: C.orange, marginBottom: 10 }}>→ {t("tracker.oiWhatToChange")}</div>
+            {(latestAnalysis.whatToChange || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+          </Card>
+        </div>
+      )}
+
+      {/* Zone 4 -- Six Analysis Deep Dives: always rendered, each section independently
+          shows a real finding or its own positive availability message. Works even
+          before the very first Run Analysis click (latestAnalysis undefined). */}
+      <OutcomeAnalysisDeepDives analysis={latestAnalysis} t={t} />
+
+      {/* Zone 5 -- Recommendation Results: self-hides when there are none */}
+      <RecommendationResults evaluations={evaluations} t={t} language={language} />
+
+      {/* Zone 6 -- Analysis History */}
+      {analyses.length > 1 && (
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {analyses.map(a => (
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                <span>{new Date(a.generated_at).toLocaleDateString(language)}</span>
+                <span style={{ color: tierColor[a.confidence_tier] }}>{tierLabel[a.confidence_tier]}</span>
+                <span>{t("tracker.oiOutcomesLogged").replace("{n}", a.outcomes_logged_count)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );

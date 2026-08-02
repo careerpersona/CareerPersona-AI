@@ -17,9 +17,14 @@ export function eligibleApplications(applications) {
 const hasResponse = (a) => !!a.responseStatus && a.responseStatus !== "pending";
 const isPositiveOutcome = (a) => POSITIVE_STATUSES.has(a.responseStatus);
 
-// Under 5 -> no analysis at all (null). 5-15 Early Signal. 15-30 Emerging. 30+ High Confidence.
+// 0 -> no analysis at all (null): nothing decided yet, nothing to synthesize. 1-15
+// Early Signal. 15-30 Emerging. 30+ High Confidence. The floor moved from 5 to 1
+// (2026-08) so a user gets their first AI narrative from their first real hiring
+// outcome, not after submitting enough applications to clear a count threshold --
+// availability is now data-driven (see the per-analysis predicates below), not
+// application-count-driven.
 export function computeConfidenceTier(outcomesLoggedCount) {
-  if (outcomesLoggedCount < 5) return null;
+  if (outcomesLoggedCount < 1) return null;
   if (outcomesLoggedCount < 15) return "early_signal";
   if (outcomesLoggedCount < 30) return "emerging";
   return "high_confidence";
@@ -149,11 +154,43 @@ export function computeRejectionStageBreakdown(applications) {
   return { counts, totalLogged: eligible.length };
 }
 
-// Data completeness gate for the overall analysis run: outcomes logged (decided, i.e.
-// not still "pending") among applications old enough to plausibly have heard back.
+// Per-analysis availability. Each of the blueprint's six fixed analyses becomes
+// available the moment ITS OWN specific data requirement is met -- never on a global
+// application or outcome count. This is what makes the feature reward real hiring
+// progress instead of application volume: a user who gets one interview sees Funnel
+// Stage Intelligence; a user who never does but has applied to five different
+// industries sees Company Profile Fit -- independently, based only on what each
+// analysis actually needs to say something real.
+export function computeAnalysisAvailability({ outcomesLoggedCount, funnel, rejectionStages, patterns }) {
+  const byType = (type) => patterns.filter(p => p.pattern_type === type);
+  const smartApply = byType("smart_apply");
+  return {
+    // Needs at least one decided outcome to compare responded vs. non-responded.
+    responsePattern: outcomesLoggedCount >= 1,
+    // Needs pipeline movement beyond "responded": an interview, or a logged rejection
+    // stage, either of which gives the stage-by-stage conversion something to show.
+    funnelStage: funnel.interviewed >= 1 || rejectionStages.totalLogged >= 1,
+    // Any one of the three company-side dimensions (size, industry, remote policy) is
+    // enough -- this is one analysis that reads across whichever of its fields exist.
+    companyProfileFit: byType("company_size").length > 0 || byType("industry").length > 0 || byType("remote_policy").length > 0,
+    // Needs a real comparison: outcomes from BOTH a Smart Apply and a manual
+    // application, not just one or the other.
+    applicationQuality: smartApply.some(p => p.pattern_value === "used") && smartApply.some(p => p.pattern_value === "not_used"),
+    // Needs 2+ distinct resume versions with logged outcomes to compare.
+    resumeVersion: byType("resume_version").length >= 2,
+    // Synthesis layer -- meaningful as soon as there's anything else to synthesize.
+    strategicPrediction: outcomesLoggedCount >= 1,
+  };
+}
+
+// Count of decided outcomes (Interview/Offer/Rejected/Ghosted -- anything the user has
+// recorded that isn't still "pending"). Previously required 14 days of maturity before
+// counting ANY decided status, which delayed recognizing an immediate rejection or
+// interview by up to two weeks. Removed (2026-08): the Tracker is the source of truth,
+// and every one of these statuses is a user-confirmed, unambiguous employer signal the
+// moment it's logged -- including Ghosted, which is itself a manual status the user
+// only sets after judging enough time has passed, so no additional systemic wait is
+// needed on top of that.
 export function computeOutcomesLoggedCount(applications) {
-  const eligible = eligibleApplications(applications);
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
-  const matureApps = eligible.filter(a => !a.date || new Date(a.date) <= fourteenDaysAgo);
-  return matureApps.filter(hasResponse).length;
+  return eligibleApplications(applications).filter(hasResponse).length;
 }
