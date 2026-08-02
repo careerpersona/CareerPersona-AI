@@ -2785,7 +2785,7 @@ function MarkdownText({ text }) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume, isPremium, latestOutcomeAnalysis }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume, isPremium, latestOutcomeAnalysis, onOpenOutcomeIntelligence }) {
   const { t, language } = useI18n();
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -3305,7 +3305,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           <Card style={{ padding: "16px 18px", marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.navText }}>{t("dashboard.oiTitle")}</div>
-              <button onClick={() => setPage("tracker")} style={{ background: "none", border: "none", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>{t("dashboard.oiFullAnalysis")} ↗</button>
+              <button onClick={onOpenOutcomeIntelligence} style={{ background: "none", border: "none", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>{t("dashboard.oiFullAnalysis")} ↗</button>
             </div>
             <div style={{ display: "flex", gap: 16, marginBottom: belowEmerging ? 0 : 12, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12, color: C.textMuted }}>{t("dashboard.oiApplied")} <strong style={{ color: C.text }}>{oiFunnel.applied}</strong></div>
@@ -8861,10 +8861,18 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
   );
 }
 
-function TrackerPage({ applications, deleteApplication, saveApplication, resumes, savedJobs, smartApplyQueue, profile, isPremium, outcomePatternsHook, outcomeAnalysesHook, recommendationEvalHook }) {
+function TrackerPage({ applications, deleteApplication, saveApplication, resumes, savedJobs, smartApplyQueue, profile, isPremium, outcomePatternsHook, outcomeAnalysesHook, recommendationEvalHook, forceInsightsTab, onForceInsightsTabHandled }) {
   const { t } = useI18n();
   const tStatus = s => t(`tracker.${STATUS_LABEL_KEY[s]}`, s);
   const [tab, setTab] = useSessionState("cp_tracker_tab", "applications");
+  // Dashboard's "Full Analysis" button always wants Insights, regardless of whatever
+  // tab was last remembered here -- overrides cp_tracker_tab once, then hands control
+  // back to normal remembered-tab behavior for any further in-Tracker navigation.
+  useEffect(() => {
+    if (!forceInsightsTab) return;
+    setTab("insights");
+    onForceInsightsTabHandled?.();
+  }, [forceInsightsTab, setTab, onForceInsightsTabHandled]);
   const [showForm, setShowForm] = useState(false); const [editId, setEditId] = useState(null); const [form, setForm] = useState({ company: "", jobTitle: "", status: "Applied", date: new Date().toISOString().split("T")[0], atsScore: "", notes: "", url: "", followUpDate: "", contactName: "", contactEmail: "" }); const [filterStatus, setFilterStatus] = useSessionState("cp_tracker_filter", "All"); const [viewApp, setViewApp] = useState(null);
   const [formErrors, setFormErrors] = useState({});
   const [search, setSearch] = useSessionState("cp_tracker_search", "");
@@ -12176,6 +12184,12 @@ export default function App() {
   const outcomePatternsHook = useOutcomePatterns(profile?.id);
   const outcomeAnalysesHook = useOutcomeAnalyses(profile?.id);
   const recommendationEvalHook = useRecommendationEvaluations(profile?.id);
+  // One-shot override so the Dashboard's "Full Analysis" button always lands on the
+  // Insights tab, regardless of cp_tracker_tab's remembered value. TrackerPage consumes
+  // it once (via onForceInsightsTabHandled) so normal in-Tracker tab navigation keeps
+  // remembering the user's last selected tab afterward, unaffected.
+  const [forceTrackerInsightsTab, setForceTrackerInsightsTab] = useState(false);
+  const openTrackerInsights = useCallback(() => { setForceTrackerInsightsTab(true); setPage("tracker"); }, [setPage]);
 
   const nav = [
     { id: "dashboard", icon: "📊", label: t("nav.dashboard") },
@@ -12451,7 +12465,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} onOpenOutcomeIntelligence={openTrackerInsights} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
@@ -12460,7 +12474,7 @@ export default function App() {
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} />}
+        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
