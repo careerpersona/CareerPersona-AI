@@ -495,7 +495,7 @@ export default {
     heading: "Application Tracker",
     applicationsTracked: "{n} applications tracked",
     workflowHintAction: "Update your Status Indicator after each hiring step.",
-    workflowHintWhy: "It improves Application Outcome Intelligence.",
+    workflowHintWhy: "Every update improves Application Outcome Intelligence.",
     addApplication: "+ Add Application",
     total: "Total",
     successRate: "Success rate",

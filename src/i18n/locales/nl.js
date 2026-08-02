@@ -441,7 +441,7 @@
     heading: "Sollicitatie Tracker",
     applicationsTracked: "{n} sollicitaties bijgehouden",
     workflowHintAction: "Werk je status bij na elke stap in het sollicitatieproces.",
-    workflowHintWhy: "Dit verbetert Application Outcome Intelligence.",
+    workflowHintWhy: "Elke update verbetert Application Outcome Intelligence.",
     addApplication: "+ Sollicitatie Toevoegen",
     total: "Totaal",
     successRate: "Succespercentage",

@@ -441,7 +441,7 @@
     heading: "Bewerbungs-Tracker",
     applicationsTracked: "{n} Bewerbungen erfasst",
     workflowHintAction: "Aktualisieren Sie Ihren Status nach jedem Schritt im Bewerbungsprozess.",
-    workflowHintWhy: "Das verbessert Application Outcome Intelligence.",
+    workflowHintWhy: "Jede Aktualisierung verbessert Application Outcome Intelligence.",
     addApplication: "+ Bewerbung hinzufügen",
     total: "Gesamt",
     successRate: "Erfolgsquote",

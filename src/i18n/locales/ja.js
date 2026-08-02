@@ -441,7 +441,7 @@
     heading: "応募管理",
     applicationsTracked: "{n}件の応募を管理中",
     workflowHintAction: "採用プロセスの各段階の後にステータスを更新してください。",
-    workflowHintWhy: "これによりApplication Outcome Intelligenceが向上します。",
+    workflowHintWhy: "更新のたびにApplication Outcome Intelligenceが向上します。",
     addApplication: "+ 応募を追加",
     total: "合計",
     successRate: "成功率",

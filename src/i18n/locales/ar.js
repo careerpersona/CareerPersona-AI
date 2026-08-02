@@ -441,7 +441,7 @@
     heading: "متتبع الطلبات",
     applicationsTracked: "{n} طلب متتبَع",
     workflowHintAction: "حدّث حالتك بعد كل خطوة في عملية التوظيف.",
-    workflowHintWhy: "هذا يحسّن Application Outcome Intelligence.",
+    workflowHintWhy: "كل تحديث يحسّن Application Outcome Intelligence.",
     addApplication: "+ إضافة طلب",
     total: "الإجمالي",
     successRate: "معدل النجاح",

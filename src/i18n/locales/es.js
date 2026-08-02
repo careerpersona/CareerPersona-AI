@@ -441,7 +441,7 @@
     heading: "Seguimiento de Solicitudes",
     applicationsTracked: "{n} solicitudes registradas",
     workflowHintAction: "Actualiza tu estado después de cada etapa del proceso de contratación.",
-    workflowHintWhy: "Esto mejora Application Outcome Intelligence.",
+    workflowHintWhy: "Cada actualización mejora Application Outcome Intelligence.",
     addApplication: "+ Añadir Solicitud",
     total: "Total",
     successRate: "Tasa de Éxito",

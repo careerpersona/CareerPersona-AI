@@ -441,7 +441,7 @@
     heading: "지원 현황 추적",
     applicationsTracked: "{n}개의 지원 현황 추적 중",
     workflowHintAction: "채용 과정의 각 단계 후에 상태를 업데이트하세요.",
-    workflowHintWhy: "이는 Application Outcome Intelligence를 향상시킵니다.",
+    workflowHintWhy: "업데이트할 때마다 Application Outcome Intelligence가 향상됩니다.",
     addApplication: "+ 지원 추가",
     total: "전체",
     successRate: "성공률",

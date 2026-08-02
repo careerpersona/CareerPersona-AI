@@ -441,7 +441,7 @@
     heading: "आवेदन ट्रैकर",
     applicationsTracked: "{n} आवेदन ट्रैक किए गए",
     workflowHintAction: "भर्ती प्रक्रिया के हर चरण के बाद अपनी स्थिति अपडेट करें।",
-    workflowHintWhy: "इससे Application Outcome Intelligence बेहतर होता है।",
+    workflowHintWhy: "हर अपडेट Application Outcome Intelligence को बेहतर बनाता है।",
     addApplication: "+ आवेदन जोड़ें",
     total: "कुल",
     successRate: "सफलता दर",

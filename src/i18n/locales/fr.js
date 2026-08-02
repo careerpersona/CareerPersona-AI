@@ -441,7 +441,7 @@
     heading: "Suivi des Candidatures",
     applicationsTracked: "{n} candidatures suivies",
     workflowHintAction: "Mettez à jour votre statut après chaque étape du processus de recrutement.",
-    workflowHintWhy: "Cela améliore Application Outcome Intelligence.",
+    workflowHintWhy: "Chaque mise à jour améliore Application Outcome Intelligence.",
     addApplication: "+ Ajouter une Candidature",
     total: "Total",
     successRate: "Taux de Réussite",

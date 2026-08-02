@@ -441,7 +441,7 @@
     heading: "Monitoraggio Candidature",
     applicationsTracked: "{n} candidature monitorate",
     workflowHintAction: "Aggiorna il tuo stato dopo ogni fase del processo di selezione.",
-    workflowHintWhy: "Questo migliora Application Outcome Intelligence.",
+    workflowHintWhy: "Ogni aggiornamento migliora Application Outcome Intelligence.",
     addApplication: "+ Aggiungi Candidatura",
     total: "Totale",
     successRate: "Tasso di Successo",

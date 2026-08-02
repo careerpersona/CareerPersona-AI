@@ -441,7 +441,7 @@
     heading: "求职追踪",
     applicationsTracked: "已追踪 {n} 个申请",
     workflowHintAction: "在招聘流程的每个阶段后更新您的状态。",
-    workflowHintWhy: "这有助于提升 Application Outcome Intelligence。",
+    workflowHintWhy: "每次更新都能提升 Application Outcome Intelligence。",
     addApplication: "+ 添加申请",
     total: "总计",
     successRate: "成功率",

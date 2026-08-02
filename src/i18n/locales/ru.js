@@ -441,7 +441,7 @@
     heading: "Трекер заявок",
     applicationsTracked: "Отслеживается заявок: {n}",
     workflowHintAction: "Обновляйте статус после каждого этапа найма.",
-    workflowHintWhy: "Это улучшает Application Outcome Intelligence.",
+    workflowHintWhy: "Каждое обновление улучшает Application Outcome Intelligence.",
     addApplication: "+ Добавить заявку",
     total: "Всего",
     successRate: "Процент успеха",

@@ -441,7 +441,7 @@
     heading: "Başvuru Takibi",
     applicationsTracked: "{n} başvuru takip ediliyor",
     workflowHintAction: "Her işe alım adımından sonra durumunuzu güncelleyin.",
-    workflowHintWhy: "Bu, Application Outcome Intelligence'ı geliştirir.",
+    workflowHintWhy: "Her güncelleme Application Outcome Intelligence'ı geliştirir.",
     addApplication: "+ Başvuru Ekle",
     total: "Toplam",
     successRate: "Başarı Oranı",
