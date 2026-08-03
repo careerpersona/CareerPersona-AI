@@ -31,6 +31,9 @@ owner.
 | `src/lib/proactiveJobAlerts/marketSignals.js` | Aggregate market/timing statistics: volume trend, hiring-freeze detection, salary signal, speed-of-fill, application-window stats. Reuses `patternEngine.js`'s eligibility definitions, never redefines them. | Analysis 03 (Market Intelligence), Analysis 06 (Timing Intelligence) |
 | `src/lib/proactiveJobAlerts/watchlistActivity.js` | Per-company watchlist signal detection (new posting / volume increase / network contact joined / quiet). | Analysis 04 (Watchlist Activity Monitor) |
 | `src/lib/proactiveJobAlerts/effectivenessMetrics.js` | Alert trust score, missed-opportunity detection, engagement trends, discovery coverage. | Analysis 05 (Alert Effectiveness) |
+| `src/lib/linkedinIntelligence/deterministicScoring.js` | Profile Completeness (checklist renormalization), Keyword/Skill Coverage (target-vs-resume overlap), Profile Evolution diff (score delta between two persisted analyses). Imports the Career Compatibility Engine's skill extraction rather than reimplementing it — never owns skill extraction/normalization itself. | LinkedIn Intelligence's Premium AI layer (reads these facts, never recomputes them); `ResumePage`'s LinkedIn tool (native UI, Free tier) |
+| `src/lib/resumeParsing.js` (`parseResumeDoc`) | Resume-text structural parsing (name, header lines, sections). Relocated from `App.jsx` Phase 1 so it has exactly one implementation platform-wide. | `App.jsx`'s resume rendering (PDF/DOCX/Print/Preview/Copy); `deterministicScoring.js`'s Profile Completeness check |
+| `linkedin_profile_analyses` table | The user's LinkedIn Intelligence analysis history — deterministic scores, generated content, and Premium interpretive output, one row per analysis, insert-only (no update path exists in the data-access layer, so a historical row can never be recalculated in place). Owned exclusively by `src/data/linkedinIntelligence.js`. | `ResumePage`'s LinkedIn tool (native UI, both tiers) |
 
 ## AI responsibility — one module per concern
 
@@ -44,6 +47,9 @@ owner.
 | Proactive Job Alerts — 04 Watchlist Activity Monitor | Surfaces what's worth noticing across tracked companies | `watchlistActivity.js` per-company signals | Decide watchlist membership |
 | Proactive Job Alerts — 05 Alert Effectiveness | Explains what the trust score / missed opportunities imply | `effectivenessMetrics.js` trust score, missed opportunities, trends, coverage | Compute the trust score itself |
 | Proactive Job Alerts — 06 Timing Intelligence | Explains the best application-timing window | `marketSignals.js` application-window stats | Compute the window stats itself |
+| LinkedIn Intelligence — Profile Strategy Analysis | Prioritizes which deterministic completeness/keyword gap matters most for the user's target role | `deterministicScoring.js` completeness breakdown + keyword gap | Re-score completeness or keyword coverage |
+| LinkedIn Intelligence — Recruiter Visibility Intelligence | Qualitative assessment of how discoverable/compelling the profile is to a recruiter | Generated headline/About + keyword coverage facts | Invent a numeric visibility score |
+| LinkedIn Intelligence — Profile Evolution Tracking | Narrates why a score changed between two persisted analyses and what to focus on next | `deterministicScoring.js`'s `computeProfileEvolution` diff (already computed) | Recompute the diff itself |
 
 ## Orchestration (no ownership of information, only of timing)
 
@@ -53,10 +59,15 @@ owner.
 
 ## Documented non-integrations (evidence, not silence)
 
-- **LinkedIn Profile Intelligence** — no server-side persistence exists
-  (`cp_resume_linkedin_profile` is `sessionStorage`-only). Not eligible for
-  cross-feature consumption by any module until that feature has its own
-  persisted store.
+- **LinkedIn Intelligence → other features (forward direction)**: LinkedIn Intelligence
+  now has real persistence (`linkedin_profile_analyses`, added Phase 2) and could in
+  principle expose a "profile readiness" signal to other modules (e.g. Proactive Job
+  Alerts' Discovery Engine), per the locked blueprint §4. Not yet designed or built —
+  documented as a future integration point, not implemented speculatively.
+  (Superseded: this entry previously read "LinkedIn Profile Intelligence — no
+  server-side persistence exists," true before Phase 2; kept as a corrected
+  entry rather than silently deleted, per the Documentation Governance Rule's
+  standard for living references.)
 
 ## How to extend this registry
 

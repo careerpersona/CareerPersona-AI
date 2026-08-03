@@ -11,6 +11,7 @@ import ProactiveAlertsPanel from "./components/ProactiveAlertsPanel";
 import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, computeAnalysisAvailability, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
+import { useLinkedInProfileAnalyses, runLinkedinIntelligenceAnalysis, runProfileEvolutionAnalysis } from "./data/linkedinIntelligence";
 import { useSmartApplyQueue } from "./data/smartApply";
 import { useInterviewSession, useInterviewHistory } from "./data/interviewSession";
 import { useVoiceInput, voiceSupported } from "./hooks/useVoiceInput";
@@ -31,6 +32,7 @@ import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { useJobWatchlist } from "./data/jobWatchlist";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
+import { parseResumeDoc } from "./lib/resumeParsing";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
 
@@ -316,9 +318,24 @@ function _devMockRoute(prompt) {
     return JSON.stringify({ overallMatch: 76, matchLabel: "Good Match", requiredSkillsMatch: [{ skill: "Python", found: true, evidence: "5+ years Python in current role" }, { skill: "AWS", found: true, evidence: "AWS Lambda and S3 mentioned" }, { skill: "React", found: true, evidence: "React frontend development" }, { skill: "Docker", found: false, evidence: null }, { skill: "Kubernetes", found: false, evidence: null }], preferredSkillsMatch: [{ skill: "TypeScript", found: true }, { skill: "PostgreSQL", found: true }, { skill: "GraphQL", found: false }], missingSkills: ["Docker", "Kubernetes", "GraphQL"], keywordMatchScore: 74, experienceMatch: { score: 82, status: "Well-matched", detail: "5 years aligns with the 4–6 year requirement." }, educationMatch: { score: 90, status: "Meets requirement", detail: "B.S. Computer Science meets the listed requirement." }, seniorityMatch: { score: 78, status: "Well-matched", detail: "Senior experience aligns with the role seniority." }, applicationReadiness: "Almost Ready", topRecommendations: ["Add Docker and Kubernetes to close the main skill gap", "Mirror the job description language around 'distributed systems'", "Quantify the scale of your AWS usage with metrics"], coverLetterTip: "Mention your 40% latency reduction — it maps directly to their performance engineering requirements." });
   }
 
-  // ── LinkedIn Optimizer ─────────────────────────────────────────────────────
+  // ── LinkedIn Intelligence -- Free content generation ───────────────────────
+  // Schema matches buildFreeContentPrompt (Phase 3): no invented scores or
+  // keyword lists -- those are deterministic (deterministicScoring.js) now.
   if (p.includes("linkedin profile expert") || (p.includes("linkedin") && p.includes("headline") && p.includes("aboutsection"))) {
-    return JSON.stringify({ headline: "Senior Software Engineer | Python · AWS · React | Building Scalable Systems That Perform", aboutSection: "I'm a software engineer with 5+ years building high-performance distributed systems. I specialize in Python, AWS, and React — with a track record of shipping products used by tens of thousands of users and driving a 40% reduction in API latency.\n\nI'm passionate about clean architecture, developer experience, and working on teams that care about engineering quality. Currently exploring Senior and Staff Engineer opportunities where I can drive technical strategy alongside great people.", experienceOptimizations: [{ company: "Acme Corp", title: "Senior Software Engineer", optimizedBullets: ["Architected microservices platform handling 2M+ daily requests using Python and AWS Lambda, reducing infrastructure costs by 35%", "Drove 40% API latency reduction through Redis caching strategy and query optimization", "Led cross-functional team of 5 engineers delivering real-time data pipeline 2 weeks ahead of schedule"] }, { company: "Tech Startup", title: "Software Engineer", optimizedBullets: ["Built React/TypeScript frontend serving 50K+ monthly active users, improving Core Web Vitals by 28%", "Established CI/CD pipeline with Docker and Jenkins, reducing deployment time from 45 to 8 minutes", "Integrated Stripe and Twilio APIs processing $2M+ in annual transactions"] }], topSkillsToAdd: ["System Design", "Microservices Architecture", "PostgreSQL", "Terraform", "GraphQL", "Data Engineering"], keywordsToFeature: ["distributed systems", "high availability", "cloud architecture", "API design", "performance optimization", "agile"], recruiterVisibilityTips: ["Set your profile to 'Open to Work' with specific role titles to appear in recruiter searches", "Post one technical insight per week — LinkedIn algorithm boosts profiles with consistent engagement", "Request recommendations from managers who can speak to your leadership and technical impact"], atsAlignmentScore: 81, profileCompleteness: 78, headlineScore: 88 });
+    return JSON.stringify({ headline: "Senior Software Engineer | Python · AWS · React | Building Scalable Systems That Perform", aboutSection: "I'm a software engineer with 5+ years building high-performance distributed systems. I specialize in Python, AWS, and React — with a track record of shipping products used by tens of thousands of users and driving a 40% reduction in API latency.\n\nI'm passionate about clean architecture, developer experience, and working on teams that care about engineering quality. Currently exploring Senior and Staff Engineer opportunities where I can drive technical strategy alongside great people.", experienceOptimizations: [{ company: "Acme Corp", title: "Senior Software Engineer", optimizedBullets: ["Architected microservices platform handling 2M+ daily requests using Python and AWS Lambda, reducing infrastructure costs by 35%", "Drove 40% API latency reduction through Redis caching strategy and query optimization", "Led cross-functional team of 5 engineers delivering real-time data pipeline 2 weeks ahead of schedule"] }, { company: "Tech Startup", title: "Software Engineer", optimizedBullets: ["Built React/TypeScript frontend serving 50K+ monthly active users, improving Core Web Vitals by 28%", "Established CI/CD pipeline with Docker and Jenkins, reducing deployment time from 45 to 8 minutes", "Integrated Stripe and Twilio APIs processing $2M+ in annual transactions"] }], recruiterVisibilityTips: ["Set your profile to 'Open to Work' with specific role titles to appear in recruiter searches", "Post one technical insight per week — LinkedIn algorithm boosts profiles with consistent engagement", "Request recommendations from managers who can speak to your leadership and technical impact"] });
+  }
+
+  // ── LinkedIn Intelligence -- Premium (Strategy + Recruiter Visibility) ─────
+  if (p.includes("linkedin intelligence analyst") && p.includes("profile strategy")) {
+    return JSON.stringify({ v: 1, analyses: {
+      strategyAnalysis: { priorityActions: ["Add measurable bullets to your most recent role", "Close the Terraform/Kubernetes keyword gap for Senior Engineer roles"], reasoning: "Your experience section is the largest gap relative to your target role, and closing it improves both recruiter search visibility and reviewer confidence." },
+      recruiterVisibilityIntelligence: { guidance: ["Set your headline to include your target title verbatim", "Post one technical insight per week to boost search ranking"], searchabilityNote: "Your current keyword coverage puts you in the middle of the pack for recruiter searches on your target role." },
+    } });
+  }
+
+  // ── LinkedIn Intelligence -- Profile Evolution Tracking ────────────────────
+  if (p.includes("linkedin intelligence analyst") && p.includes("explain a change")) {
+    return JSON.stringify({ v: 1, evolution: { narrative: "Your profile completeness and keyword coverage both improved since your last analysis, most likely from the resume update you made in between.", focusNext: "Add the remaining missing keywords to keep closing the gap for your target role." } });
   }
 
   // ── Cover Letter Versions ──────────────────────────────────────────────────
@@ -542,100 +559,10 @@ function _devExtractResume(prompt) {
 // ─── Resume Document Engine ───────────────────────────────────────────────────
 // One shared parser drives PDF, DOCX, Print, Preview, and Copy so every output
 // is always consistent with what the user sees in the Resume Preview.
-
-const RESUME_SECTION_NAMES = new Set([
-  'SUMMARY','PROFESSIONAL SUMMARY','CAREER SUMMARY','EXECUTIVE SUMMARY','OBJECTIVE',
-  'CAREER OBJECTIVE','PROFESSIONAL OBJECTIVE','PROFILE','ABOUT','OVERVIEW','HIGHLIGHTS',
-  'EXPERIENCE','WORK EXPERIENCE','PROFESSIONAL EXPERIENCE','EMPLOYMENT','EMPLOYMENT HISTORY',
-  'WORK HISTORY','CAREER HISTORY','RELEVANT EXPERIENCE',
-  'EDUCATION','ACADEMIC BACKGROUND','EDUCATIONAL BACKGROUND','ACADEMIC HISTORY',
-  'SKILLS','TECHNICAL SKILLS','CORE COMPETENCIES','COMPETENCIES','KEY SKILLS','EXPERTISE',
-  'CORE SKILLS','PROFESSIONAL SKILLS','TECHNOLOGIES','TECHNICAL EXPERTISE',
-  'CERTIFICATIONS','CERTIFICATION','LICENSES','LICENSE','CREDENTIALS',
-  'PROFESSIONAL CERTIFICATIONS','PROFESSIONAL DEVELOPMENT','TRAINING',
-  'PROJECTS','KEY PROJECTS','PORTFOLIO','SELECTED PROJECTS','NOTABLE PROJECTS',
-  'TECHNICAL PROJECTS','PERSONAL PROJECTS','OPEN SOURCE','OPEN SOURCE CONTRIBUTIONS',
-  'ACHIEVEMENTS','ACCOMPLISHMENTS','AWARDS','HONORS','RECOGNITIONS','HONORS AND AWARDS',
-  'PUBLICATIONS','RESEARCH','PAPERS','PRESENTATIONS','SPEAKING ENGAGEMENTS',
-  'VOLUNTEER','VOLUNTEERING','VOLUNTEER EXPERIENCE','COMMUNITY SERVICE','CIVIC ACTIVITIES',
-  'LANGUAGES','INTERESTS','HOBBIES','PERSONAL INTERESTS','ACTIVITIES','EXTRACURRICULAR',
-  'ADDITIONAL','ADDITIONAL INFORMATION','OTHER','LEADERSHIP','LEADERSHIP EXPERIENCE',
-  'PROFESSIONAL MEMBERSHIPS','MEMBERSHIPS','AFFILIATIONS','PROFESSIONAL AFFILIATIONS',
-  'REFERENCES','PROFESSIONAL REFERENCES','CONFERENCES','PATENTS','CONSULTING',
-  'FREELANCE','CONTRACT WORK','INDEPENDENT PROJECTS','MILITARY','MILITARY SERVICE',
-  'MILITARY EXPERIENCE','INTERNSHIPS','INTERNSHIP EXPERIENCE','VOLUNTEER WORK',
-]);
-
-function parseResumeDoc(rawText) {
-  const result = { name: '', headerLines: [], sections: [] };
-  if (!rawText) return result;
-
-  // Flat-text normalization: if text has very few newlines (old PDF extraction produced
-  // one long space-joined string per page), insert \n before every known section name
-  // that is preceded by a lowercase character. This fixes existing stored Supabase data
-  // without requiring re-upload.
-  let text = rawText;
-  const newlineCount = (text.match(/\n/g) || []).length;
-  if (newlineCount < 3 && text.length > 80) {
-    const names = Array.from(RESUME_SECTION_NAMES).sort((a, b) => b.length - a.length);
-    for (const name of names) {
-      const re = new RegExp('([a-z0-9.,;!?]) +(' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?= )', 'g');
-      text = text.replace(re, '$1\n$2\n');
-    }
-  }
-
-  const isSec  = (t) => RESUME_SECTION_NAMES.has(t.trim().toUpperCase());
-  const isBullet = (t) => /^[•\-\*▪▸◦]\s/.test(t);
-  const lines = text.split('\n');
-  let i = 0;
-
-  while (i < lines.length && !lines[i].trim()) i++;
-  if (i < lines.length) { result.name = lines[i].trim(); i++; }
-
-  while (i < lines.length) {
-    const t = lines[i].trim();
-    if (!t) { i++; continue; }
-    if (isSec(t)) break;
-    const isContactLine = isEmailPresent(t) || isPhonePresent(t);
-    result.headerLines.push({ text: t, type: isContactLine ? 'contact' : 'title' });
-    i++;
-  }
-
-  while (i < lines.length) {
-    const t = lines[i].trim();
-    if (!t) { i++; continue; }
-    if (!isSec(t)) { i++; continue; }
-
-    const section = { title: t.trim().toUpperCase(), items: [] };
-    i++;
-    let afterGap = true;
-
-    while (i < lines.length) {
-      const l = lines[i].trim();
-      if (isSec(l)) break;
-      if (!l) {
-        if (section.items.length) section.items.push({ type: 'gap' });
-        afterGap = true;
-        i++;
-        continue;
-      }
-      if (isBullet(l)) {
-        section.items.push({ type: 'bullet', text: l.replace(/^[•\-\*▪▸◦]\s*/, '').trim() });
-        afterGap = false;
-      } else {
-        section.items.push({ type: afterGap ? 'roleHeader' : 'text', text: l });
-        afterGap = false;
-      }
-      i++;
-    }
-    while (section.items.length && section.items[section.items.length - 1].type === 'gap') {
-      section.items.pop();
-    }
-    result.sections.push(section);
-  }
-
-  return result;
-}
+// parseResumeDoc/RESUME_SECTION_NAMES relocated to src/lib/resumeParsing.js
+// (LinkedIn Intelligence Phase 1) so it can be imported by the new deterministic
+// scoring module without a circular import back into App.jsx -- see that
+// file's header comment for why.
 
 // Extracts a year-range date from the end of a role header line for right-aligned rendering.
 // Matches: "(2020–Present)", "Jan 2020 – Present", "2018–2020", "(Mar 2019 – Dec 2021)"
@@ -4779,7 +4706,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium }) {
   const { t, language } = useI18n();
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
@@ -4839,11 +4766,27 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [jobFitData, setJobFitData] = useSessionState("cp_resume_jobfit", null);
   const [jobFitLoading, setJobFitLoading] = useState(false);
   const [jobFitError, setJobFitError] = useState("");
-  // Tool 8: LinkedIn Optimizer
-  const [linkedinOptData, setLinkedinOptData] = useSessionState("cp_resume_linkedin_opt", null);
+  // Tool 8: LinkedIn Intelligence (evolved from LinkedIn Optimizer -- Phase 3).
+  // linkedinOptData is no longer session-only: it's the most recent persisted
+  // analysis for the active resume, read from linkedin_profile_analyses (the
+  // single table LinkedIn Intelligence owns). linkedinProfile (the pasted
+  // raw-text input) stays sessionStorage -- it's a transient input control,
+  // not a generated fact the blueprint's schema persists.
+  const linkedinAnalysesHook = useLinkedInProfileAnalyses(profile?.id);
+  const linkedinResumeScopedAnalyses = useMemo(
+    // Exact match, no "show anything" fallback -- a resume with no persisted
+    // analyses yet (or no active resume selected) must show a blank slate,
+    // never a stale analysis that actually belongs to a different resume.
+    () => linkedinAnalysesHook.analyses.filter(a => a.resumeId === (activeResumeId || null)),
+    [linkedinAnalysesHook.analyses, activeResumeId]
+  );
+  const linkedinOptData = linkedinResumeScopedAnalyses[0] || null;
+  const linkedinPreviousData = linkedinResumeScopedAnalyses[1] || null;
   const [linkedinOptLoading, setLinkedinOptLoading] = useState(false);
   const [linkedinOptError, setLinkedinOptError] = useState("");
   const [linkedinProfile, setLinkedinProfile] = useSessionState("cp_resume_linkedin_profile", "");
+  const [linkedinEvolution, setLinkedinEvolution] = useState(null);
+  const [linkedinEvolutionLoading, setLinkedinEvolutionLoading] = useState(false);
   // Tool 4: Cover Letter Multiple Versions
   const [coverVersions, setCoverVersions] = useSessionState("cp_resume_cover_versions", null);
   const [coverVersionsLoading, setCoverVersionsLoading] = useState(false);
@@ -4970,10 +4913,20 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     if (activeToolPanel === "jobfit" && resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading) {
       runJobFit();
     }
-    if (activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinOptData && !linkedinOptLoading) {
+  }, [activeToolPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LinkedIn Intelligence auto-fire is a separate effect (not the shared one
+  // above) because linkedinOptData now comes from an async Supabase fetch
+  // (useLinkedInProfileAnalyses), not sessionStorage -- firing before that
+  // fetch resolves would generate a duplicate analysis for a resume that
+  // already has one. Waits for linkedinAnalysesHook.loading to clear, and
+  // re-evaluates when it does (the shared effect above only re-runs on
+  // activeToolPanel change, which would miss this).
+  useEffect(() => {
+    if (activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinAnalysesHook.loading && !linkedinOptData && !linkedinOptLoading) {
       runLinkedinOpt();
     }
-  }, [activeToolPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeToolPanel, linkedinAnalysesHook.loading, linkedinOptData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear toolkit helper text once the user provides the required data
   useEffect(() => { if (toolGuidanceMsg && resume.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [resume]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -5339,23 +5292,47 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
     finally { setJobFitLoading(false); }
   };
 
-  // ── Tool 8: LinkedIn Optimizer ───────────────────────────────────────────────
+  // ── Tool 8: LinkedIn Intelligence ────────────────────────────────────────────
+  // Deterministic scoring + content generation (Free, all tiers) + interpretive
+  // analysis (Premium, when available) computed and persisted in one orchestrated
+  // call -- see runLinkedinIntelligenceAnalysis in src/data/linkedinIntelligence.js.
+  // Ownership boundary: this component never computes a score or writes a
+  // deterministic/generated-content field itself -- it only supplies inputs and
+  // renders the persisted result.
   const runLinkedinOpt = async () => {
     if (!resume.trim()) return;
-    setLinkedinOptLoading(true); setLinkedinOptError(""); setLinkedinOptData(null);
+    setLinkedinOptLoading(true); setLinkedinOptError("");
     try {
       const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a LinkedIn profile expert and personal branding coach. ${linkedinProfile.trim() ? "Analyze and optimize this LinkedIn profile." : "Generate LinkedIn profile content from this resume."} Return ONLY a JSON object, no markdown, no explanation:
-{"headline":"<optimized LinkedIn headline max 120 chars>","aboutSection":"<optimized About section 200-250 words, first person, engaging, keyword-rich>","experienceOptimizations":[{"company":"<company name>","title":"<job title>","optimizedBullets":["<impactful bullet 1>","<impactful bullet 2>","<impactful bullet 3>"]}],"topSkillsToAdd":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>","<skill 6>","<skill 7>","<skill 8>"],"keywordsToFeature":["<keyword 1>","<keyword 2>","<keyword 3>","<keyword 4>","<keyword 5>","<keyword 6>"],"recruiterVisibilityTips":["<tip 1>","<tip 2>","<tip 3>"],"atsAlignmentScore":<0-100>,"profileCompleteness":<0-100>,"headlineScore":<0-100>}
-RESUME:${resume}${linkedinProfile.trim() ? "\n\nCURRENT LINKEDIN PROFILE:\n" + linkedinProfile : ""}${jobDesc.trim() ? "\nTARGET JOB:\n" + jobDesc : ""}`, 3000, "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setLinkedinOptData(parsed);
+      const saved = await runLinkedinIntelligenceAnalysis({
+        resumeText: resume,
+        linkedinProfileText: linkedinProfile,
+        jobDesc,
+        targetRole: profile?.job_title || "",
+        resumeId: activeResumeId || null,
+        isPremium,
+        saveAnalysis: linkedinAnalysesHook.saveAnalysis,
+        userContext: ctx,
+      });
+      if (!saved) throw new Error("linkedin_intelligence_no_content");
       if (profile?.id && saveHistoryToDb) {
         const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
         saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
       }
     } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError(t("resume.linkedinOptError")); }
     finally { setLinkedinOptLoading(false); }
+  };
+
+  // Profile Evolution Tracking (Premium) -- on-demand, separate trigger, never
+  // persisted (see runProfileEvolutionAnalysis's own comment for why).
+  const runLinkedinEvolution = async () => {
+    if (!isPremium || !linkedinOptData || !linkedinPreviousData) return;
+    setLinkedinEvolutionLoading(true);
+    try {
+      const result = await runProfileEvolutionAnalysis({ latest: linkedinOptData, previous: linkedinPreviousData, targetRole: profile?.job_title || "" });
+      setLinkedinEvolution(result);
+    } catch (e) { console.error("[LinkedInEvolution]", e); }
+    finally { setLinkedinEvolutionLoading(false); }
   };
 
   // ── Tool 4: Cover Letter Multiple Versions ───────────────────────────────────
@@ -5608,9 +5585,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
     setImproveStats(null); setInsightsSectionExpanded({}); setShowAllHistory(false);
     setLibrarySaved(false); setLibrarySaveError("");
     setEditingResumeName(null);
-    setBenchmarkData(null); setJobFitData(null); setLinkedinOptData(null);
+    setBenchmarkData(null); setJobFitData(null);
     setCoverVersions(null); setDeepInsights(null);
-    setLinkedinProfile(""); setActiveCoverVersion("professional");
+    setLinkedinProfile(""); setLinkedinOptError(""); setLinkedinEvolution(null); setActiveCoverVersion("professional");
     setActiveToolPanel(null); setEditingCoverLetter(false); setEditedCoverText("");
     setTailoredApplied(false); setPendingAutoAnalyze(false); setApplyingAllFixes(false); setInsightsDone(false);
     setManualReset(true);
@@ -6559,7 +6536,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                 if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.headlineScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+              getStatus: () => linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.completenessScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🎤", title: t("resume.voiceToolTitle"), desc: t("resume.voiceToolDesc"),
               active: false, panelId: null,
               comingSoon: t("resume.voiceToolComingSoon") },
@@ -6842,15 +6819,18 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
               </div>
             )}
             {linkedinOptData && (() => {
-              const { headline, aboutSection, experienceOptimizations, topSkillsToAdd, keywordsToFeature, recruiterVisibilityTips, atsAlignmentScore, profileCompleteness, headlineScore } = linkedinOptData;
+              const {
+                headline, aboutSection, experienceOptimizations, recruiterVisibilityTips,
+                completenessScore, keywordCoverageScore, keywordsMissing,
+                strategyAnalysis, recruiterVisibilityIntelligence,
+              } = linkedinOptData;
               return (
                 <>
-                  {/* Score strip */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+                  {/* Score strip -- deterministic (src/lib/linkedinIntelligence/deterministicScoring.js), never AI-invented */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
                     {[
-                      { label: t("resume.atsAlignmentLabel"), val: atsAlignmentScore, color: hubHealthColor(atsAlignmentScore) },
-                      { label: t("resume.profileCompleteLabel"), val: profileCompleteness, color: hubHealthColor(profileCompleteness) },
-                      { label: t("resume.headlineScoreLabel"), val: headlineScore, color: hubHealthColor(headlineScore) },
+                      { label: t("resume.profileCompleteLabel"), val: completenessScore, color: hubHealthColor(completenessScore) },
+                      { label: t("resume.keywordCoverageLabel"), val: keywordCoverageScore, color: hubHealthColor(keywordCoverageScore) },
                     ].map(({ label, val, color }) => (
                       <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 8px", textAlign: "center" }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color }}>{val ?? "—"}</div>
@@ -6878,24 +6858,13 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                       <CopyBtn text={aboutSection} label={t("resume.copyAbout")} variant="secondary" style={{ marginTop: 6, fontSize: 11 }} />
                     </div>
                   )}
-                  {/* Skills to add */}
-                  {topSkillsToAdd?.length > 0 && (
+                  {/* Skills/keywords to add -- deterministic gap (keyword coverage's keywords_missing), never AI-improvised */}
+                  {keywordsMissing?.length > 0 && (
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.skillsToAdd")}</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {topSkillsToAdd.map((s, i) => (
+                        {keywordsMissing.map((s, i) => (
                           <span key={i} style={{ background: C.purpleLight, border: `1px solid ${C.purple}25`, borderRadius: 20, padding: "4px 12px", fontSize: 11, fontWeight: 600, color: C.purple }}>+ {s}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Keywords to feature */}
-                  {keywordsToFeature?.length > 0 && (
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.keywordsToFeatureLabel")}</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {keywordsToFeature.map((k, i) => (
-                          <span key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, color: C.textMid }}>🔑 {k}</span>
                         ))}
                       </div>
                     </div>
@@ -6914,9 +6883,9 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                       ))}
                     </div>
                   )}
-                  {/* Recruiter visibility tips */}
+                  {/* Recruiter visibility tips (Free) */}
                   {recruiterVisibilityTips?.length > 0 && (
-                    <div>
+                    <div style={{ marginBottom: isPremium ? 14 : 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.recruiterTips")}</div>
                       {recruiterVisibilityTips.map((tip, i) => (
                         <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.purpleLight, border: `1px solid ${C.purple}15`, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
@@ -6924,6 +6893,55 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
                           <span style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{tip}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Premium: Profile Strategy Analysis -- AI prioritization over the deterministic gaps above, never a re-score */}
+                  {isPremium && strategyAnalysis && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.linkedinStrategyHeading")}</div>
+                      {strategyAnalysis.priorityActions?.map((a, i) => (
+                        <div key={i} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingLeft: 12 }}>• {a}</div>
+                      ))}
+                      {strategyAnalysis.reasoning && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontStyle: "italic" }}>{strategyAnalysis.reasoning}</div>}
+                    </div>
+                  )}
+
+                  {/* Premium: Recruiter Visibility Intelligence -- deeper than the Free tips above */}
+                  {isPremium && recruiterVisibilityIntelligence && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.linkedinRecruiterVisibilityHeading")}</div>
+                      {recruiterVisibilityIntelligence.guidance?.map((g, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.purpleLight, border: `1px solid ${C.purple}15`, borderRadius: 9, padding: "8px 12px", marginBottom: 6 }}>
+                          <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>🔍</span>
+                          <span style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{g}</span>
+                        </div>
+                      ))}
+                      {recruiterVisibilityIntelligence.searchabilityNote && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontStyle: "italic" }}>{recruiterVisibilityIntelligence.searchabilityNote}</div>}
+                    </div>
+                  )}
+
+                  {/* Premium: Profile Evolution Tracking -- on-demand, needs 2+ persisted analyses for this resume */}
+                  {isPremium && linkedinPreviousData && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("resume.linkedinEvolutionHeading")}</div>
+                        {!linkedinEvolution && <Btn onClick={runLinkedinEvolution} loading={linkedinEvolutionLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.linkedinEvolutionBtn")}</Btn>}
+                      </div>
+                      {linkedinEvolutionLoading && <div style={{ fontSize: 12, color: C.textMuted }}>{t("resume.linkedinEvolutionLoading")}</div>}
+                      {linkedinEvolution?.narrative && (
+                        <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px" }}>
+                          <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6 }}>{linkedinEvolution.narrative.narrative}</div>
+                          {linkedinEvolution.narrative.focusNext && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontStyle: "italic" }}>{linkedinEvolution.narrative.focusNext}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Non-Premium upsell -- Free content/scores above are complete and unreduced; this only points at what Premium adds */}
+                  {!isPremium && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12, fontSize: 12, color: C.textMuted }}>
+                      {t("resume.linkedinPremiumUpsell")}
                     </div>
                   )}
                 </>
@@ -12567,7 +12585,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}

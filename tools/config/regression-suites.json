@@ -58,5 +58,17 @@
     "path": "scripts/verify/verify-proactive-alerts-ui-phase5.cjs",
     "feature": "proactive-job-alerts",
     "description": "Proactive Job Alerts UI Phase 5: Premium gate, Rule 7 positive empty state, and the AI Explanation Rule evidence suite -- every AI narrative asserted alongside its exact deterministic fact chips, plus zero-AI verbatim pass-through for Why Didn't I See This / Explain Priority Changed."
+  },
+  {
+    "id": "linkedin-intelligence-deterministic-unit",
+    "path": "scripts/verify/verify-linkedin-intelligence-deterministic-unit.mjs",
+    "feature": "linkedin-intelligence",
+    "description": "LinkedIn Intelligence Phase 1+3 deterministic engine unit tests: Profile Completeness (checklist renormalization, pasted-profile items), Keyword Coverage (Compatibility Engine skill-extraction reuse), and Profile Evolution (deterministic diff between two persisted snapshots). Pure logic, no dev server required."
+  },
+  {
+    "id": "linkedin-intelligence-ai-layer-unit",
+    "path": "scripts/verify/verify-linkedin-intelligence-ai-layer-unit.mjs",
+    "feature": "linkedin-intelligence",
+    "description": "LinkedIn Intelligence Phase 3 Premium AI Analysis Layer unit tests: prompt building, Data-Driven Availability predicates, and response parsing for Profile Strategy Analysis, Recruiter Visibility Intelligence, and Profile Evolution Tracking (aiPrompts.js pure half only -- does not call a live AI, no dev server required)."
   }
 ]
