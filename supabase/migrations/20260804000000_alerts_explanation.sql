@@ -1,0 +1,12 @@
+-- Proactive Job Alerts -- fixes a Phase 4 gap: the AI Layer's per-alert
+-- narrative (Analysis 01's "whyUrgent", Analysis 02's "whyThisWeek") was
+-- computed but never persisted, so Phase 5's UI had nothing to read. Not in
+-- the original locked blueprint's alerts SQL sketch -- an additive column
+-- filling a gap the blueprint left unaddressed, not a redesign of anything
+-- locked (candidate_id, digest_type, delivered_at, etc. are all unchanged).
+--
+-- Lives on `alerts` (the per-delivery event), not `alert_candidates` (the
+-- per-opportunity fact record), because the same candidate can in principle
+-- be re-delivered with fresh narrative across cadences -- the explanation
+-- belongs to a specific delivery, not the opportunity itself.
+alter table alerts add column if not exists explanation jsonb;

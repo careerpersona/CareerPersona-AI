@@ -19,6 +19,28 @@
 //   POST /webhooks/stripe              → process billing events, invalidate KV
 
 import { extractSkillKeywords } from "./src/lib/compatibility/skills.js";
+// Proactive Job Alerts -- Discovery Engine + AI Layer are pure src/lib/
+// modules, imported directly, same pattern already proven above by
+// extractSkillKeywords. Never reimplemented here -- see the "PROACTIVE JOB
+// ALERTS" section below for the Scheduler/Delivery Pipeline code that calls
+// these.
+import {
+  deduplicateOpportunities, filterAlreadyApplied, evaluateOpportunity,
+  applyDiversityConstraint, applyBalanceConstraint, enforceDeliveryCaps,
+} from "./src/lib/proactiveJobAlerts/discoveryEngine.js";
+import {
+  computeVolumeTrend, detectHiringFreeze, computeSalarySignal, computeSpeedOfFill,
+  computeApplicationWindowStats, computePersonalOutcomeTiming, computeSeasonalPattern,
+} from "./src/lib/proactiveJobAlerts/marketSignals.js";
+import {
+  computeAlertTrustScore, findMissedOpportunities, computeOpportunityEngagementTrends, computeDiscoveryCoverage,
+} from "./src/lib/proactiveJobAlerts/effectivenessMetrics.js";
+import {
+  buildCriticalOpportunityPrompt, parseCriticalOpportunityResponse,
+  buildWatchlistActivityPrompt, parseWatchlistActivityResponse,
+  computeWeeklyAvailability, buildWeeklyAnalysesPrompt, parseWeeklyAnalysesResponse,
+} from "./src/lib/proactiveJobAlerts/aiPrompts.js";
+import { groupCandidatesByCompany, computeWatchlistActivityStates } from "./src/lib/proactiveJobAlerts/watchlistActivity.js";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -1036,6 +1058,422 @@ async function handleStripeWebhook(request, env) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PROACTIVE JOB ALERTS — SCHEDULED PIPELINE
+// Locked blueprint: https://claude.ai/code/artifact/779890b3-2265-42d7-b86f-94e78d2d56db
+//
+// Four strict responsibility boundaries for this section:
+//  - Scheduler (runProactiveJobAlertsSchedule + the per-cadence run* functions'
+//    top-level loop): timing, triggering, per-user orchestration only. Never
+//    computes a tier, score, or narrative itself.
+//  - Discovery Engine (imported above from src/lib/proactiveJobAlerts/ --
+//    the SAME pure functions the frontend will use in Phase 5/6, not
+//    reimplemented): candidate generation, deterministic discovery.
+//  - AI Layer (imported prompt-builders/parsers above + callClaudeServerSide
+//    below, which mirrors handleClaude's exact Anthropic-call mechanics):
+//    interpretation, guidance, narrative generation only. Never decides a
+//    tier or which candidates are delivered.
+//  - Delivery Pipeline (the persist*/fetchUserAlertContext functions below):
+//    persistence, notification preparation (i.e. writing alert rows the
+//    Phase 5 UI will read as a digest -- this app has no push/email channel
+//    to reuse or build here), and lifecycle_status/tier-change tracking.
+//
+// Cron schedule (see wrangler.toml):
+//   "0 */6 * * *"  -> Analysis 01, Critical Opportunity Engine (every 6h)
+//   "0 */12 * * *" -> Analysis 04, Watchlist Activity Monitor (every 12h)
+//   "0 6 * * 1"    -> Analyses 02+03+05+06, weekly (Monday 06:00 UTC)
+//
+// Known v1 limitations (flagged, not silently hidden):
+//  - No source supplies a real posting close date, so "closing_soon" urgency
+//    factors will not fire against live data until a source with deadline
+//    data is added -- pre-existing gap in the job APIs, not introduced here.
+//  - Market Intelligence's volume trend is derived from this platform's own
+//    alert_candidates history, which is empty at launch and thin for the
+//    first several weeks ("cold start") -- computeVolumeTrend already
+//    returns trend:null gracefully until enough history exists.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CLAUDE_MODEL = "claude-sonnet-4-6";
+const PROACTIVE_ALERTS_TIME_BUDGET_MS = 20_000; // leaves headroom under Workers' CPU limit; remaining users roll to the next scheduled run
+const PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE = 1;
+
+// AI Layer's execution primitive -- mirrors handleClaude's exact Anthropic
+// call (same model, same message shape), minus the request-specific
+// auth/quota wrapper (the scheduler checks quota itself, per-user, before
+// calling this -- see checkAndConsumeAIQuota).
+async function callClaudeServerSide(prompt, maxTokens, env) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: Math.min(maxTokens, 8000), messages: [{ role: "user", content: prompt }] }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    console.error("[proactiveAlerts] Claude error", r.status, JSON.stringify(d));
+    return { text: null, usage: null };
+  }
+  const text = (d.content?.[0]?.text || "").replace(/```json|```/g, "").trim();
+  return { text, usage: d.usage };
+}
+
+// Delivery Pipeline needs upsert semantics (alert_candidates is re-evaluated
+// across cadences via unique(user_id, job_id)) -- supabasePost alone is
+// insert-only. Mirrors the REST-level shape of the upsert the frontend's
+// Supabase client already performs elsewhere (e.g. company_watchlist), just
+// expressed as a raw fetch call since worker.js talks to PostgREST directly.
+async function supabaseUpsert(table, data, onConflict, env) {
+  const url = new URL(`${env.SUPABASE_URL}/rest/v1/${table}`);
+  url.searchParams.set("on_conflict", onConflict);
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers: { ...sbHeaders(env), "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(data),
+  });
+  const body = await r.text();
+  if (!r.ok) throw Object.assign(new Error(`supabase_upsert_${r.status}`), { status: r.status, body });
+  return JSON.parse(body);
+}
+
+// ── Scheduler: eligible users ────────────────────────────────────────────────
+// Proactive Job Alerts is Premium Feature #4 -- same premium-only gate
+// already established for Referral Intelligence (isPremium = premium_active
+// or admin), not the broader "canUseAI" set that also includes trial/pro.
+async function getPremiumUserIds(env) {
+  const rows = await supabaseGet("profiles", { select: "id", subscription_status: "in.(premium_active,admin)" }, env);
+  return rows.map(r => r.id);
+}
+
+// Reuses the exact Layer 1 + Layer 2 entitlement/quota chain handleClaude
+// already uses for interactive requests, applied per-user in the background
+// loop instead of per-HTTP-request. Deterministic discovery work always
+// proceeds regardless (it costs no AI budget); only the AI narrative call is
+// gated here.
+async function checkAndConsumeAIQuota(userId, feature, env) {
+  const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
+  const caps = getCapabilities(sub, config);
+  if (!caps.canUseAI) return false;
+  const limit = getFeatureLimit(feature, caps);
+  if (limit === Infinity) return true;
+  const period = getPeriodKey(sub);
+  const quota = await supabaseRPC("check_and_consume_quota", { p_user_id: userId, p_feature: feature, p_limit: limit, p_period: period }, env);
+  return !!quota.allowed;
+}
+
+// ── Delivery Pipeline: per-user context ──────────────────────────────────────
+async function fetchUserAlertContext(userId, env) {
+  const [profileRows, detailRows, contacts, watchlist, savedJobRows, outcomePatterns, existingCandidates, recentAlerts, applicationRows] = await Promise.all([
+    supabaseGet("profiles", { select: "*", id: `eq.${userId}` }, env),
+    supabaseGet("profile_details", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("networking_contacts", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("company_watchlist", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("saved_jobs", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("outcome_patterns", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("alert_candidates", { select: "*", user_id: `eq.${userId}` }, env),
+    supabaseGet("alerts", { select: "*", user_id: `eq.${userId}`, order: "delivered_at.desc", limit: "200" }, env),
+    // Cross-Feature Integration (Phase 6): Application Outcome Intelligence
+    // owns this data (applications table + its own patternEngine.js) --
+    // Proactive Job Alerts only READS it, via marketSignals.js's
+    // computeApplicationWindowStats/computePersonalOutcomeTiming (Analysis
+    // 06, Timing Intelligence). Never recomputes an outcome pattern itself.
+    supabaseGet("applications", { select: "response_status,days_since_posted", user_id: `eq.${userId}` }, env),
+  ]);
+  const base = profileRows[0] || {};
+  const details = detailRows[0] || {};
+  return {
+    profile: {
+      preferred_job_title: details.preferred_job_title || base.job_title || "",
+      location: base.location || "",
+      work_type: details.work_type || "",
+      desired_salary: details.desired_salary || "",
+    },
+    contacts, watchlist,
+    // Only saved_jobs.job_id maps to an external posting ID -- applications
+    // are logged as free-text company/title with no comparable ID, so they
+    // are not a valid input to filterAlreadyApplied's exact-ID matching.
+    appliedJobIds: savedJobRows.map(j => j.job_id).filter(Boolean),
+    outcomePatterns, existingCandidates, recentAlerts,
+    applications: applicationRows.map(a => ({ status: a.status, daysSincePosted: a.days_since_posted })),
+  };
+}
+
+// Raw Adzuna/RapidAPI rows are already normalized to Discovery Engine's
+// expected shape by normalizeAdzuna/normalizeRapid (title/company/skills/
+// salaryMin/salaryMax/location/remote) -- fetchAdzuna/fetchRapid are reused
+// unchanged, exactly as they already serve interactive Job Search. Neither
+// source supplies industry, companySizeEstimate, or a real closing date;
+// those stay undefined, and every consumer (discoveryEngine.js,
+// marketSignals.js) already treats missing fields as "unavailable," not zero.
+async function fetchFreshPostings(profile, env) {
+  if (!profile.preferred_job_title) return [];
+  const params = {
+    title: profile.preferred_job_title,
+    city: profile.location,
+    remote: profile.work_type === "Remote",
+    salaryMin: profile.desired_salary,
+  };
+  const [adzuna, rapid] = await Promise.all([
+    fetchAdzuna(params, env, PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE),
+    fetchRapid(params, env, PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE),
+  ]);
+  return [...adzuna.jobs, ...rapid.jobs];
+}
+
+// Persists Discovery Engine's evaluated output. Tracks tier CHANGES
+// (previous_tier/tier_change_reason) as plain persistence-layer bookkeeping
+// -- comparing an old field to a new field on write, not a business
+// decision -- powering §18's "Explain Why Priority Changed" in a later phase.
+async function persistAlertCandidates(userId, evaluatedResults, env) {
+  // Each item already carries its own matching `existing` row (looked up by
+  // the caller -- see runCriticalOpportunityCadence's existingByJobId map).
+  const rows = evaluatedResults.map(({ result, existing }) => {
+    const tierChanged = existing && existing.alert_tier !== result.tier;
+    return {
+      user_id: userId,
+      job_id: result.job.id,
+      job_title: result.job.title,
+      company: result.job.company,
+      source: result.job.source || "unknown",
+      match_score: result.matchScore,
+      alert_tier: result.tier,
+      confidence_tier: result.confidenceTier,
+      lifecycle_status: existing?.lifecycle_status && existing.lifecycle_status !== "discovered" ? existing.lifecycle_status : "evaluated",
+      discard_reason: result.tier === "discarded" ? result.tierReason : null,
+      urgency_factors: result.urgencyFactors,
+      signal_enrichments: { hasNetworkContact: result.signals.hasNetworkContact, isWatchlisted: result.signals.isWatchlisted, isDreamCompany: result.signals.isDreamCompany, outcomePatternPositive: result.signals.outcomePatternPositive },
+      previous_tier: tierChanged ? existing.alert_tier : (existing?.previous_tier ?? null),
+      tier_change_reason: tierChanged ? `Re-evaluated: ${existing.alert_tier} -> ${result.tier} (${result.tierReason})` : (existing?.tier_change_reason ?? null),
+      estimated_close_date: result.job.estimatedCloseDate || null,
+      posted_at: result.job.datePosted || null,
+    };
+  });
+  if (!rows.length) return [];
+  return supabaseUpsert("alert_candidates", rows, "user_id,job_id", env);
+}
+
+// explanationsByJobId (optional) carries the AI Layer's own narrative,
+// keyed by the candidate's job.id -- stored verbatim, exactly as the AI Layer
+// produced it (aiPrompts.js), never edited, summarized, or regenerated here.
+// The Delivery Pipeline's only job is writing it down against the right row.
+async function markAlertsDelivered(userId, deliverCandidates, persistedRows, digestType, env, explanationsByJobId = new Map()) {
+  if (!deliverCandidates.length) return;
+  const byJobId = new Map(persistedRows.map(r => [r.job_id, r]));
+  const alertRows = deliverCandidates
+    .map(c => ({ row: byJobId.get(c.job.id), jobId: c.job.id }))
+    .filter(x => x.row)
+    .map(({ row, jobId }) => ({ user_id: userId, candidate_id: row.id, digest_type: digestType, explanation: explanationsByJobId.get(jobId) || null }));
+  if (alertRows.length) await supabasePost("alerts", alertRows, env);
+  const alertedIds = deliverCandidates.map(c => byJobId.get(c.job.id)?.id).filter(Boolean);
+  if (alertedIds.length) {
+    await Promise.all(alertedIds.map(id => supabasePatch("alert_candidates", { id: `eq.${id}` }, { lifecycle_status: "alerted" }, env)));
+  }
+}
+
+// ── Cadence 1: Critical Opportunity Engine (every 6h) ────────────────────────
+async function runCriticalOpportunityCadence(userId, env) {
+  const ctxData = await fetchUserAlertContext(userId, env);
+  const rawPostings = await fetchFreshPostings(ctxData.profile, env);
+  const deduped = deduplicateOpportunities(rawPostings);
+  const unapplied = filterAlreadyApplied(deduped, ctxData.appliedJobIds);
+
+  const existingByJobId = new Map(ctxData.existingCandidates.map(c => [c.job_id, c]));
+  const evaluated = unapplied.map(job => ({
+    result: evaluateOpportunity({ job, profile: ctxData.profile, contacts: ctxData.contacts, watchlist: ctxData.watchlist, outcomePatterns: ctxData.outcomePatterns }),
+    existing: existingByJobId.get(job.id) || null,
+  }));
+
+  const persisted = await persistAlertCandidates(userId, evaluated, env);
+
+  const alreadyToday = ctxData.recentAlerts.filter(a => a.delivered_at && (Date.now() - new Date(a.delivered_at).getTime()) < 86400000);
+  const tieredForCaps = evaluated.map(e => e.result);
+  const capResult = enforceDeliveryCaps(tieredForCaps, {
+    alreadyDeliveredToday: {
+      critical: alreadyToday.filter(a => persisted.find(p => p.id === a.candidate_id)?.alert_tier === "critical").length,
+      high: alreadyToday.filter(a => persisted.find(p => p.id === a.candidate_id)?.alert_tier === "high").length,
+    },
+  });
+
+  if (!capResult.deliver.length) return { userId, delivered: 0, aiCalled: false };
+
+  const allowed = await checkAndConsumeAIQuota(userId, "proactive_job_alerts", env);
+  const explanationsByJobId = new Map();
+  if (allowed) {
+    const built = buildCriticalOpportunityPrompt(capResult.deliver);
+    if (built) {
+      const { text, usage } = await callClaudeServerSide(built.prompt, 900, env);
+      if (text) {
+        const parsed = parseCriticalOpportunityResponse(text, capResult.deliver);
+        if (parsed) {
+          for (const p of parsed) {
+            // Deterministic facts (urgencyFactors/matchScore/confidenceTier/tier)
+            // are stored alongside the AI's own text so the UI can render them
+            // side by side -- the evidence pairing, not just the narrative alone.
+            explanationsByJobId.set(p.candidate.job.id, {
+              whyUrgent: p.whyUrgent,
+              displayRank: p.displayRank,
+              basedOn: { tier: p.candidate.tier, tierReason: p.candidate.tierReason, urgencyFactors: p.candidate.urgencyFactors, matchScore: p.candidate.matchScore, confidenceTier: p.candidate.confidenceTier },
+            });
+          }
+        }
+        if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
+      }
+    }
+  }
+
+  await markAlertsDelivered(userId, capResult.deliver, persisted, "daily_critical", env, explanationsByJobId);
+  return { userId, delivered: capResult.deliver.length, aiCalled: allowed };
+}
+
+// ── Cadence 2: Watchlist Activity Monitor (every 12h) ────────────────────────
+// Deliberately reads already-persisted alert_candidates (populated by the 6h
+// Critical cadence) rather than re-fetching from Adzuna/RapidAPI a second
+// time -- avoids a redundant third ingestion pipeline for the same job
+// sources; this cadence's job is monitoring + narrative, not discovery.
+async function runWatchlistActivityCadence(userId, env) {
+  const ctxData = await fetchUserAlertContext(userId, env);
+  if (!ctxData.watchlist.length) return { userId, ranAnalysis: false };
+
+  const byCompany = groupCandidatesByCompany(ctxData.existingCandidates);
+  const states = computeWatchlistActivityStates({ watchlist: ctxData.watchlist, alertCandidatesByCompany: byCompany });
+
+  const allowed = await checkAndConsumeAIQuota(userId, "proactive_job_alerts", env);
+  if (!allowed) return { userId, ranAnalysis: false, reason: "quota_exhausted" };
+
+  const built = buildWatchlistActivityPrompt(states);
+  if (!built) return { userId, ranAnalysis: false, reason: "nothing_active" };
+
+  const { text, usage } = await callClaudeServerSide(built.prompt, 500, env);
+  const summary = text ? parseWatchlistActivityResponse(text) : null;
+  if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
+  if (summary) {
+    // The exact deterministic states given to the AI travel with its output --
+    // the UI renders them side by side, so "which companies/signals produced
+    // this text" is never left to trust the narrative alone.
+    await supabasePost("market_signals", [{ user_id: userId, signal_type: "watchlist_summary", scope: "user_specific", value: { ...summary, basedOn: states.filter(s => s.signal !== "quiet") } }], env);
+  }
+  return { userId, ranAnalysis: !!summary };
+}
+
+// ── Cadence 3: Weekly (Analyses 02 + 03 + 05 + 06) ───────────────────────────
+async function runWeeklyCadence(userId, env) {
+  const ctxData = await fetchUserAlertContext(userId, env);
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+  const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000);
+
+  const curatedCandidates = ctxData.existingCandidates
+    .filter(c => c.alert_tier === "curated" && c.lifecycle_status !== "alerted")
+    .map(c => ({ job: { id: c.job_id, title: c.job_title, company: c.company }, tier: c.alert_tier, matchScore: c.match_score, industry: null, isStretch: false }));
+  const balanceResult = applyBalanceConstraint(curatedCandidates);
+  const diversityResult = applyDiversityConstraint(balanceResult.candidates.map(c => ({ ...c, tier: "curated" })));
+
+  // Cold-start-aware: volume trend is derived from this platform's own
+  // ingestion history (posted_at timestamps already recorded in
+  // alert_candidates), which is thin for the first several weeks after
+  // launch -- computeVolumeTrend degrades to trend:null gracefully, it is
+  // never fabricated from too little history.
+  const thisWeekCount = ctxData.existingCandidates.filter(c => c.posted_at && new Date(c.posted_at) >= weekAgo).length;
+  const priorPeriodCandidates = ctxData.existingCandidates.filter(c => c.posted_at && new Date(c.posted_at) >= fourWeeksAgo && new Date(c.posted_at) < weekAgo);
+  const priorPeriodAvg = priorPeriodCandidates.length / 3;
+  const volumeTrend = computeVolumeTrend({ currentPeriodCount: thisWeekCount, priorPeriodAvg: priorPeriodCandidates.length ? priorPeriodAvg : null });
+  const hiringFreeze = detectHiringFreeze({ overall: volumeTrend });
+  const salarySignal = computeSalarySignal({ currentAvgSalary: null, priorAvgSalary: null });
+  const speedOfFill = computeSpeedOfFill([]);
+
+  const trustScore = computeAlertTrustScore(ctxData.recentAlerts, { now });
+  const missedOpportunities = findMissedOpportunities(ctxData.existingCandidates, ctxData.recentAlerts)
+    .map(c => ({ job_title: c.job_title, company: c.company }));
+  const engagementTrends = computeOpportunityEngagementTrends(ctxData.existingCandidates.map(c => ({ industry: null, companySizeEstimate: null, tier: c.alert_tier, lifecycle_status: c.lifecycle_status })));
+  const discoveryCoverage = computeDiscoveryCoverage(ctxData.existingCandidates.map(c => ({ lifecycle_status: c.lifecycle_status, alert_tier: c.alert_tier })));
+
+  // Application Outcome Intelligence owns `applications` and the concept of
+  // a "positive outcome" (patternEngine.js's own isPositiveOutcome/
+  // hasResponse) -- Timing Intelligence reuses that same eligibility
+  // definition inside marketSignals.js's computeApplicationWindowStats,
+  // never redefining what counts as a response independently.
+  const applicationWindowStats = computeApplicationWindowStats(ctxData.applications);
+  const personalOutcomeTiming = computePersonalOutcomeTiming(ctxData.applications);
+  const seasonalPattern = computeSeasonalPattern({});
+
+  const allowed = await checkAndConsumeAIQuota(userId, "proactive_job_alerts", env);
+  if (!allowed) return { userId, ranAnalysis: false, reason: "quota_exhausted" };
+
+  const built = buildWeeklyAnalysesPrompt({
+    curatedCandidates: diversityResult.included, balanceResult, volumeTrend, salarySignal, hiringFreeze, speedOfFill,
+    trustScore, missedOpportunities, engagementTrends, discoveryCoverage,
+    applicationWindowStats, personalOutcomeTiming, seasonalPattern,
+    availability: computeWeeklyAvailability({ curatedCandidates: diversityResult.included, volumeTrend, discoveryCoverage, personalOutcomeTiming }),
+  });
+  if (!built) return { userId, ranAnalysis: false, reason: "nothing_available" };
+
+  const { text, usage } = await callClaudeServerSide(built.prompt, 2200, env);
+  const analyses = text ? parseWeeklyAnalysesResponse(text, built) : null;
+  if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
+  if (analyses) {
+    // Same evidence-pairing discipline as the other two cadences: each
+    // section's own deterministic input travels alongside its AI text, keyed
+    // to match the section it explains, so the UI never has to trust an AI
+    // finding without its cited facts alongside it.
+    const basedOn = {
+      marketIntelligence: analyses.marketIntelligence ? { volumeTrend, salarySignal, hiringFreeze, speedOfFill } : undefined,
+      alertEffectiveness: analyses.alertEffectiveness ? { trustScore, discoveryCoverage, missedOpportunities, engagementTrends } : undefined,
+      timingIntelligence: analyses.timingIntelligence ? { applicationWindowStats, personalOutcomeTiming, seasonalPattern } : undefined,
+    };
+    await supabasePost("market_signals", [{ user_id: userId, signal_type: "weekly_analysis", scope: "user_specific", value: { ...analyses, basedOn } }], env);
+  }
+  // Curated pipeline candidates already exist as alert_candidates rows (from
+  // an earlier Critical-cadence run) -- only their alerts row + lifecycle
+  // transition needs writing here, using the AI's own narrated subset as the
+  // source of truth for what was actually delivered (never the full
+  // pre-narrative set, in case parsing returned a partial result).
+  if (analyses?.curatedPipeline?.length) {
+    const deliverCandidates = analyses.curatedPipeline.map(p => p.candidate);
+    const explanationsByJobId = new Map(
+      analyses.curatedPipeline.map(p => [p.candidate.job.id, { whyThisWeek: p.whyThisWeek, basedOn: { tier: p.candidate.tier, matchScore: p.candidate.matchScore, isStretch: p.candidate.isStretch, industry: p.candidate.industry } }])
+    );
+    await markAlertsDelivered(userId, deliverCandidates, ctxData.existingCandidates, "weekly_curated", env, explanationsByJobId);
+  }
+  if (trustScore.needsSelfCorrection) {
+    await supabaseUpsert("alert_learning_weights", [{ user_id: userId, weight_type: "confidence_floor", category: "global", weight_value: 1, data_points: trustScore.totalAlerts }], "user_id,weight_type,category", env);
+  }
+  return { userId, ranAnalysis: !!analyses };
+}
+
+// ── Scheduler: dispatch + time-budget-guarded user loop ─────────────────────
+// The only thing this function decides is timing/ordering across users --
+// zero business logic. A user is skipped only for eligibility (premium) or
+// wall-clock budget, never for a Discovery Engine or AI Layer reason (those
+// decisions happen inside the cadence functions above, called unchanged).
+async function runProactiveJobAlertsSchedule(cronExpr, env) {
+  const startedAt = Date.now();
+  const userIds = await getPremiumUserIds(env);
+  const runner =
+    cronExpr === "0 */6 * * *" ? runCriticalOpportunityCadence :
+    cronExpr === "0 */12 * * *" ? runWatchlistActivityCadence :
+    cronExpr === "0 6 * * 1" ? runWeeklyCadence : null;
+  if (!runner) {
+    console.error("[proactiveAlerts] Unrecognized cron expression", cronExpr);
+    return;
+  }
+  let processed = 0;
+  for (const userId of userIds) {
+    if (Date.now() - startedAt > PROACTIVE_ALERTS_TIME_BUDGET_MS) {
+      console.log(`[proactiveAlerts] Time budget reached after ${processed}/${userIds.length} users; remainder rolls to the next scheduled run.`);
+      break;
+    }
+    try {
+      await runner(userId, env);
+      processed++;
+    } catch (e) {
+      console.error("[proactiveAlerts] user_processing_error", cronExpr, userId, e.message);
+    }
+  }
+  console.log(`[proactiveAlerts] Cadence "${cronExpr}" processed ${processed}/${userIds.length} eligible users.`);
+}
+
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -1069,5 +1507,15 @@ export default {
       console.error("worker_error", e.message);
       return corsResponse(request, { error: "internal_error" }, 500);
     }
+  },
+
+  // Scheduler entry point (Cron Triggers, see wrangler.toml). event.cron
+  // identifies which of the 3 registered schedules fired; ctx.waitUntil keeps
+  // the invocation alive until the full user loop (bounded by
+  // PROACTIVE_ALERTS_TIME_BUDGET_MS) finishes.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      runProactiveJobAlertsSchedule(event.cron, env).catch(e => console.error("[proactiveAlerts] schedule_error", event.cron, e.message))
+    );
   },
 };

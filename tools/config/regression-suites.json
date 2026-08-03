@@ -28,5 +28,35 @@
     "path": "scripts/verify/verify-referral-intelligence-responsive.cjs",
     "feature": "referral-intelligence",
     "description": "Desktop/tablet/375px mobile responsive checks for Referral Intelligence."
+  },
+  {
+    "id": "discovery-engine-unit",
+    "path": "scripts/verify/verify-discovery-engine-unit.mjs",
+    "feature": "proactive-job-alerts",
+    "description": "Proactive Job Alerts Discovery Engine unit tests: source aggregation, profile matching delegation, signal enrichment, urgency factors, confidence/alert tier assignment, stretch classification, diversity/balance constraints, delivery caps. Pure logic, no dev server required."
+  },
+  {
+    "id": "market-effectiveness-unit",
+    "path": "scripts/verify/verify-market-effectiveness-unit.mjs",
+    "feature": "proactive-job-alerts",
+    "description": "Proactive Job Alerts deterministic precursor unit tests for Analysis 03/06 (marketSignals.js) and Analysis 05 (effectivenessMetrics.js). Pure logic, no dev server required."
+  },
+  {
+    "id": "proactive-alerts-ai-layer-unit",
+    "path": "scripts/verify/verify-proactive-alerts-ai-layer-unit.mjs",
+    "feature": "proactive-job-alerts",
+    "description": "Proactive Job Alerts AI Analysis Layer unit tests: prompt building, Data-Driven Availability predicates, and response parsing for all 6 analyses (aiPrompts.js pure half only -- does not call a live AI, no dev server required)."
+  },
+  {
+    "id": "watchlist-activity-unit",
+    "path": "scripts/verify/verify-watchlist-activity-unit.mjs",
+    "feature": "proactive-job-alerts",
+    "description": "Proactive Job Alerts Watchlist Activity Monitor (Analysis 04) deterministic detection unit tests. Pure logic, no dev server required."
+  },
+  {
+    "id": "proactive-alerts-ui-phase5",
+    "path": "scripts/verify/verify-proactive-alerts-ui-phase5.cjs",
+    "feature": "proactive-job-alerts",
+    "description": "Proactive Job Alerts UI Phase 5: Premium gate, Rule 7 positive empty state, and the AI Explanation Rule evidence suite -- every AI narrative asserted alongside its exact deterministic fact chips, plus zero-AI verbatim pass-through for Why Didn't I See This / Explain Priority Changed."
   }
 ]

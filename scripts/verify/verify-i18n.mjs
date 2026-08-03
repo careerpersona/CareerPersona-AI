@@ -21,12 +21,45 @@ import { chromium } from "playwright";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
-const SCRATCHPAD = "C:/Users/ggund/AppData/Local/Temp/claude/c--Users-ggund-CareerPersona-AI-new/4ce6861b-2b62-48b9-ab3c-91a7afacfe7a/scratchpad/screenshots2";
+const SCRATCHPAD = "C:/Users/ggund/AppData/Local/Temp/claude/c--Users-ggund-CareerPersona-AI-new/a666cc49-18a1-4d11-ab44-33637d77b345/scratchpad/screenshots-phase7";
 mkdirSync(SCRATCHPAD, { recursive: true });
 
 const BASE = "http://localhost:5173";
 const LANGS = ["en", "es", "de", "ja", "ar"];
-const PAGES = ["briefing", "plan", "progress", "jobintel", "dashboard", "resume", "jobs", "interview", "salary", "network", "tracker", "saved", "opportunity", "profile", "settings", "pricing"];
+const PAGES = ["briefing", "plan", "progress", "jobintel", "dashboard", "resume", "jobs", "interview", "salary", "network", "tracker", "saved", "opportunity", "profile", "settings", "pricing", "alerts"];
+
+// Proactive Job Alerts (Phase 7 i18n runtime verification): one critical
+// alert fixture exercises the AI Explanation Rule fact-chip strings
+// (tier/urgency/confidence/matchChip) alongside the narrative labels, not
+// just the empty-state copy already covered by the default [] REST fallback.
+const FAKE_ALERT_CANDIDATE_ID = "00000000-0000-0000-0000-0000000000a1";
+function makeFakeAlertRow() {
+  return {
+    id: "00000000-0000-0000-0000-0000000000b1",
+    user_id: FAKE_ID,
+    candidate_id: FAKE_ALERT_CANDIDATE_ID,
+    digest_type: "daily_critical",
+    delivered_at: new Date().toISOString(),
+    engaged_at: null,
+    dismissed_at: null,
+    application_id: null,
+    explanation: {
+      whyUrgent: "This role closes within 72 hours and a strong contact at this company was just confirmed.",
+      basedOn: { urgencyFactors: [{ type: "closing_soon" }, { type: "referral_confirmed" }], matchScore: 92, confidenceTier: "exceptional" },
+    },
+    alert_candidates: {
+      id: FAKE_ALERT_CANDIDATE_ID,
+      job_id: "verify_i18n_job_1",
+      job_title: "Senior Product Manager",
+      company: "Acme Corp",
+      alert_tier: "critical",
+      match_score: 92,
+      previous_tier: null,
+      tier_change_reason: null,
+      lifecycle_status: "alerted",
+    },
+  };
+}
 const SUPABASE_URL = "https://cbzebqxbohgkgcqfgmdm.supabase.co";
 const FAKE_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -81,6 +114,9 @@ function makeFakeProfile(lang) {
     job_title: "Software Engineer",
     years_experience: "5",
     plan: "free",
+    // premium_active bypasses the Proactive Job Alerts premium gate so the
+    // "alerts" page renders real content, not just the upsell copy.
+    subscription_status: "premium_active",
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   };
@@ -166,6 +202,26 @@ async function run() {
         return;
       }
 
+      // REST: alerts (joined with alert_candidates) -- one critical alert
+      // fixture so Proactive Job Alerts' AI-narrative + fact-chip strings
+      // render, not just the empty-state copy.
+      if (url.includes("/rest/v1/alerts")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(method === "GET" ? [makeFakeAlertRow()] : {}),
+        });
+        return;
+      }
+      if (url.includes("/rest/v1/alert_candidates")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(method === "GET" ? [makeFakeAlertRow().alert_candidates] : {}),
+        });
+        return;
+      }
+
       // REST: realtime/websocket → block
       if (url.includes("/realtime/")) {
         await route.abort();
@@ -209,8 +265,12 @@ async function run() {
           console.log(`    ⚠️  Auth screen shown — fake user did not persist`);
           findings.push({ lang, page: pageId, issue: "auth-screen-shown" });
         } else {
-          // Collect visible text for English leakage check (non-English only)
-          if (lang === "ja" || lang === "ar") {
+          // Collect visible text for English leakage check (non-English only).
+          // Phase 7 (Proactive Job Alerts i18n): es/de are the LTR
+          // representatives, ar is the RTL representative -- all three now
+          // checked, not just ja/ar, so the "alerts" page's new namespace is
+          // verified in both a Latin-script LTR locale and a non-Latin one.
+          if (lang === "ja" || lang === "ar" || lang === "es" || lang === "de") {
             const texts = await page.$$eval("*:not(script):not(style)", (els) =>
               els
                 .filter((el) => el.children.length === 0 && el.innerText?.trim().length > 5)

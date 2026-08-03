@@ -6,6 +6,8 @@ import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } 
 import { useReferralAnalyses } from "./data/referralIntelligence";
 import ReferralIntelligencePanel from "./components/ReferralIntelligencePanel";
 import { matchContactsToCompany, computeTargetCompanies, computeCompanyReadiness, rankByScore } from "./lib/referralIntelligence/scoringEngine";
+import { useProactiveAlerts } from "./data/proactiveJobAlerts";
+import ProactiveAlertsPanel from "./components/ProactiveAlertsPanel";
 import { computeAllPatterns, computeFunnel, computeRejectionStageBreakdown, computeOutcomesLoggedCount, computeConfidenceTier, computeAnalysisAvailability, eligibleApplications } from "./lib/outcomeIntelligence/patternEngine";
 import { useSavedJobs } from "./data/savedJobs";
 import { useResumes, useResumeHistory } from "./data/resumes";
@@ -12158,7 +12160,7 @@ export default function App() {
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const [billingState, setBillingState] = useState(null);
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","pricing","profile","settings","opportunity","jobintel"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -12275,6 +12277,10 @@ export default function App() {
   const recommendationEvalHook = useRecommendationEvaluations(profile?.id);
   // Referral Intelligence (Premium Feature #3).
   const referralAnalysesHook = useReferralAnalyses(profile?.id);
+  // Proactive Job Alerts (Premium Feature #4). Read-only -- all 6 analyses
+  // run server-side on a schedule (worker.js); this hook only reads what the
+  // Delivery Pipeline already persisted.
+  const proactiveAlertsHook = useProactiveAlerts(profile?.id);
   // One-shot override so the Dashboard's "Full Analysis" button always lands on the
   // Insights tab, regardless of cp_tracker_tab's remembered value. TrackerPage consumes
   // it once (via onForceInsightsTabHandled) so normal in-Tracker tab navigation keeps
@@ -12292,6 +12298,7 @@ export default function App() {
     { id: "tracker", icon: "📋", label: `${t("nav.tracker")}${applications.length > 0 ? ` (${applications.length})` : ""}` },
     { id: "salary", icon: "💰", label: t("nav.salary") },
     { id: "network", icon: "🤝", label: t("nav.network") },
+    { id: "alerts", icon: "🔔", label: t("nav.alerts") },
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
   const subStatus = profile?.subscription_status || "no_subscription";
@@ -12570,6 +12577,8 @@ export default function App() {
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
+
+        {page === "alerts" && <ProactiveAlertsPanel userId={profile?.id} isPremium={isPremium} alertsHook={proactiveAlertsHook} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}

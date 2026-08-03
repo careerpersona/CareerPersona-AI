@@ -10,6 +10,17 @@ id = "8f98abdf7c1542d0bd561635d66c17f6"
 [vars]
 SUPABASE_URL = "https://cbzebqxbohgkgcqfgmdm.supabase.co"
 
+# Proactive Job Alerts (Premium Feature #4) scheduled pipeline. Blueprint #4's
+# pg_cron-ownership rule (see supabase/migrations/20260722000006_billing_cron.sql)
+# routes HTTP/AI-calling scheduled jobs to Cloudflare Cron Triggers, never
+# pg_cron -- this is the first activation of that pattern.
+[triggers]
+crons = [
+  "0 */6 * * *",  # Analysis 01 — Critical Opportunity Engine
+  "0 */12 * * *", # Analysis 04 — Watchlist Activity Monitor
+  "0 6 * * 1",    # Analyses 02+03+05+06 — weekly (Monday 06:00 UTC)
+]
+
 # Secrets (set via: npx wrangler secret put <NAME>)
 # ANTHROPIC_API_KEY         — already set
 # ADZUNA_APP_ID             — already set

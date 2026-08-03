@@ -14,8 +14,13 @@ export function eligibleApplications(applications) {
   return (applications || []).filter(a => !EXCLUDED_RESPONSE_STATUSES.has(a.responseStatus));
 }
 
-const hasResponse = (a) => !!a.responseStatus && a.responseStatus !== "pending";
-const isPositiveOutcome = (a) => POSITIVE_STATUSES.has(a.responseStatus);
+// Exported so other modules that read `applications` (e.g. Proactive Job
+// Alerts' Timing Intelligence, src/lib/proactiveJobAlerts/marketSignals.js)
+// reuse this exact definition of "responded"/"positive outcome" rather than
+// re-deriving their own -- Application Outcome Intelligence owns what these
+// mean, every consumer imports, never reimplements.
+export const hasResponse = (a) => !!a.responseStatus && a.responseStatus !== "pending";
+export const isPositiveOutcome = (a) => POSITIVE_STATUSES.has(a.responseStatus);
 
 // 0 -> no analysis at all (null): nothing decided yet, nothing to synthesize. 1-15
 // Early Signal. 15-30 Emerging. 30+ High Confidence. The floor moved from 5 to 1
