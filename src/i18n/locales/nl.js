@@ -308,6 +308,7 @@
     statusFailed: "Mislukt",
     generationFailed: "⚠️ Generatie mislukt. Klik op Opnieuw proberen.",
     statusNeedsReview: "Aandacht vereist",
+    autoPreparedBadge: "Automatisch voorbereid",
     docStatusReady: "Klaar",
     docStatusIssueOne: "1 probleem – Zie hieronder",
     docStatusIssueMany: "{n} problemen – Zie hieronder",

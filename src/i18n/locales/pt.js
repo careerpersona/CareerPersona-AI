@@ -308,6 +308,7 @@
     statusFailed: "Falhou",
     generationFailed: "⚠️ Geração falhou. Clique em Tentar Novamente para tentar de novo.",
     statusNeedsReview: "Requer Atenção",
+    autoPreparedBadge: "Preparado automaticamente",
     docStatusReady: "Pronto",
     docStatusIssueOne: "1 problema – Ver abaixo",
     docStatusIssueMany: "{n} problemas – Ver abaixo",

@@ -19,6 +19,25 @@
 //   POST /webhooks/stripe              → process billing events, invalidate KV
 
 import { extractSkillKeywords } from "./src/lib/compatibility/skills.js";
+// Shared platform infrastructure (2026-08-06) -- extracted from this file's
+// own former private helpers, which already served two consumers
+// (handleJobSearch + Proactive Job Alerts) before the extraction. Smart
+// Apply Auto Prep is the third consumer. See the module's own header for the
+// pre-extraction verification performed before moving this code.
+import { fetchAdzuna, fetchRapid, fetchFreshPostings, deduplicate } from "./src/lib/platform/jobDiscoveryService.js";
+// Smart Apply Auto Prep (2026-08-06) -- reuses three existing pure engines
+// unchanged: the Career Compatibility Engine (qualification), its own
+// Qualification/Selection module (ranking), and the same generation/
+// validation functions manual Smart Apply uses (relocated from App.jsx
+// today so both callers share one implementation, per the locked
+// blueprint's §7). getDailyPeriodKey/getMonthlyPeriodKey/combineBudgetResults
+// are the pure halves of the AI Budget Manager -- the atomic RPC-calling half
+// (checkAndConsumeAutomationBudget) must live in this file; see aiBudget.js's
+// own header comment for why.
+import { buildCompatibilityRecord } from "./src/lib/compatibility/index.js";
+import { selectJobsForAutoPrep } from "./src/lib/smartApplyAutoPrep/selection.js";
+import { buildSmartApplyPrompt, validateSmartApplyPackage } from "./src/lib/smartApply/generation.js";
+import { getDailyPeriodKey, getMonthlyPeriodKey, combineBudgetResults } from "./src/lib/platform/aiBudget.js";
 // Proactive Job Alerts -- Discovery Engine + AI Layer are pure src/lib/
 // modules, imported directly, same pattern already proven above by
 // extractSkillKeywords. Never reimplemented here -- see the "PROACTIVE JOB
@@ -488,164 +507,13 @@ async function logAIRequest(userId, feature, period, tokensIn, tokensOut, env) {
   }, env);
 }
 
-// ─── JOB SEARCH (PRESERVED EXACTLY) ─────────────────────────────────────────
-// POST /api/jobs — no auth, unchanged from pre-billing version.
-
-const EMP_TYPE_MAP = {
-  "Full-time": "full_time",
-  "Part-time": "part_time",
-  "Contract": "contract",
-  "Internship": "internship",
-  "Freelance": "contract",
-  "Any": null,
-};
-
-function normalizeAdzuna(job) {
-  const isRemote =
-    job.title?.toLowerCase().includes("remote") ||
-    job.description?.toLowerCase().includes("remote") ||
-    job.location?.area?.join(" ")?.toLowerCase().includes("remote") || false;
-  return {
-    id: `adzuna_${job.id}`,
-    source: "Adzuna",
-    title: job.title || "",
-    company: job.company?.display_name || "Unknown Company",
-    location: job.location?.display_name || "",
-    description: job.description || "",
-    salaryMin: job.salary_min || null,
-    salaryMax: job.salary_max || null,
-    employmentType: job.contract_time === "full_time" ? "Full-time" : job.contract_time === "part_time" ? "Part-time" : "Full-time",
-    experienceLevel: "",
-    remote: isRemote,
-    applyUrl: job.redirect_url || "#",
-    datePosted: job.created || null,
-    skills: extractSkillKeywords(job.description || "", { limit: 8 }),
-  };
-}
-
-function normalizeRapid(job) {
-  return {
-    id: `rapid_${job.job_id}`,
-    source: "JSearch",
-    title: job.job_title || "",
-    company: job.employer_name || "Unknown Company",
-    location: job.job_city && job.job_state ? `${job.job_city}, ${job.job_state}` : job.job_country || "",
-    description: job.job_description || "",
-    salaryMin: job.job_min_salary || null,
-    salaryMax: job.job_max_salary || null,
-    employmentType: job.job_employment_type
-      ? job.job_employment_type.charAt(0).toUpperCase() + job.job_employment_type.slice(1).toLowerCase()
-      : "Full-time",
-    experienceLevel: job.job_required_experience?.required_experience_in_months
-      ? job.job_required_experience.required_experience_in_months >= 60 ? "Senior"
-        : job.job_required_experience.required_experience_in_months >= 24 ? "Mid Level" : "Entry Level"
-      : "",
-    remote: job.job_is_remote || false,
-    applyUrl: job.job_apply_link || job.job_google_link || "#",
-    datePosted: job.job_posted_at_datetime_utc || null,
-    skills: job.job_required_skills || extractSkillKeywords(job.job_description || "", { limit: 8 }),
-  };
-}
-
-function deduplicate(jobs) {
-  const seen = new Set();
-  return jobs.filter(job => {
-    const key = `${job.title?.toLowerCase().trim()}|${job.company?.toLowerCase().trim()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-async function fetchAdzuna(params, env, page = 1) {
-  const { title, keywords, country, city, remote, employmentType, salaryMin } = params;
-  // country is an ISO 3166-1 alpha-2 code (e.g. "US", "DE") or the "REMOTE"
-  // sentinel — Adzuna's URL path segment already is the lowercased ISO code.
-  const countryCode = (country && country !== "REMOTE") ? country.toLowerCase() : "us";
-  const appId = env.ADZUNA_APP_ID;
-  const appKey = env.ADZUNA_APP_KEY;
-  if (!appId || !appKey) {
-    return { jobs: [], debug: { url: null, status: null, body: "Adzuna keys missing" } };
-  }
-  const url = new URL(`https://api.adzuna.com/v1/api/jobs/${countryCode}/search/${page}`);
-  url.searchParams.set("app_id", appId);
-  url.searchParams.set("app_key", appKey);
-  url.searchParams.set("what", title.trim());
-  url.searchParams.set("results_per_page", "20");
-  if (city && city.trim()) url.searchParams.set("where", city.trim());
-  const whatAnd = [remote ? "remote" : null, keywords?.trim() || null].filter(Boolean).join(" ");
-  if (whatAnd) url.searchParams.set("what_and", whatAnd);
-  if (salaryMin && !isNaN(Number(salaryMin))) url.searchParams.set("salary_min", String(Math.floor(Number(salaryMin))));
-  const empType = EMP_TYPE_MAP[employmentType];
-  if (empType) url.searchParams.set("contract_time", empType);
-  const debug = { url: url.toString().replace(appKey, "***").replace(appId, "***"), status: null, body: null };
-  try {
-    const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-    debug.status = res.status;
-    const text = await res.text();
-    debug.body = text.slice(0, 500);
-    if (!res.ok) return { jobs: [], debug };
-    const data = JSON.parse(text);
-    const resultsArray = Array.isArray(data.results) ? data.results : [];
-    return { jobs: resultsArray.map(normalizeAdzuna), debug };
-  } catch (e) {
-    debug.body = "EXCEPTION: " + e.message;
-    return { jobs: [], debug };
-  }
-}
-
-async function fetchRapid(params, env, page = 1) {
-  const { title, keywords, country, city, remote, employmentType, experienceLevel, salaryMin } = params;
-  const rapidKey = env.RAPIDAPI_KEY;
-  if (!rapidKey) {
-    return { jobs: [], debug: { url: null, status: null, body: "RAPIDAPI_KEY missing" } };
-  }
-  let query = title;
-  if (keywords && keywords.trim()) query += ` ${keywords.trim()}`;
-  if (city) query += ` in ${city}`;
-  // JSearch takes a natural-language query, which genuinely needs a country
-  // NAME ("Germany"), not a code — the one legitimate third-party-API
-  // exception to ISO codes end-to-end. Derived here rather than kept as a
-  // second hardcoded table.
-  else if (country && country !== "REMOTE") query += ` in ${new Intl.DisplayNames(["en"], { type: "region" }).of(country)}`;
-  if (remote) query += " remote";
-  const url = new URL("https://jsearch.p.rapidapi.com/search-v2");
-  url.searchParams.set("query", query);
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("num_pages", "1");
-  url.searchParams.set("date_posted", "all");
-  if (remote) url.searchParams.set("remote_jobs_only", "true");
-  if (employmentType && employmentType !== "Any") {
-    const typeMap = { "Full-time": "FULLTIME", "Part-time": "PARTTIME", "Contract": "CONTRACTOR", "Internship": "INTERN", "Freelance": "CONTRACTOR" };
-    if (typeMap[employmentType]) url.searchParams.set("employment_types", typeMap[employmentType]);
-  }
-  if (experienceLevel && experienceLevel !== "Any") {
-    const expMap = { "Entry Level": "no_experience,under_3_years_experience", "Mid Level": "more_than_3_years_experience", "Senior": "more_than_3_years_experience", "Lead": "more_than_3_years_experience", "Executive": "more_than_3_years_experience" };
-    if (expMap[experienceLevel]) url.searchParams.set("job_requirements", expMap[experienceLevel]);
-  }
-  const debug = { url: url.toString(), status: null, body: null };
-  try {
-    const res = await fetch(url.toString(), { headers: { "X-RapidAPI-Key": rapidKey, "X-RapidAPI-Host": "jsearch.p.rapidapi.com" } });
-    debug.status = res.status;
-    const responseText = await res.text();
-    debug.body = responseText.slice(0, 500);
-    if (!res.ok) return { jobs: [], debug };
-    const data = JSON.parse(responseText);
-    const jobsArray =
-      Array.isArray(data.data?.jobs) ? data.data.jobs :
-      Array.isArray(data.data) ? data.data :
-      Array.isArray(data.jobs) ? data.jobs : [];
-    let jobs = jobsArray.map(normalizeRapid);
-    if (salaryMin && !isNaN(Number(salaryMin))) {
-      const min = Number(salaryMin);
-      jobs = jobs.filter(j => !j.salaryMin || j.salaryMin >= min);
-    }
-    return { jobs, debug };
-  } catch (e) {
-    debug.body = "EXCEPTION: " + e.message;
-    return { jobs: [], debug };
-  }
-}
+// ─── JOB SEARCH ──────────────────────────────────────────────────────────────
+// POST /api/jobs — no auth. EMP_TYPE_MAP/normalizeAdzuna/normalizeRapid/
+// deduplicate/fetchAdzuna/fetchRapid relocated (2026-08-06) to the shared
+// src/lib/platform/jobDiscoveryService.js -- imported above -- since they
+// already served this endpoint AND Proactive Job Alerts before the
+// extraction; Smart Apply Auto Prep is the third consumer. Behavior-preserving
+// relocation, verified by direct diff against the pre-extraction source.
 
 async function handleJobSearch(request, env) {
   const contentLength = Number(request.headers.get("content-length") || 0);
@@ -1200,27 +1068,11 @@ async function fetchUserAlertContext(userId, env) {
   };
 }
 
-// Raw Adzuna/RapidAPI rows are already normalized to Discovery Engine's
-// expected shape by normalizeAdzuna/normalizeRapid (title/company/skills/
-// salaryMin/salaryMax/location/remote) -- fetchAdzuna/fetchRapid are reused
-// unchanged, exactly as they already serve interactive Job Search. Neither
-// source supplies industry, companySizeEstimate, or a real closing date;
-// those stay undefined, and every consumer (discoveryEngine.js,
-// marketSignals.js) already treats missing fields as "unavailable," not zero.
-async function fetchFreshPostings(profile, env) {
-  if (!profile.preferred_job_title) return [];
-  const params = {
-    title: profile.preferred_job_title,
-    city: profile.location,
-    remote: profile.work_type === "Remote",
-    salaryMin: profile.desired_salary,
-  };
-  const [adzuna, rapid] = await Promise.all([
-    fetchAdzuna(params, env, PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE),
-    fetchRapid(params, env, PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE),
-  ]);
-  return [...adzuna.jobs, ...rapid.jobs];
-}
+// fetchFreshPostings relocated (2026-08-06) to the shared
+// src/lib/platform/jobDiscoveryService.js -- imported above. Proactive Job
+// Alerts keeps its own named PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE constant
+// for readability and passes it explicitly below, rather than relying on the
+// now-generic function's default parameter value.
 
 // Persists Discovery Engine's evaluated output. Tracks tier CHANGES
 // (previous_tier/tier_change_reason) as plain persistence-layer bookkeeping
@@ -1275,7 +1127,7 @@ async function markAlertsDelivered(userId, deliverCandidates, persistedRows, dig
 // ── Cadence 1: Critical Opportunity Engine (every 6h) ────────────────────────
 async function runCriticalOpportunityCadence(userId, env) {
   const ctxData = await fetchUserAlertContext(userId, env);
-  const rawPostings = await fetchFreshPostings(ctxData.profile, env);
+  const rawPostings = await fetchFreshPostings(ctxData.profile, env, PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE);
   const deduped = deduplicateOpportunities(rawPostings);
   const unapplied = filterAlreadyApplied(deduped, ctxData.appliedJobIds);
 
@@ -1474,6 +1326,226 @@ async function runProactiveJobAlertsSchedule(cronExpr, env) {
   console.log(`[proactiveAlerts] Cadence "${cronExpr}" processed ${processed}/${userIds.length} eligible users.`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SMART APPLY AUTO PREP -- Premium Feature #5. Cron schedule (see
+// wrangler.toml): "0 13 * * *" (once daily).
+//
+// Per the locked blueprint's §2 Ownership table, this section owns exactly
+// one thing: automatic selection, budget enforcement, and queue placement.
+// Everything else is reused, unmodified, from an existing single-owner
+// module:
+//   - Job discovery            -> src/lib/platform/jobDiscoveryService.js
+//     (fetchFreshPostings, already imported above)
+//   - Qualification/scoring    -> Career Compatibility Engine
+//     (buildCompatibilityRecord, already imported above)
+//   - Ranking/qualification    -> src/lib/smartApplyAutoPrep/selection.js
+//     (isJobQualifiedForAutoPrep is applied internally by selectJobsForAutoPrep)
+//   - Package generation/validation -> src/lib/smartApply/generation.js,
+//     the exact same functions manual Smart Apply calls (App.jsx)
+//   - Claude execution         -> callClaudeServerSide, already defined above
+//     for Proactive Job Alerts' AI Layer -- reused as-is, its second caller
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SMART_APPLY_AUTO_PREP_RESULTS_PAGE = 1;
+const SMART_APPLY_AUTO_PREP_MONTHLY_CAP = 20; // §6: fixed, never scaled by the daily setting
+const SMART_APPLY_AUTO_PREP_FEATURE_KEY = "smart_apply_auto_prep";
+const SMART_APPLY_AUTO_PREP_TIME_BUDGET_MS = 20_000; // same headroom rationale as PROACTIVE_ALERTS_TIME_BUDGET_MS
+
+// Mirrors src/data/profile.js's fetchProfile merge exactly (same field
+// names, same base/details precedence, only the subset buildSmartApplyPrompt/
+// buildCompatibilityRecord/validateSmartApplyPackage actually read). Not a
+// shared import -- that module uses the browser's RLS-scoped Supabase client,
+// which has no server-cron equivalent; this reimplements the same flat shape
+// service-role, same discipline as the persistence functions below.
+async function fetchProfileForAutoPrep(userId, env) {
+  const [baseRows, detailRows] = await Promise.all([
+    supabaseGet("profiles", { select: "*", id: `eq.${userId}` }, env),
+    supabaseGet("profile_details", { select: "*", user_id: `eq.${userId}` }, env),
+  ]);
+  const base = baseRows[0] || {};
+  const details = detailRows[0] || {};
+  return {
+    full_name: base.full_name || "",
+    email_address: details.email_address || "",
+    phone: base.phone || "",
+    country: base.country || "",
+    location: base.location || "",
+    preferred_job_title: details.preferred_job_title || base.job_title || "",
+    work_type: details.work_type || "",
+    desired_salary: details.desired_salary || "",
+  };
+}
+
+// Locked decision: skip users with no explicit default resume set -- no
+// most-recently-analyzed fallback. Automatic preparation only ever acts on a
+// resume the user explicitly chose, since there is no browser-side
+// activeResumeId for a server cron to read (that value is pure client React
+// state, never persisted -- confirmed by reading App.jsx directly).
+async function fetchDefaultResumeForUser(userId, env) {
+  const rows = await supabaseGet("user_resumes", { select: "id,content", user_id: `eq.${userId}`, is_default: "eq.true", limit: "1" }, env);
+  return rows[0] || null;
+}
+
+// Mirrors src/data/skillSynonyms.js's loadSkillSynonyms shape exactly (same
+// { alias: canonical } object) -- service-role instead of RLS, fetched once
+// per cadence run (not per user), since it's small, read-only reference data.
+async function fetchSkillDictionary(env) {
+  const rows = await supabaseGet("skill_synonyms", { select: "alias,canonical" }, env);
+  return Object.fromEntries((rows || []).map(r => [r.alias, r.canonical]));
+}
+
+// Atomic dual-cap budget check: daily leg (the user's stored Daily
+// Preparation Setting) and monthly leg (§6's fixed 20). Each leg is its own
+// independent check_and_consume_quota counter (keyed by user_id+feature+
+// period -- see that RPC's own definition), combined by aiBudget.js's pure
+// combineBudgetResults.
+//
+// Known, accepted limitation: the two legs are not one atomic transaction.
+// If one leg allows but the other then denies, the allowed leg's counter is
+// still incremented for a job that won't be prepared. Only possible on the
+// exact day/month a user sits at the boundary of one cap while exhausting
+// the other -- self-corrects at the next period rollover, not a correctness
+// problem for the fixed, small caps this feature uses (§6). Not worth a
+// two-phase commit for a 1-2/day cap.
+async function checkAndConsumeAutomationBudget({ userId, featureKey, dailyCap, monthlyCap, env }) {
+  const [dailyResult, monthlyResult] = await Promise.all([
+    supabaseRPC("check_and_consume_quota", { p_user_id: userId, p_feature: `${featureKey}_daily`, p_limit: dailyCap, p_period: getDailyPeriodKey() }, env),
+    supabaseRPC("check_and_consume_quota", { p_user_id: userId, p_feature: `${featureKey}_monthly`, p_limit: monthlyCap, p_period: getMonthlyPeriodKey() }, env),
+  ]);
+  return combineBudgetResults(dailyResult, monthlyResult);
+}
+
+// Persistence -- mirrors src/data/smartApply.js's enqueue/markReady/
+// markNeedsReview/markFailed status semantics exactly (same non-terminal-row
+// dedup rule in enqueueAutoPrepRow, same status vocabulary), necessarily
+// reimplemented service-role since that module is a React hook bound to a
+// browser session and a client-local orphan-recovery Set with no server-cron
+// equivalent (a cron invocation either finishes a row or marks it failed in
+// the same pass -- there is no "orphaned by a closed tab" case to recover
+// from).
+async function enqueueAutoPrepRow(userId, job, resumeId, env) {
+  const rows = await supabaseGet("smart_apply_queue", { select: "*", user_id: `eq.${userId}`, job_id: `eq.${job.id}`, order: "created_at.desc" }, env);
+  const existing = (rows || []).find(r => !["applied", "skipped"].includes(r.status));
+  if (existing) return null; // §8: existing dedup rule, unchanged -- any non-terminal row skips automatic preparation for this job
+  try {
+    const inserted = await supabasePost("smart_apply_queue", {
+      user_id: userId, job_id: job.id, job_title: job.title, company: job.company,
+      job_description: (job.description || "").slice(0, 1200), resume_id: resumeId || null,
+      status: "queued", generation_source: "automatic",
+    }, env);
+    return inserted[0];
+  } catch (e) {
+    // smart_apply_queue_active_job_uidx (2026-08-06) makes the dedup rule a DB-level
+    // invariant -- closes the read-then-write race this SELECT-then-INSERT pair would
+    // otherwise have under a redelivered/duplicate cron invocation. A 409 here means a
+    // concurrent caller (this same race, or a manual Smart Apply click) won it first --
+    // treat exactly like the existing-row case above, not a real failure.
+    if (e.status === 409) return null;
+    throw e;
+  }
+}
+
+async function markAutoPrepResult(id, aiResult, ok, env) {
+  await supabasePatch("smart_apply_queue", { id: `eq.${id}` }, {
+    tailored_resume: aiResult.tailoredResume || null,
+    cover_letter: aiResult.coverLetter || null,
+    recruiter_message: aiResult.recruiterMessage || null,
+    networking_message: aiResult.networkingMessage || null,
+    missing_skills: aiResult.missingSkills || null,
+    interview_probability: aiResult.interviewProbability ?? null,
+    hiring_probability: aiResult.hiringProbability ?? null,
+    application_questions: aiResult.applicationQuestions || null,
+    salary_insight: aiResult.salaryInsight || null,
+    company_insight: aiResult.companyInsight || null,
+    status: ok ? "ready" : "needs_review",
+  }, env);
+}
+
+// §9: technical generation failure -> "Ready for Manual Preparation",
+// generalizing the existing markFailed path manual generation already uses
+// -- same "failed" status, no second failure vocabulary. retry_count starts
+// at 1 unconditionally since this row was created moments earlier in this
+// same cadence run (never a pre-existing row with prior failures).
+async function markAutoPrepFailed(id, env) {
+  await supabasePatch("smart_apply_queue", { id: `eq.${id}` }, { status: "failed", retry_count: 1 }, env);
+}
+
+// ── Per-user orchestration ───────────────────────────────────────────────
+async function runSmartApplyAutoPrepForUser(userId, skillDictionary, env) {
+  const preferenceRows = await supabaseGet("automation_preferences", { select: "value", user_id: `eq.${userId}`, feature_key: `eq.${SMART_APPLY_AUTO_PREP_FEATURE_KEY}` }, env);
+  const dailyCap = preferenceRows[0]?.value || 0;
+  if (dailyCap <= 0) return { userId, prepared: 0, reason: "automation_off" };
+
+  const resume = await fetchDefaultResumeForUser(userId, env);
+  if (!resume?.content?.trim()) return { userId, prepared: 0, reason: "no_default_resume" };
+
+  const profile = await fetchProfileForAutoPrep(userId, env);
+  if (!profile.preferred_job_title) return { userId, prepared: 0, reason: "no_preferred_job_title" };
+
+  const rawPostings = await fetchFreshPostings(profile, env, SMART_APPLY_AUTO_PREP_RESULTS_PAGE);
+  const postings = deduplicate(rawPostings);
+  const resumeSkills = extractSkillKeywords(resume.content);
+
+  const entries = postings.map(job => ({ job, compatibility: buildCompatibilityRecord({ job, profile, resumeSkills, skillDictionary }) }));
+  // §4: an unbounded budget here on purpose -- this only establishes
+  // qualification + rank order. The real budget gate is enforced per-job
+  // below via checkAndConsumeAutomationBudget, atomically, immediately
+  // before each preparation.
+  const ranked = selectJobsForAutoPrep(entries, entries.length);
+
+  let prepared = 0;
+  for (const entry of ranked) {
+    const budget = await checkAndConsumeAutomationBudget({
+      userId, featureKey: SMART_APPLY_AUTO_PREP_FEATURE_KEY, dailyCap, monthlyCap: SMART_APPLY_AUTO_PREP_MONTHLY_CAP, env,
+    });
+    if (!budget.allowed) break; // §9: Cost Boundary reached -- remaining qualifying jobs stay untouched, available for manual Smart Apply
+
+    const queued = await enqueueAutoPrepRow(userId, entry.job, resume.id, env);
+    if (!queued) continue; // §8: already has a non-terminal row -- skip without spending generation
+
+    try {
+      // No browser UserContext session exists to build a ctx block from --
+      // buildSmartApplyPrompt already degrades gracefully with an empty one.
+      const prompt = buildSmartApplyPrompt("", resume.content, entry.job, profile);
+      const { text } = await callClaudeServerSide(prompt, 8000, env);
+      if (!text) throw new Error("empty_claude_response");
+      const braceStart = text.indexOf("{"), braceEnd = text.lastIndexOf("}");
+      const clean = (braceStart >= 0 && braceEnd > braceStart) ? text.slice(braceStart, braceEnd + 1) : text;
+      const result = JSON.parse(clean);
+      const integrity = validateSmartApplyPackage(result, profile.country || undefined);
+      await markAutoPrepResult(queued.id, result, integrity.ok, env);
+      prepared++;
+    } catch (e) {
+      console.error("[smartApplyAutoPrep] generation_error", userId, entry.job.id, e.message);
+      await markAutoPrepFailed(queued.id, env);
+    }
+  }
+  return { userId, prepared };
+}
+
+// ── Scheduler: same premium-eligibility gate + time-budget-guarded loop
+// pattern already established by runProactiveJobAlertsSchedule above ───────
+async function runSmartApplyAutoPrepSchedule(env) {
+  const startedAt = Date.now();
+  const userIds = await getPremiumUserIds(env);
+  const skillDictionary = await fetchSkillDictionary(env);
+  let processed = 0, totalPrepared = 0;
+  for (const userId of userIds) {
+    if (Date.now() - startedAt > SMART_APPLY_AUTO_PREP_TIME_BUDGET_MS) {
+      console.log(`[smartApplyAutoPrep] Time budget reached after ${processed}/${userIds.length} users; remainder rolls to tomorrow's run.`);
+      break;
+    }
+    try {
+      const result = await runSmartApplyAutoPrepForUser(userId, skillDictionary, env);
+      totalPrepared += result.prepared || 0;
+      processed++;
+    } catch (e) {
+      console.error("[smartApplyAutoPrep] user_processing_error", userId, e.message);
+    }
+  }
+  console.log(`[smartApplyAutoPrep] Processed ${processed}/${userIds.length} eligible users, prepared ${totalPrepared} packages.`);
+}
+
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -1514,6 +1586,12 @@ export default {
   // the invocation alive until the full user loop (bounded by
   // PROACTIVE_ALERTS_TIME_BUDGET_MS) finishes.
   async scheduled(event, env, ctx) {
+    if (event.cron === "0 13 * * *") {
+      ctx.waitUntil(
+        runSmartApplyAutoPrepSchedule(env).catch(e => console.error("[smartApplyAutoPrep] schedule_error", e.message))
+      );
+      return;
+    }
     ctx.waitUntil(
       runProactiveJobAlertsSchedule(event.cron, env).catch(e => console.error("[proactiveAlerts] schedule_error", event.cron, e.message))
     );

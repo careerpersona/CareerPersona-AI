@@ -308,6 +308,7 @@
     statusFailed: "Ошибка",
     generationFailed: "⚠️ Ошибка генерации. Нажмите «Повторить», чтобы попробовать снова.",
     statusNeedsReview: "Требует внимания",
+    autoPreparedBadge: "Подготовлено автоматически",
     docStatusReady: "Готово",
     docStatusIssueOne: "1 проблема – См. ниже",
     docStatusIssueMany: "{n} проблем(ы) – См. ниже",

@@ -308,6 +308,7 @@
     statusFailed: "실패",
     generationFailed: "⚠️ 생성 실패. 다시 시도하려면 재시도를 클릭하세요.",
     statusNeedsReview: "조치 필요",
+    autoPreparedBadge: "자동 준비됨",
     docStatusReady: "준비 완료",
     docStatusIssueOne: "1개 문제 – 아래 참조",
     docStatusIssueMany: "{n}개 문제 – 아래 참조",

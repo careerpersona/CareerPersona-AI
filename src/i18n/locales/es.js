@@ -308,6 +308,7 @@
     statusFailed: "Fallida",
     generationFailed: "⚠️ Error en la generación. Haz clic en Reintentar para volver a intentarlo.",
     statusNeedsReview: "Requiere atención",
+    autoPreparedBadge: "Preparado automáticamente",
     docStatusReady: "Listo",
     docStatusIssueOne: "1 problema – Ver abajo",
     docStatusIssueMany: "{n} problemas – Ver abajo",

@@ -19,6 +19,7 @@ crons = [
   "0 */6 * * *",  # Analysis 01 — Critical Opportunity Engine
   "0 */12 * * *", # Analysis 04 — Watchlist Activity Monitor
   "0 6 * * 1",    # Analyses 02+03+05+06 — weekly (Monday 06:00 UTC)
+  "0 13 * * *",   # Smart Apply Auto Prep (Premium Feature #5) — daily
 ]
 
 # Secrets (set via: npx wrangler secret put <NAME>)

@@ -308,6 +308,7 @@
     statusFailed: "विफल",
     generationFailed: "⚠️ जनरेशन विफल। पुनः प्रयास के लिए Retry क्लिक करें।",
     statusNeedsReview: "ध्यान देना आवश्यक",
+    autoPreparedBadge: "स्वतः तैयार",
     docStatusReady: "तैयार",
     docStatusIssueOne: "1 समस्या – नीचे देखें",
     docStatusIssueMany: "{n} समस्याएँ – नीचे देखें",

@@ -308,6 +308,7 @@
     statusFailed: "Échouée",
     generationFailed: "⚠️ La génération a échoué. Cliquez sur Réessayer pour recommencer.",
     statusNeedsReview: "Attention requise",
+    autoPreparedBadge: "Préparé automatiquement",
     docStatusReady: "Prêt",
     docStatusIssueOne: "1 problème – Voir ci-dessous",
     docStatusIssueMany: "{n} problèmes – Voir ci-dessous",

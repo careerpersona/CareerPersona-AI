@@ -308,6 +308,7 @@
     statusFailed: "失败",
     generationFailed: "⚠️ 生成失败。点击重试再次尝试。",
     statusNeedsReview: "需要处理",
+    autoPreparedBadge: "自动准备",
     docStatusReady: "就绪",
     docStatusIssueOne: "1 个问题 – 见下方",
     docStatusIssueMany: "{n} 个问题 – 见下方",

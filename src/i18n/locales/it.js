@@ -308,6 +308,7 @@
     statusFailed: "Fallita",
     generationFailed: "⚠️ Generazione fallita. Fai clic su Riprova per riprovare.",
     statusNeedsReview: "Richiede attenzione",
+    autoPreparedBadge: "Preparato automaticamente",
     docStatusReady: "Pronto",
     docStatusIssueOne: "1 problema – Vedi sotto",
     docStatusIssueMany: "{n} problemi – Vedi sotto",

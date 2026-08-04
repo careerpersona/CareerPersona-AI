@@ -70,5 +70,29 @@
     "path": "scripts/verify/verify-linkedin-intelligence-ai-layer-unit.mjs",
     "feature": "linkedin-intelligence",
     "description": "LinkedIn Intelligence Phase 3 Premium AI Analysis Layer unit tests: prompt building, Data-Driven Availability predicates, and response parsing for Profile Strategy Analysis, Recruiter Visibility Intelligence, and Profile Evolution Tracking (aiPrompts.js pure half only -- does not call a live AI, no dev server required)."
+  },
+  {
+    "id": "ai-budget-manager-unit",
+    "path": "scripts/verify/verify-ai-budget-manager-unit.mjs",
+    "feature": "smart-apply-auto-prep",
+    "description": "Smart Apply Auto Prep AI Budget Manager (src/lib/platform/aiBudget.js) pure unit tests: UTC daily/monthly period keys, dual-cap result combination. Pure logic, no dev server required."
+  },
+  {
+    "id": "smart-apply-auto-prep-selection-unit",
+    "path": "scripts/verify/verify-smart-apply-auto-prep-selection-unit.mjs",
+    "feature": "smart-apply-auto-prep",
+    "description": "Smart Apply Auto Prep Qualification and Selection (src/lib/smartApplyAutoPrep/selection.js) unit tests: closed qualification input list, rank-order-only selection, deterministic tie-break. Pure logic, no dev server required."
+  },
+  {
+    "id": "smart-apply-auto-prep-phase3-unit",
+    "path": "scripts/verify/verify-smart-apply-auto-prep-phase3-unit.mjs",
+    "feature": "smart-apply-auto-prep",
+    "description": "Smart Apply Auto Prep Phase 3 shared-module unit tests: Job Discovery normalization/dedup (src/lib/platform/jobDiscoveryService.js) and Smart Apply prompt/validation (src/lib/smartApply/generation.js), the same functions manual Smart Apply uses. Pure logic, no dev server required."
+  },
+  {
+    "id": "smart-apply-auto-prep-phase4-ui",
+    "path": "scripts/verify/verify-smart-apply-auto-prep-phase4-ui.cjs",
+    "feature": "smart-apply-auto-prep",
+    "description": "Smart Apply Auto Prep Phase 4 UI: Daily Preparation Setting control in Settings (Off/1/2, correct helper text, no Level/Tier terminology), automation_preferences write-through, and the Auto-Prepared badge in the Smart Apply Queue appearing only on generation_source: automatic rows."
   }
 ]

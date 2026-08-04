@@ -308,6 +308,7 @@
     statusFailed: "Başarısız",
     generationFailed: "⚠️ Oluşturma başarısız. Tekrar denemek için Yeniden Dene'ye tıklayın.",
     statusNeedsReview: "Dikkat Gerekli",
+    autoPreparedBadge: "Otomatik Hazırlandı",
     docStatusReady: "Hazır",
     docStatusIssueOne: "1 Sorun – Aşağıya Bakın",
     docStatusIssueMany: "{n} Sorun – Aşağıya Bakın",

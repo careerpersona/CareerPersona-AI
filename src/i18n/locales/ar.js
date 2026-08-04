@@ -308,6 +308,7 @@
     statusFailed: "فشل",
     generationFailed: "⚠️ فشل الإنشاء. انقر على إعادة المحاولة للمحاولة مرة أخرى.",
     statusNeedsReview: "يتطلب انتباهًا",
+    autoPreparedBadge: "مُعد تلقائيًا",
     docStatusReady: "جاهز",
     docStatusIssueOne: "مشكلة واحدة – انظر أدناه",
     docStatusIssueMany: "{n} مشكلات – انظر أدناه",

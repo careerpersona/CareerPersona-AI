@@ -308,6 +308,7 @@
     statusFailed: "失敗",
     generationFailed: "⚠️ 生成に失敗しました。再試行するには「再試行」をクリックしてください。",
     statusNeedsReview: "要対応",
+    autoPreparedBadge: "自動準備済み",
     docStatusReady: "準備完了",
     docStatusIssueOne: "1件の問題 – 下記参照",
     docStatusIssueMany: "{n}件の問題 – 下記参照",
