@@ -41,18 +41,22 @@ This was the open design question flagged after the Decision Analysis: reusing `
 
 **"AI is thinking…" state (locked, §6):** from the moment of tap until the response renders, the control shows a brief, visible waiting indicator — required because the measured baseline (§6) is multiple seconds, not near-instant. This keeps the wait legible and intentional rather than presenting as a stall.
 
-## §4. Human Factors Compliance (Locked Rule, Applied)
+## §4. Human Factors Compliance (Locked Rule, Applied — Re-Validated Against Measured Latency)
 
-Every sub-question from the locked Human Factors rule, answered against §3's actual design:
+Every sub-question from the locked Human Factors rule, answered against §3's actual design. **Re-evaluated after §6's real measurement (3.1-3.7s), not left at its original pre-measurement framing** — see the Decision Log entry "Human Factors re-validation" for the full reasoning.
 
 | Test | Result |
 |---|---|
-| Completed in 1-2 seconds? | Yes — a single tap on a category chip |
-| Leaves the interview window? | No — a persistent in-page control, not a page navigation |
-| Interrupts eye contact? | Minimized, not eliminated — a brief glance, comparable to checking notes; honestly, no on-screen interaction during a video call is zero-cost, but this is the lowest-cost option evaluated |
-| Requires typing long prompts? | No — primary path requires none; the optional secondary path is capped short |
-| Performed discreetly? | Yes — a tap looks like note-taking or scrolling, not composing a message or speaking |
-| Would a stressed candidate realistically use it? | Yes — recognition (pick a category) under stress is a substantially easier task than recall (compose a sentence or speak fluently) |
+| Completed in 1-2 seconds? | **Split, stated honestly:** the tap itself (time to initiate) — yes, under 1 second. Time to *value* (tap → hint in hand) — no, 3.1-3.7s measured, not 1-2s. The original single "Yes" answer here conflated these two; that was an error in framing, corrected now, not a re-derivation of a new fact. |
+| Leaves the interview window? | No — a persistent in-page control, not a page navigation. Unaffected by latency. |
+| Interrupts eye contact? | Minimized, not eliminated, and **more materially than originally assumed**: a 3-4s wait means a longer sustained glance-down than a near-instant response would require, and the assist cap permits up to 6 taps per interview — a real cumulative attention-interruption pattern across one interview, not just a single brief glance. Named directly rather than minimized. |
+| Requires typing long prompts? | No — primary path requires none; the optional secondary path is capped short. Unaffected by latency. |
+| Performed discreetly? | The tap remains discreet. The *wait* is less discreet than originally implied — reading a response after a multi-second pause is a longer, more noticeable pause than the tap-only framing suggested. |
+| Would a stressed candidate realistically use it? | Yes, on balance — grounded in how real interviews function: a 3-5 second pause while a candidate visibly collects their thoughts ("let me think for a moment...") is normal, unremarkable interview behavior with no tool involved at all. A bounded, honestly-communicated wait of comparable length is not obviously distinguishable from that. This is the deciding factor, not an assumption that the wait doesn't exist. |
+
+**Why this doesn't require an interaction redesign:** latency and interaction design are different problems. The tap is not what's slow — model inference is — so no redesign of the trigger mechanism (voice, gesture, anything else) would change the 3.1-3.7s figure. A redesign would only be the right response if the *interaction itself* were the source of the friction; it isn't.
+
+**Genuine, not dismissed, residual risk:** the cumulative interruption across up to 6 taps/interview (§7) is a real consideration a single-tap analysis undersells. This is not resolved by reasoning alone — it's the specific thing post-launch latency monitoring (§6) should watch for: not just raw response time, but whether real candidates stop using repeated assists because the wait feels awkward in practice. If that signal appears, it would be evidence for reconsidering scope, not just tuning a number.
 
 ## §5. Minimal Interaction Principle Compliance (Locked Rule, Applied)
 
@@ -159,8 +163,7 @@ This blueprint introduces exactly one new AI-calling capability (§10) with a st
 | Blueprint | Interaction trigger resolved (tap-first category selector, no voice, no freeform typing) — the specific fix for the Human-Factors-vs-voice-reuse tension flagged earlier. Cap-reached UX resolved (proactive warning, never a silent surprise). Cost Boundary numbers proposed (6/interview, 50/month). Model selection explicitly deferred pending a quality benchmark. |
 | Blueprint — Time-to-Answer validation | Two real, direct Anthropic API calls measured (not assumed): 3,657 ms and 3,129 ms raw model latency against the §10 prompt spec — materially higher than the original 2-4s target, measured *before* adding `handleClaude`'s auth/quota overhead. Reported before lock per the original instruction. |
 | Blueprint — final lock | 3.1-3.7s adopted as the official measured baseline. Explicit decision made not to redesign the architecture solely to reduce latency. Mitigation: a required visible "AI is thinking…" state during generation (§3/§6). Streaming documented as a future optimization, not a launch requirement (§6). Latency monitoring designated a post-launch operational task, not an implementation blocker (§6). Blueprint locked; implementation authorized to proceed without further checkpoint review until Release Candidate. |
-
----
+| RC — Human Factors re-validation | Before accepting the RC, §4 was re-evaluated against the real 3.1-3.7s baseline rather than left at its pre-measurement framing. Correction made: "Completed in 1-2 seconds?" originally answered as a single "Yes" conflating tap-time (true) with time-to-value (false at 3.1-3.7s) — split and stated honestly. "Interrupts eye contact"/"Performed discreetly" revised to name the real degradation from a multi-second wait rather than minimize it. Conclusion held (no interaction redesign, mitigation via the existing "thinking" state) on the reasoning that latency and interaction design are different problems — no trigger redesign changes model inference time — and that a bounded few-second wait is not obviously distinguishable from the natural pauses already common in real interviews. New residual risk named explicitly (not previously called out): cumulative interruption across up to 6 taps/interview, added as a specific signal for post-launch monitoring to watch for, not just raw latency. Provenance of the earlier false "~1.96s" figure investigated: no tool-call record of it being measured against this feature's actual request shape exists; cannot be confirmed as placeholder vs. misreported measurement vs. another error — stated as genuinely unknown rather than guessed. |
 
 ---
 
