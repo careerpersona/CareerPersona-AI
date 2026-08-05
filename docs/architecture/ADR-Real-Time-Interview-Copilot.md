@@ -1,8 +1,9 @@
 # ADR: Real-Time Interview Co-Pilot Architecture
 
-**Status:** Accepted — Release Candidate Complete, Frozen
+**Status:** 🔒 Frozen — Release Candidate Accepted
+✅ Architecture Approved · ✅ Human Factors Re-validated · ✅ Cost Architecture Approved · ✅ Implementation Approved · ✅ Testing Approved · ✅ Documentation Corrected · ✅ Deployment Approved · ✅ Release Candidate Accepted
 **Date:** 2026-08-06
-**Owners:** Architect approval across the audit, Decision Analysis, Cost Architecture Analysis, blueprint lock, and RC sign-off (see Decision Log below)
+**Owners:** Architect approval across the audit, Decision Analysis, Cost Architecture Analysis, blueprint lock, Human Factors re-validation, and final RC sign-off (see Decision Log below)
 
 ## Context
 
@@ -38,6 +39,19 @@ Every assist prompt is built fresh from the tapped category, the optional short 
 - Streaming remains undesigned. If a future pass wants to shorten perceived latency, it is the identified candidate, explicitly deferred, not started here.
 - Production model selection (`claude-sonnet-4-6` vs. a lower-cost model such as Haiku 4.5 for this narrow task) remains open, pending a quality benchmark — the blueprint explicitly forbids assuming a cheaper model preserves quality without measurement.
 - The Human Factors / Minimal Interaction Principle / Time-to-Answer Budget rules are scoped to this feature's own Decision Log, not elevated to permanent platform governance — a deliberate choice, revisitable if a similarly-shaped feature (live, human-in-the-loop, unpausable) is proposed later.
+
+## Risk Disposition: Cumulative Interruption
+
+The Human Factors re-validation (RC phase) identified a risk not named in the original analysis: up to 6 assists per interview means up to ~18-24 seconds of cumulative attention-interruption across a single 30-60 minute conversation, not just one isolated brief glance. This risk is not left merely identified — its disposition is:
+
+**Accepted as a deliberate product trade-off for the initial release**, not deferred as unaddressed future work. Reasoning:
+
+1. **The exposure is already bounded by an existing, deliberate design choice** — the 6/interview Cost Boundary cap (§7) — not an open-ended risk. The worst case was fixed the moment that cap was set, even though cumulative interruption wasn't the reason it was chosen.
+2. **Realistic usage is self-limiting.** The Cost Architecture Analysis's own usage model (Light/Typical/Heavy tiers) puts *typical* usage at 1-3 assists per interview, not 6 — hitting the true cumulative maximum is an edge case, not the expected case. The trade-off being accepted is smaller in practice than the worst-case number makes it sound.
+3. **No available architectural change reduces this risk without also reducing the feature's core value.** Lowering the per-interview cap directly trades away the thing the feature exists to provide (help when genuinely needed); redesigning the trigger doesn't touch wait time (§ Decision 2); streaming reduces perceived latency per-instance but doesn't reduce the *count* of interruptions. There is no proposed change on the table that pays down this specific risk for free.
+4. **This is not a permanent, unmonitored acceptance.** It is paired with a specific, predefined re-evaluation trigger (below) — which is what distinguishes a deliberate trade-off from an ignored one.
+
+**Condition that would justify revisiting this decision:** post-launch monitoring (already locked as an operational, non-blocking task) should track, specifically — not just aggregate latency — whether real usage shows (a) candidates using 4+ assists per interview at a meaningfully higher rate than the Typical-tier assumption predicted, or (b) qualitative feedback (support contacts, churn on the feature, explicit user comments) indicating the wait feels conspicuous or awkward in practice. Either signal would convert this from an accepted trade-off into an active reconsideration — at that point the candidates would be a lower per-interview cap, streaming, or both — not a silent, permanent acceptance regardless of real-world evidence.
 
 ---
 
@@ -82,7 +96,8 @@ Full platform regression via the Regression Runner across all 17 registered suit
 | Blueprint — final lock | 3.1-3.7s adopted as the official baseline. No architecture redesign for latency. Required visible "AI is thinking…" state. Streaming documented as future optimization. Latency monitoring designated post-launch. Blueprint locked, implementation authorized. |
 | Implementation | Pre-existing, uncommitted, materially incomplete draft code discovered and inspected via full diff before any new code was written (Ownership Rule). Corrected rather than built beside: real dual-leg Cost Boundary added (draft had none functioning), Premium gating added, cap-reached UX added, context trimming corrected, interaction collapsed to single-tap, session id exposed from `useInterviewSession`. Full i18n (14 locales), AI Ownership Registry updated. |
 | RC | Full regression (439/439 across 17 suites), build/lint/wrangler-bundle clean, localization validated (0 new gaps), new 19-check suite (7 static + 12 runtime) covering every locked UX decision. Declared Release Candidate Complete. |
-| RC — Human Factors re-validation | Before final RC acceptance, the Human Factors table (blueprint §4) was explicitly re-evaluated against the real 3.1-3.7s baseline rather than left at its pre-measurement framing. Correction: the original "Completed in 1-2 seconds? Yes" conflated tap-time (true) with time-to-value (false); split and stated honestly. Conclusion held (no interaction redesign) on the reasoning that latency and interaction-trigger design are orthogonal problems, plus the grounding that a bounded few-second wait resembles natural interview thinking-pauses. New residual risk named explicitly: cumulative interruption across up to 6 taps/interview, added as a specific post-launch monitoring signal. Provenance of the earlier false "~1.96s" figure investigated and reported as genuinely unknown (no tool-call record of it being measured against this feature's request shape) rather than guessed at. RC declared frozen after this correction. |
+| RC — Human Factors re-validation | Before final RC acceptance, the Human Factors table (blueprint §4) was explicitly re-evaluated against the real 3.1-3.7s baseline rather than left at its pre-measurement framing. Correction: the original "Completed in 1-2 seconds? Yes" conflated tap-time (true) with time-to-value (false); split and stated honestly. Conclusion held (no interaction redesign) on the reasoning that latency and interaction-trigger design are orthogonal problems, plus the grounding that a bounded few-second wait resembles natural interview thinking-pauses. New residual risk named explicitly: cumulative interruption across up to 6 taps/interview, added as a specific post-launch monitoring signal. Provenance of the earlier false "~1.96s" figure investigated and reported as genuinely unknown (no tool-call record of it being measured against this feature's request shape) rather than guessed at. |
+| RC — Risk disposition and freeze | Per the governance requirement that a documented risk must have a documented disposition before freeze, the cumulative-interruption risk was given an explicit ruling: **accepted as a deliberate product trade-off for the initial release** (not deferred), with reasoning (bounded by the existing 6/interview cap, self-limiting under realistic — not worst-case — usage, no available architectural change reduces it without also reducing the feature's core value) and a predefined re-evaluation trigger (post-launch signals: 4+ assists/interview at a materially higher rate than modeled, or qualitative feedback that the wait feels conspicuous). Release Candidate accepted. Feature frozen. |
 
 ## Status: Frozen
 

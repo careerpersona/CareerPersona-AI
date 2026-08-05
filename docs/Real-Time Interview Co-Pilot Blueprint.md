@@ -1,6 +1,6 @@
 # Real-Time Interview Co-Pilot — Architecture Blueprint
 
-**Status: Locked — Implementation Reference Only.**
+**Status: 🔒 Frozen — Release Candidate Accepted.** See `docs/architecture/ADR-Real-Time-Interview-Copilot.md` for the frozen architectural record, including the Human Factors re-validation and the cumulative-interruption risk disposition.
 Feature Blueprint · Premium only · Placement: extends existing `InterviewPage` · Complexity: Medium
 
 Premium Feature #6. Supersedes the prior untracked draft (`docs/Real-Time Interview Co-Pilot Locked Blueprint.md`) — that document was found during the architectural audit to contain unverified claims about "existing" architecture (a "six AI analyses" characterization where only three real Claude calls exist, and five `session_state` fields — `confidenceTimeline`, `reflectionJournal`, `energyProfile`, `interviewerStyle`, `recoveryState` — that do not exist anywhere in the codebase). This blueprint is built exclusively from the verified Audit → Decision Analysis → Cost Architecture Analysis sequence (conversation record), not from that draft's claims.
