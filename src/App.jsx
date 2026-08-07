@@ -5145,7 +5145,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
       askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
 {"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
 RESUME:${capturedResume}
-JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis").then(insightRaw => {
+JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insightRaw => {
         try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
       }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
     } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
@@ -5365,7 +5365,7 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
 {"professional":"<formal 3-paragraph professional cover letter>","friendly":"<warm conversational 3-paragraph cover letter, same substance different tone>","executive":"<confident executive-level cover letter emphasizing strategic leadership value>","ats":"<ATS-optimized cover letter that naturally incorporates all job keywords, structured for ATS parsing>"}
 RESUME:${resumeContent}
 JOB DESCRIPTION:${jobDesc || "General professional role"}
-BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, "resume_analysis");
+BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, isBackground ? "resume_analysis_followup" : "resume_analysis");
       const parsed = JSON.parse(raw);
       setCoverVersions(parsed);
     } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError(t("resume.coverVersionsError")); }
@@ -5486,7 +5486,7 @@ ${resume}`;
 Note: This resume was just improved by naturally incorporating the following keywords: ${kwList}. Score it accurately and fairly based on the current content — the ATS score should reflect the improvement.
 {"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
 RESUME:${improvedText}
-JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
+JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
         setImproveStep(t("resume.improveStepRefreshing"));
         const parsed = JSON.parse(raw);
         // One improvement cycle → always complete. Move added keywords into Found,
@@ -8093,7 +8093,7 @@ PER-QUESTION PERFORMANCE:
 ${details}
 
 Return ONLY this JSON (no markdown):
-{"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350, "interview_prep");
+{"technicalPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","behavioralPerformance":"<Excellent|Strong|Good|Fair|Needs Work>","communication":"<Excellent|Strong|Good|Fair|Needs Work>","confidence":"<Excellent|Strong|Good|Fair|Needs Work>","biggestStrength":"<1 sentence>","biggestImprovement":"<1 sentence>"}`, 350, "interview_prep_followup");
         const parsed = safeParse(raw);
         if (parsed) {
           finalSummary = { ...baseSummary, aiSummary: parsed };
@@ -11821,6 +11821,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     { key: "resume_analysis", label: t("settings.usageFeatureResume"),     quota: quotas.resume_analysis },
     { key: "interview_prep",  label: t("settings.usageFeatureInterview"),  quota: quotas.interview_prep },
     { key: "salary_analysis", label: t("settings.usageFeatureSalary"),     quota: quotas.salary_analysis },
+    { key: "linkedin_intelligence", label: t("settings.usageFeatureLinkedIn"), quota: quotas.linkedin_intelligence },
   ];
 
   // Smart Apply Auto Prep (Premium Feature #5) — §5/§11 of the locked

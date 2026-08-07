@@ -102,7 +102,7 @@ export async function runLinkedinIntelligenceAnalysis({
 
   const contentPrompt = buildFreeContentPrompt({ resume: resumeText, linkedinProfile: linkedinProfileText, jobDesc, contextString: userContext });
   if (!contentPrompt) return null;
-  const contentRaw = await askClaude(contentPrompt, 3000, "resume_analysis");
+  const contentRaw = await askClaude(contentPrompt, 3000, "linkedin_intelligence");
   const content = parseFreeContentResponse(contentRaw) || {};
 
   let strategyAnalysis = null;
@@ -117,7 +117,7 @@ export async function runLinkedinIntelligenceAnalysis({
       targetRole,
     });
     if (premiumPrompt) {
-      const premiumRaw = await askClaude(premiumPrompt.prompt, 1200, "resume_analysis");
+      const premiumRaw = await askClaude(premiumPrompt.prompt, 1200, "linkedin_intelligence");
       const parsed = parseLinkedinPremiumResponse(premiumRaw);
       strategyAnalysis = parsed?.strategyAnalysis || null;
       recruiterVisibilityIntelligence = parsed?.recruiterVisibilityIntelligence || null;
@@ -156,7 +156,7 @@ export async function runProfileEvolutionAnalysis({ latest, previous, targetRole
   const built = buildProfileEvolutionPrompt(evolution, targetRole);
   if (!built) return { evolution, narrative: null };
 
-  const raw = await askClaude(built.prompt, 500, "resume_analysis");
+  const raw = await askClaude(built.prompt, 500, "linkedin_intelligence");
   const narrative = parseProfileEvolutionResponse(raw);
   return { evolution, narrative };
 }

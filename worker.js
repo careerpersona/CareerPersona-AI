@@ -395,6 +395,19 @@ function getFeatureLimit(feature, caps) {
     case "resume_analysis":  return caps.resumeAnalysisLimit;
     case "interview_prep":   return caps.interviewSessionLimit;
     case "salary_analysis":  return caps.salaryAnalysisLimit;
+    // LinkedIn Intelligence shares the Resume Intelligence allowance rather than
+    // Infinity-by-default (the pre-fix behavior of falling through to the generic
+    // ai_request bucket) -- it's a distinct feature, tracked under its own
+    // feature_usage key, but not yet given its own tier-differentiated cap.
+    case "linkedin_intelligence": return caps.resumeAnalysisLimit;
+    // Automatic continuations of an already-authorized primary action (a parallel
+    // insights call, a post-improve re-score, a cover-letter refresh, a mock
+    // interview's closing summary) -- never an independent customer request, so
+    // never separately capped. Blocking these would leave a paid-for action
+    // half-completed.
+    case "resume_analysis_followup":
+    case "interview_prep_followup":
+      return Infinity;
     default:                 return caps.aiRequestLimit;
   }
 }
@@ -443,6 +456,7 @@ function computeQuotas(caps, usage) {
     { key: "resume_analysis", limit: caps.resumeAnalysisLimit },
     { key: "interview_prep",  limit: caps.interviewSessionLimit },
     { key: "salary_analysis", limit: caps.salaryAnalysisLimit },
+    { key: "linkedin_intelligence", limit: caps.resumeAnalysisLimit },
   ];
   const quotas = {};
   for (const { key, limit } of features) {

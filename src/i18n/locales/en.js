@@ -452,6 +452,7 @@ export default {
     usageFeatureResume: "Resume Analysis",
     usageFeatureInterview: "Interview Preparation",
     usageFeatureSalary: "Salary Analysis",
+    usageFeatureLinkedIn: "LinkedIn Intelligence",
     usageUnlimited: "Unlimited",
     usageUsedOf: "{used} of {limit}",
     autoPrepHeading: "Smart Apply Auto Prep",
