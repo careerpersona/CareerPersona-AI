@@ -19,7 +19,6 @@ const toRow = (userId, s, extra = {}) => ({
     mockAnswerDraft: s.mockAnswerDraft || "",
     activeQ: s.activeQ || null,
     showReview: s.showReview || false,
-    liveAssists: Array.isArray(s.liveAssists) ? s.liveAssists : [],
   },
   ...extra,
 });
@@ -37,7 +36,6 @@ const fromRow = (r) => ({
   mockAnswerDraft: r.session_state?.mockAnswerDraft || "",
   activeQ: r.session_state?.activeQ || null,
   showReview: r.session_state?.showReview || false,
-  liveAssists: Array.isArray(r.session_state?.liveAssists) ? r.session_state.liveAssists : [],
 });
 
 // Loads the single active session for this user.
@@ -49,26 +47,20 @@ export function useInterviewSession(userId) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadedFor, setLoadedFor] = useState(undefined);
-  // Real-Time Interview Co-Pilot needs the active row's id to key its
-  // per-interview Cost Boundary leg (a check_and_consume_quota period_key --
-  // see worker.js's checkAndConsumeInterviewAssistBudget). Mirrored into
-  // state (not just rowIdRef) so consumers can read it reactively.
-  const [sessionId, setSessionId] = useState(null);
   const rowIdRef = useRef(null);
-  const setRowId = (id) => { rowIdRef.current = id; setSessionId(id); };
 
   useEffect(() => {
     let active = true;
-    if (!userId) { setSession(null); setLoadedFor(userId); setLoading(false); setRowId(null); return; }
+    if (!userId) { setSession(null); setLoadedFor(userId); setLoading(false); rowIdRef.current = null; return; }
     setLoading(true);
     supabase.from(TABLE).select("*").eq("user_id", userId).eq("status", "active").limit(1)
       .then(({ data, error }) => {
         if (!active) return;
         if (!error && data && data.length) {
-          setRowId(data[0].id);
+          rowIdRef.current = data[0].id;
           setSession(fromRow(data[0]));
         } else {
-          setRowId(null);
+          rowIdRef.current = null;
           setSession(null);
         }
         setLoadedFor(userId);
@@ -88,7 +80,7 @@ export function useInterviewSession(userId) {
     } else {
       const { data, error } = await supabase.from(TABLE).insert({ ...row, status: "active" }).select().single();
       if (error) throw error;
-      setRowId(data.id);
+      rowIdRef.current = data.id;
     }
   }, [userId]);
 
@@ -100,7 +92,7 @@ export function useInterviewSession(userId) {
     const row = toRow(userId, s, { status: "completed" });
     const { error } = await supabase.from(TABLE).update(row).eq("id", rowIdRef.current);
     if (error) throw error;
-    setRowId(null);
+    rowIdRef.current = null;
   }, [userId]);
 
   // Deletes the active session. Used when the user explicitly discards an
@@ -109,7 +101,7 @@ export function useInterviewSession(userId) {
   const clear = useCallback(async () => {
     if (rowIdRef.current) {
       await supabase.from(TABLE).delete().eq("id", rowIdRef.current);
-      setRowId(null);
+      rowIdRef.current = null;
     }
     setSession(null);
   }, []);
@@ -119,15 +111,15 @@ export function useInterviewSession(userId) {
     const { data, error } = await supabase.from(TABLE).select("*").eq("user_id", userId).eq("status", "active").limit(1);
     if (error) return;
     if (data && data.length) {
-      setRowId(data[0].id);
+      rowIdRef.current = data[0].id;
       setSession(fromRow(data[0]));
     } else {
-      setRowId(null);
+      rowIdRef.current = null;
       setSession(null);
     }
   }, [userId]);
 
-  return { session, loading, loadedFor, sessionId, save, clear, complete, refresh };
+  return { session, loading, loadedFor, save, clear, complete, refresh };
 }
 
 // Returns all completed interview sessions for a user, newest first.

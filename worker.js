@@ -616,7 +616,7 @@ async function handleClaude(request, env, ctx) {
   const { userId } = auth;
 
   const b = await request.json();
-  const { feature = "ai_request", sessionId, ...claudeBody } = b;
+  const { feature = "ai_request", ...claudeBody } = b;
 
   const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
   const caps = getCapabilities(sub, config);
@@ -626,41 +626,6 @@ async function handleClaude(request, env, ctx) {
     const s = sub.subscription_status;
     const error = s === "trial_expired" || s === "no_subscription" ? "trial_expired" : "not_entitled";
     return corsResponse(request, { error, upgradeRequired: true }, 403);
-  }
-
-  // Interview Co-Pilot live assist: Premium-only, dual-leg fixed Cost
-  // Boundary (blueprint §7) -- bypasses the generic tier-based Layer 2 quota
-  // below entirely; its caps are fixed and not tier-scaled, so routing it
-  // through getFeatureLimit/interviewSessionLimit would be actively wrong
-  // (that bucket is Infinity for Premium, which would mean no real cap).
-  if (feature === INTERVIEW_COPILOT_FEATURE_KEY) {
-    if (caps.plan !== "premium" && caps.plan !== "admin") {
-      return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
-    }
-    if (!sessionId) {
-      return corsResponse(request, { error: "session_id_required" }, 400);
-    }
-    const budget = await checkAndConsumeInterviewAssistBudget({ userId, sessionId, env });
-    if (!budget.allowed) {
-      return corsResponse(request, { error: "quota_exhausted", reason: budget.reason, upgradeRequired: false, perInterviewRemaining: budget.perInterviewRemaining, monthlyRemaining: budget.monthlyRemaining }, 429);
-    }
-    const model = "claude-sonnet-4-6";
-    const max_tokens = Math.min(Number(claudeBody.max_tokens) || 200, 250);
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({ ...claudeBody, model, max_tokens }),
-    });
-    const d = await r.json();
-    if (!r.ok) console.error("[handleClaude] interview_copilot_assist Anthropic error", r.status, JSON.stringify(d));
-    if (r.ok && ctx?.waitUntil) {
-      ctx.waitUntil(logAIRequest(userId, feature, getMonthlyPeriodKey(), d.usage?.input_tokens, d.usage?.output_tokens, env));
-    }
-    return corsResponse(request, { ...d, interviewCopilotQuota: { perInterviewRemaining: budget.perInterviewRemaining, monthlyRemaining: budget.monthlyRemaining } }, r.status);
   }
 
   // Layer 2: quota check (skip for unlimited capabilities like admin)
@@ -1581,84 +1546,6 @@ async function runSmartApplyAutoPrepSchedule(env) {
   console.log(`[smartApplyAutoPrep] Processed ${processed}/${userIds.length} eligible users, prepared ${totalPrepared} packages.`);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// REAL-TIME INTERVIEW CO-PILOT -- Premium Feature #6 (Option B: assistant-
-// on-request during a live interview -- see docs/Real-Time Interview
-// Co-Pilot Blueprint.md). Client-triggered, not a scheduled cadence: every
-// assist is a direct, real-time request from InterviewPage, gated here
-// exactly like any other feature routed through handleClaude, plus its own
-// dedicated dual-leg Cost Boundary (blueprint §7).
-// ═══════════════════════════════════════════════════════════════════════════
-
-const INTERVIEW_COPILOT_FEATURE_KEY = "interview_copilot_assist";
-const INTERVIEW_COPILOT_PER_INTERVIEW_CAP = 6;
-const INTERVIEW_COPILOT_MONTHLY_CAP = 50; // fixed, not tier-scaled -- blueprint §7
-
-// Combines the two independent RPC results into one decision. Deliberately
-// NOT aiBudget.js's combineBudgetResults -- that helper's reason strings
-// ("daily_cap"/"monthly_cap") assume a daily+monthly pair; this feature's
-// first leg is per-interview (keyed by session id), not per-day, so reusing
-// it here would report a misleading reason. Same shape, correct semantics.
-function combineInterviewAssistBudget(perInterviewResult, monthlyResult) {
-  if (!perInterviewResult?.allowed) return { allowed: false, reason: "interview_cap" };
-  if (!monthlyResult?.allowed) return { allowed: false, reason: "monthly_cap" };
-  return { allowed: true, reason: null };
-}
-
-// Atomic dual-cap check-and-consume: per-interview leg keyed by the
-// interview_sessions row id (a valid check_and_consume_quota period_key --
-// confirmed free-text with no format assumption during Smart Apply Auto
-// Prep's own verification of this exact RPC), monthly leg keyed by the
-// standard UTC monthly period (reuses getMonthlyPeriodKey unchanged -- it's
-// genuinely feature-agnostic, unlike combineBudgetResults above). Both caps
-// fixed, not user-configurable, not wired to automation_preferences (that
-// table paces an automatic background process; every Co-Pilot assist is
-// directly user-triggered, so no such preference applies here -- Cost
-// Architecture Analysis §7 finding).
-async function checkAndConsumeInterviewAssistBudget({ userId, sessionId, env }) {
-  const [perInterviewResult, monthlyResult] = await Promise.all([
-    supabaseRPC("check_and_consume_quota", { p_user_id: userId, p_feature: `${INTERVIEW_COPILOT_FEATURE_KEY}_session`, p_limit: INTERVIEW_COPILOT_PER_INTERVIEW_CAP, p_period: sessionId }, env),
-    supabaseRPC("check_and_consume_quota", { p_user_id: userId, p_feature: `${INTERVIEW_COPILOT_FEATURE_KEY}_monthly`, p_limit: INTERVIEW_COPILOT_MONTHLY_CAP, p_period: getMonthlyPeriodKey() }, env),
-  ]);
-  return {
-    ...combineInterviewAssistBudget(perInterviewResult, monthlyResult),
-    perInterviewRemaining: Math.max(0, INTERVIEW_COPILOT_PER_INTERVIEW_CAP - (perInterviewResult.usage_count ?? INTERVIEW_COPILOT_PER_INTERVIEW_CAP)),
-    monthlyRemaining: Math.max(0, INTERVIEW_COPILOT_MONTHLY_CAP - (monthlyResult.usage_count ?? INTERVIEW_COPILOT_MONTHLY_CAP)),
-  };
-}
-
-// Read-only peek (no RPC consume) so the UI can show "N hints left" BEFORE
-// the very first tap of a session and proactively warn before the last
-// available assist is spent (blueprint §8 -- never a silent post-hoc
-// surprise). Reads feature_usage directly, service-role, same trust level
-// as every other worker.js Supabase read.
-async function handleInterviewCopilotQuotaStatus(request, env) {
-  const auth = await requireAuth(request, env);
-  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
-  const { userId } = auth;
-
-  const body = await request.json().catch(() => ({}));
-  const { sessionId } = body;
-  if (!sessionId) return corsResponse(request, { error: "session_id_required" }, 400);
-
-  const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
-  const caps = getCapabilities(sub, config);
-  if (caps.plan !== "premium" && caps.plan !== "admin") {
-    return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
-  }
-
-  const [perInterviewRows, monthlyRows] = await Promise.all([
-    supabaseGet("feature_usage", { select: "usage_count", user_id: `eq.${userId}`, feature: `eq.${INTERVIEW_COPILOT_FEATURE_KEY}_session`, period_key: `eq.${sessionId}` }, env),
-    supabaseGet("feature_usage", { select: "usage_count", user_id: `eq.${userId}`, feature: `eq.${INTERVIEW_COPILOT_FEATURE_KEY}_monthly`, period_key: `eq.${getMonthlyPeriodKey()}` }, env),
-  ]);
-  const perInterviewUsed = perInterviewRows?.[0]?.usage_count ?? 0;
-  const monthlyUsed = monthlyRows?.[0]?.usage_count ?? 0;
-  return corsResponse(request, {
-    perInterviewRemaining: Math.max(0, INTERVIEW_COPILOT_PER_INTERVIEW_CAP - perInterviewUsed),
-    monthlyRemaining: Math.max(0, INTERVIEW_COPILOT_MONTHLY_CAP - monthlyUsed),
-  });
-}
-
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -1684,7 +1571,6 @@ export default {
         if (path === "/api/billing/resume")          return handleResumeSubscription(request, env);
         if (path === "/api/billing/portal-session")  return handlePortalSession(request, env);
         if (path === "/webhooks/stripe")             return handleStripeWebhook(request, env);
-        if (path === "/api/interview-copilot/quota-status") return handleInterviewCopilotQuotaStatus(request, env);
         return handleClaude(request, env, ctx); // POST / — Claude proxy (catch-all)
       }
 

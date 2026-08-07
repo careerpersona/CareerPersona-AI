@@ -226,19 +226,23 @@ const DEV_MODE = import.meta.env.DEV;
 
 const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
 
-// `options.extraBody` merges additional fields into the worker request body
-// (e.g. Interview Co-Pilot's sessionId, used to key its per-interview Cost
-// Boundary leg — see worker.js's handleClaude). `options.onMeta`, when
-// provided, receives the full parsed worker response as a fire-and-forget
-// side channel (e.g. { interviewCopilotQuota }) — the string return value
-// every existing caller depends on is unchanged.
+// `options.extraBody` merges additional fields into the worker request body,
+// for a feature whose worker-side handler needs more than the standard
+// {feature, model, max_tokens, messages} shape (e.g. a per-feature quota key
+// alongside the generic Layer 2 check — see handleClaude in worker.js).
+// `options.onMeta`, when provided, receives the full parsed worker response
+// as a fire-and-forget side channel — the string return value every existing
+// caller depends on is unchanged. Generic infrastructure, not tied to any
+// one feature; currently unused (no active caller passes `options`), kept
+// because askClaude is the single shared execution path every AI feature in
+// this app goes through, and a future feature needing extra request/response
+// data can reuse this rather than forking a second call path.
 export async function askClaude(prompt, maxTokens = 2500, feature = "ai_request", options = {}) {
   const { extraBody = {}, onMeta } = options;
   if (DEV_MODE) {
     // Simulate realistic network latency so all loading states, progress bars,
     // banners, and animations behave exactly as they do in production.
     await new Promise(r => setTimeout(r, 850 + Math.random() * 400));
-    if (feature === "interview_copilot_assist") onMeta?.({ interviewCopilotQuota: { perInterviewRemaining: 5, monthlyRemaining: 47 } });
     return _devMockRoute(prompt);
   }
   const { data: { session } } = await supabase.auth.getSession();
@@ -385,13 +389,6 @@ function _devMockRoute(prompt) {
   // ── Match Score Only (lightweight call in job search) ─────────────────────
   if (p.includes("match score only")) {
     return JSON.stringify({ matchScore: 74, explanation: "Strong Python/AWS match; missing container orchestration skills." });
-  }
-
-  // ── Real-Time Interview Co-Pilot: live assist hint ────────────────────────
-  // Checked before the other "interview coach"-matching branches below,
-  // since this prompt also contains that phrase.
-  if (p.includes("real-time interview co-pilot")) {
-    return JSON.stringify({ hint: "Lead with the outcome, then the specific action you took — interviewers remember results, not setup. Keep it to two sentences." });
   }
 
   // ── Interview AI Performance Summary ──────────────────────────────────────
@@ -7853,7 +7850,7 @@ function VoiceInputBtn({ onTranscript, currentText, language }) {
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
-function InterviewPage({ profile, applications, savedJobs, isPremium }) {
+function InterviewPage({ profile, applications, savedJobs }) {
   const { t, language } = useI18n();
   const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
   const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
@@ -7873,25 +7870,11 @@ function InterviewPage({ profile, applications, savedJobs, isPremium }) {
   const [mockAnswerDraft, setMockAnswerDraft] = useState("");
   const [mockLoading, setMockLoading] = useState(false);
   const [answerTab, setAnswerTab] = useState("strong");
-  // Real-Time Interview Co-Pilot (blueprint: docs/Real-Time Interview
-  // Co-Pilot Blueprint.md) -- assistNote is the OPTIONAL secondary path
-  // (§3); tapping a category chip is the primary, single-tap trigger and
-  // fires immediately, it does not just "select" a category for a later
-  // confirm step.
-  const [assistNote, setAssistNote] = useState("");
-  const [liveAssistLog, setLiveAssistLog] = useState([]);
-  const [liveAssistLoading, setLiveAssistLoading] = useState(false);
-  const [liveAssistResponse, setLiveAssistResponse] = useState("");
-  // null = not yet known (before the first peek/assist resolves) -- the
-  // server remains the enforcement source of truth either way (Ownership
-  // Rule, blueprint §2/§9); this is a display-only convenience.
-  const [assistQuota, setAssistQuota] = useState({ perInterviewRemaining: null, monthlyRemaining: null });
-  const assistDismissTimerRef = useRef(null);
   const [restored, setRestored] = useState(false);
   const diffColor = { Easy: C.green, Medium: C.yellow, Hard: C.red };
   const userContext = useUserContext({ profile, applications, savedJobs });
 
-  const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, sessionId, save: saveSession, clear: clearSessionRow, complete: completeSession } = useInterviewSession(profile?.id);
+  const { session, loading: sessionLoading, loadedFor: sessionLoadedFor, save: saveSession, clear: clearSessionRow, complete: completeSession } = useInterviewSession(profile?.id);
   const { history: interviewHistory } = useInterviewHistory(profile?.id);
   const [loadApplied, setLoadApplied] = useState(false);
   const appliedForRef = useRef(undefined);
@@ -7923,7 +7906,6 @@ function InterviewPage({ profile, applications, savedJobs, isPremium }) {
       setMockAnswerDraft(session.mockAnswerDraft || "");
       setActiveQ(session.activeQ || null);
       setShowReview(session.showReview || false);
-      setLiveAssistLog(Array.isArray(session.liveAssists) ? session.liveAssists : []);
       setRestored(true);
     }
     setLoadApplied(true);
@@ -7934,31 +7916,10 @@ function InterviewPage({ profile, applications, savedJobs, isPremium }) {
     if (!loadApplied || !questions.length || sessionCompletedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, liveAssists: liveAssistLog }).catch(() => {});
+      saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview }).catch(() => {});
     }, 600);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [loadApplied, questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, liveAssistLog, saveSession]);
-
-  // ── Real-Time Interview Co-Pilot: proactive quota peek ──
-  // Fetched once the active session row exists, so remaining counts are
-  // known BEFORE the first tap (blueprint §8 -- never a silent post-hoc
-  // surprise). Read-only; the worker's dual-leg check remains the sole
-  // enforcement authority (Ownership Rule). No DEV_MODE bypass here,
-  // unlike askClaude -- this is a cheap Supabase read proxied through the
-  // worker, not an Anthropic call, so there's no real cost to avoid.
-  useEffect(() => {
-    if (!isPremium || !sessionId) return;
-    let active = true;
-    (async () => {
-      try {
-        const status = await workerBillingPost("/api/interview-copilot/quota-status", { sessionId });
-        if (active) setAssistQuota({ perInterviewRemaining: status.perInterviewRemaining, monthlyRemaining: status.monthlyRemaining });
-      } catch { /* display-only -- a failed peek doesn't block anything */ }
-    })();
-    return () => { active = false; };
-  }, [isPremium, sessionId]);
-
-  useEffect(() => () => { if (assistDismissTimerRef.current) clearTimeout(assistDismissTimerRef.current); }, []);
+  }, [loadApplied, questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, saveSession]);
 
   const resetLocalSession = () => {
     sessionCompletedRef.current = false;
@@ -8094,61 +8055,6 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200, "interview_prep");
     } catch {
       setError(t("interview.answerError"));
     } finally { setFbLoading(false); }
-  };
-
-  // Real-Time Interview Co-Pilot prompt (blueprint §10). Deliberately smaller
-  // than getFeedbackFor above: a short (150-char, not 600-char) job snippet,
-  // no active-question/full-JD context, no prior assist ever included
-  // (stateless -- blueprint §5). The literal phrase "real-time interview
-  // co-pilot" is matched by _devMockRoute for DEV_MODE testing.
-  const buildInterviewAssistPrompt = (category, shortNote) => {
-    const note = shortNote?.trim() ? `\nCANDIDATE'S SHORT NOTE: ${shortNote.trim().slice(0, 140)}` : "";
-    const jobContext = jobDesc?.trim() ? `\nROLE CONTEXT: ${jobDesc.trim().slice(0, 150)}` : "";
-    return `You are a real-time interview co-pilot. The candidate is in a live interview right now and just tapped for a quick hint. Give ONE short, actionable tip (2-3 sentences max) they can use immediately. Do not write a full answer for them -- coach them toward their own answer. Return ONLY JSON with a single field "hint", no markdown, no other keys.\nCATEGORY: ${category}${note}${jobContext}`;
-  };
-
-  // Single-tap trigger (blueprint §3) -- category IS the action, not merely
-  // a selection awaiting a separate confirm step.
-  const handleLiveAssist = async (category) => {
-    if (!isPremium || !sessionId || liveAssistLoading) return;
-    if (assistQuota.perInterviewRemaining === 0 || assistQuota.monthlyRemaining === 0) return; // cap-reached state already shown, tap is a no-op
-    if (assistDismissTimerRef.current) { clearTimeout(assistDismissTimerRef.current); assistDismissTimerRef.current = null; }
-    setLiveAssistLoading(true);
-    setLiveAssistResponse("");
-    setError("");
-    try {
-      const notedUsed = assistNote;
-      const raw = await askClaude(
-        buildInterviewAssistPrompt(category, notedUsed),
-        200,
-        "interview_copilot_assist",
-        {
-          extraBody: { sessionId },
-          onMeta: (data) => { if (data?.interviewCopilotQuota) setAssistQuota(data.interviewCopilotQuota); },
-        }
-      );
-      const parsed = safeParse(raw) || { hint: raw };
-      const responseText = parsed.hint || raw || t("interview.liveAssistEmpty");
-      const nextEntry = { category, shortNote: notedUsed.trim(), response: responseText, timestamp: new Date().toISOString() };
-      setLiveAssistResponse(responseText);
-      const nextLog = [nextEntry, ...liveAssistLog].slice(0, 5);
-      setLiveAssistLog(nextLog);
-      setAssistNote("");
-      saveSession({ questions, jobDesc, resume, resumeFileName, savedFeedback, mockAnswers, mockSummary, mode, mockIdx, mockAnswerDraft, activeQ, showReview, liveAssists: nextLog }).catch(() => {});
-      // Auto-dismiss (blueprint §3/§5 -- "immediate return to the interview").
-      assistDismissTimerRef.current = setTimeout(() => setLiveAssistResponse(""), 8000);
-    } catch (e) {
-      if (e.status === 429 && e.workerError === "quota_exhausted") {
-        setAssistQuota({
-          perInterviewRemaining: e.perInterviewRemaining ?? assistQuota.perInterviewRemaining,
-          monthlyRemaining: e.monthlyRemaining ?? assistQuota.monthlyRemaining,
-        });
-      } else {
-        setError(t("interview.answerError"));
-      }
-    } finally {
-      setLiveAssistLoading(false);
-    }
   };
 
   // ── Mock interview mode ──
@@ -8349,43 +8255,6 @@ Return ONLY this JSON (no markdown):
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{cats.map(c => <Btn key={c} variant="ghost" style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filterCat === c ? C.purple : C.border}`, background: filterCat === c ? C.purpleLight : "#fff", color: filterCat === c ? C.purple : C.textMuted, fontSize: 13, fontWeight: 600 }} onClick={() => setFilterCat(c)}>{tCat(c)}</Btn>)}</div>
             <Btn onClick={startMock} style={{ padding: "8px 18px" }}>{t("interview.startMock")}</Btn>
           </div>
-          {isPremium && (
-            <Card style={{ marginBottom: 18, padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
-                <div style={{ fontSize: 12, color: C.purple, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("interview.liveAssistTitle")}</div>
-                {(assistQuota.perInterviewRemaining === 1 || assistQuota.monthlyRemaining === 1) && (
-                  <span style={{ fontSize: 11, color: C.yellow, fontWeight: 700 }}>{t("interview.liveAssistLastOne")}</span>
-                )}
-              </div>
-
-              {(assistQuota.perInterviewRemaining === 0 || assistQuota.monthlyRemaining === 0) ? (
-                <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-                  {assistQuota.monthlyRemaining === 0 ? t("interview.liveAssistMonthlyCapReached") : t("interview.liveAssistInterviewCapReached")}
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                    {cats.filter(c => c !== "All").map(c => (
-                      <Btn key={c} variant="ghost" disabled={liveAssistLoading} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, border: `1.5px solid ${C.border}`, background: "#fff", color: C.textMuted }} onClick={() => handleLiveAssist(c)}>{tCat(c)}</Btn>
-                    ))}
-                  </div>
-                  <Input label={t("interview.liveAssistLabel")} placeholder={t("interview.liveAssistPlaceholder")} value={assistNote} maxLength={140} onChange={e => setAssistNote(e.target.value)} style={{ width: "100%" }} />
-                </>
-              )}
-
-              {liveAssistLoading && (
-                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.purple, fontWeight: 600 }}>
-                  <span style={{ width: 12, height: 12, flexShrink: 0, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                  {t("interview.liveAssistThinking")}
-                </div>
-              )}
-              {!liveAssistLoading && liveAssistResponse && (
-                <div style={{ marginTop: 12, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 13, lineHeight: 1.6 }}>
-                  {liveAssistResponse}
-                </div>
-              )}
-            </Card>
-          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((q, i) => (
               <Card key={q.id} style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setActiveQ(q); const sv = savedFeedback[q.id]; setAnswer(sv?.answer || ""); setFeedback(sv?.feedback || null); setAnswerTab("strong"); }}>
@@ -12634,7 +12503,7 @@ export default function App() {
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
-        {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} />}
+        {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}

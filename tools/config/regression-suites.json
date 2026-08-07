@@ -94,11 +94,5 @@
     "path": "scripts/verify/verify-smart-apply-auto-prep-phase4-ui.cjs",
     "feature": "smart-apply-auto-prep",
     "description": "Smart Apply Auto Prep Phase 4 UI: Daily Preparation Setting control in Settings (Off/1/2, correct helper text, no Level/Tier terminology), automation_preferences write-through, and the Auto-Prepared badge in the Smart Apply Queue appearing only on generation_source: automatic rows."
-  },
-  {
-    "id": "interview-copilot-ui",
-    "path": "scripts/verify/verify-interview-copilot-ui.cjs",
-    "feature": "interview-copilot",
-    "description": "Real-Time Interview Co-Pilot: Premium-only gating, single-tap category trigger (no separate confirm step), trimmed-context/feature-key/sessionId request shape (static source checks), visible 'AI is thinking…' state, proactive 'N hints left' warning before the last assist is spent, and graceful per-interview/monthly cap-reached states that don't affect the rest of the Interview page."
   }
 ]
