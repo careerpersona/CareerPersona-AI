@@ -7306,9 +7306,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     e.target.value = "";
   };
 
-  // Worker URL — same as Claude proxy, new /api/jobs route
-  const WORKER_URL = "https://proxy.dawn-voice-2790.workers.dev";
-
   const search = async (loadMore = false) => {
     if (!filters.title.trim()) { setError(t("jobSearch.enterTitlePrompt")); return; }
     setError("");
@@ -7317,24 +7314,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     if (!loadMore) { setJobs([]); setSearched(true); setPage(1); setSourceCounts(null); }
 
     try {
-      const res = await fetch(`${WORKER_URL}/api/jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: filters.title.trim(),
-          keywords: filters.keywords?.trim() || "",
-          country: filters.country,
-          city: filters.city.trim(),
-          remote: filters.remote,
-          employmentType: filters.employmentType,
-          experienceLevel: filters.experienceLevel,
-          salaryMin: filters.salaryMin,
-          page: nextPage,
-        }),
+      const data = await workerBillingPost("/api/jobs", {
+        title: filters.title.trim(),
+        keywords: filters.keywords?.trim() || "",
+        country: filters.country,
+        city: filters.city.trim(),
+        remote: filters.remote,
+        employmentType: filters.employmentType,
+        experienceLevel: filters.experienceLevel,
+        salaryMin: filters.salaryMin,
+        page: nextPage,
       });
-
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      const data = await res.json();
       const newJobs = data.jobs || [];
 
       setJobs(prev => loadMore ? [...prev, ...newJobs] : newJobs);

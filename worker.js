@@ -516,6 +516,9 @@ async function logAIRequest(userId, feature, period, tokensIn, tokensOut, env) {
 // relocation, verified by direct diff against the pre-extraction source.
 
 async function handleJobSearch(request, env) {
+  const auth = await requireAuth(request, env);
+  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
+
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > 200_000) return corsResponse(request, { error: "Request too large" }, 413);
   const params = await request.json();
