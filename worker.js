@@ -582,6 +582,14 @@ async function handleClaude(request, env, ctx) {
     return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
   }
 
+  // Layer 1b: Application Outcome Intelligence is Premium/Admin only, per its
+  // locked blueprint -- canUseAI alone is too broad (also true for Pro). Reuses
+  // caps.plan, already computed by getCapabilities() above; no second
+  // entitlement system, no new config, no quota/pricing change.
+  if (feature === "outcome_intelligence" && caps.plan !== "premium" && caps.plan !== "admin") {
+    return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
+  }
+
   // Layer 2: quota check (skip for unlimited capabilities like admin)
   const limit = getFeatureLimit(feature, caps);
   const period = getPeriodKey(sub);
