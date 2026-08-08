@@ -34,6 +34,7 @@ import { useJobWatchlist } from "./data/jobWatchlist";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
 import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
 import { parseResumeDoc } from "./lib/resumeParsing";
+import { computeResumeCompleteness } from "./lib/resumeCompleteness";
 import { buildIdentityBlock, buildSmartApplyPrompt, SMART_APPLY_DOC_FIELDS, validateSmartApplyPackage, summarizeSmartApplyIntegrity } from "./lib/smartApply/generation";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
@@ -4714,10 +4715,21 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState }) {
   const { t, language } = useI18n();
+  // Mirrors the exact billingState -> canUseAI derivation JobSearchPage already
+  // uses (App.jsx handleSmartApplyClick) -- same computed value, not a second
+  // entitlement source. Real enforcement stays server-side (worker.js handleClaude).
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
+  // Deterministic Resume Completeness Check -- zero AI cost, available to every
+  // tier (same "free deterministic value stays visible to everyone" pattern
+  // Job Search's compatibility breakdown already uses). Answers "what's present
+  // or missing," never a quality score -- that distinction matters, see the
+  // module's own comment.
+  const resumeCompleteness = useMemo(() => computeResumeCompleteness(resume), [resume]);
   const [loading, setLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
   const [results, setResults] = useSessionState("cp_resume_results", null);
@@ -4899,29 +4911,30 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
 
   // Tool 3: auto-run Deep Analysis when user opens the Insights tab (once per session until reset).
   useEffect(() => {
-    if (tab === "insights" && results && !deepInsights && !deepInsightsLoading && resume.trim()) {
+    if (canUseAI && tab === "insights" && results && !deepInsights && !deepInsightsLoading && resume.trim()) {
       runDeepInsights();
     }
-  }, [tab, results]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, results, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tool 4: auto-generate cover letter versions when user opens the Cover tab (once per session until reset).
   // Also fires when coverVersionsLoading transitions to false so a finished background call
   // that produced no versions (e.g. silent error) still gets a recovery attempt.
   useEffect(() => {
-    if (tab === "cover" && results && !coverVersions && !coverVersionsLoading && resume.trim()) {
+    if (canUseAI && tab === "cover" && results && !coverVersions && !coverVersionsLoading && resume.trim()) {
       generateCoverVersions();
     }
-  }, [tab, coverVersionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, coverVersionsLoading, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-run panels when they open for the first time
   useEffect(() => {
+    if (!canUseAI) return;
     if (activeToolPanel === "benchmark" && resume.trim() && !benchmarkData && !benchmarkLoading) {
       runBenchmark();
     }
     if (activeToolPanel === "jobfit" && resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading) {
       runJobFit();
     }
-  }, [activeToolPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeToolPanel, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // LinkedIn Intelligence auto-fire is a separate effect (not the shared one
   // above) because linkedinOptData now comes from an async Supabase fetch
@@ -4931,10 +4944,10 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   // re-evaluates when it does (the shared effect above only re-runs on
   // activeToolPanel change, which would miss this).
   useEffect(() => {
-    if (activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinAnalysesHook.loading && !linkedinOptData && !linkedinOptLoading) {
+    if (canUseAI && activeToolPanel === "linkedin-opt" && resume.trim() && !linkedinAnalysesHook.loading && !linkedinOptData && !linkedinOptLoading) {
       runLinkedinOpt();
     }
-  }, [activeToolPanel, linkedinAnalysesHook.loading, linkedinOptData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeToolPanel, linkedinAnalysesHook.loading, linkedinOptData, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear toolkit helper text once the user provides the required data
   useEffect(() => { if (toolGuidanceMsg && resume.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [resume]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4949,6 +4962,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
 
     if (['png','jpg','jpeg'].includes(ext)) {
       // Image: convert to base64 and send to Claude for OCR
+      if (!canUseAI) { setError(t("resume.imageUploadLocked")); setExtracting(false); return; }
       const reader = new FileReader();
       reader.onload = async (ev) => {
         try {
@@ -5107,6 +5121,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   };
 
   const analyze = async () => {
+    if (!canUseAI) return;
     if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
     setManualReset(false);
     setError(""); setLoading(true); setResults(null); setLoadStep(0);
@@ -5212,6 +5227,7 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insig
   };
 
   const handleGenerateResume = async () => {
+    if (!canUseAI) return;
     if (!profile?.id) return;
     setAiBuilding(true); setAiError("");
     try {
@@ -5262,13 +5278,20 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
 
   // ── Tool 6: Score Benchmarking ──────────────────────────────────────────────
   const runBenchmark = async () => {
+    if (!canUseAI) return;
     if (!resume.trim()) return;
     setBenchmarkLoading(true); setBenchmarkError(""); setBenchmarkData(null);
     try {
       const ctx = userContext.getContextString({ identity: true, applications: true });
       const currentScore = results?.atsScore ?? null;
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and recruitment analyst. Analyze this resume and return ONLY a JSON object with realistic market benchmark data, no markdown, no explanation:
-{"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"industryAverage":<realistic industry average 52-68>,"topCandidateAverage":<realistic top 25% average 80-92>,"percentile":<what percentile this resume is at 1-99>,"percentileLabel":"<e.g. Top 15%>","keywordCoverage":<0-100>,"formattingScore":<0-100>,"experienceScore":<0-100>,"skillsScore":<0-100>,"educationScore":<0-100>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent>","industryLabel":"<inferred industry>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
+      // Evidence-based by design: this app has no real industry-average, candidate-percentile,
+      // or market-comparison dataset anywhere -- there is nothing to compare this resume
+      // against. The prompt therefore asks only for an assessment of THIS resume's own
+      // content (quality/completeness of what's actually written), never a claim about
+      // other candidates or the market. Do not reintroduce industryAverage/topCandidateAverage/
+      // percentile/percentileLabel-style fields -- there is no data source to back them.
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and resume quality analyst. Assess ONLY the resume text provided below. Do not invent, estimate, or imply any statistic about other candidates, industry averages, percentiles, or market data -- none of that data is available to you, so any such number would be fabricated. Return ONLY a JSON object, no markdown, no explanation:
+{"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"keywordCoverage":<0-100, how well this resume's own content covers relevant keywords for its apparent target role>,"formattingScore":<0-100, formatting quality of this resume's content>,"experienceScore":<0-100, strength and specificity of the experience section content>,"skillsScore":<0-100, strength and relevance of the skills section content>,"educationScore":<0-100, completeness of the education section>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent -- a self-contained quality assessment of THIS resume's own content, not a comparison to other candidates or a market position>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
 RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setBenchmarkData(parsed);
@@ -5282,6 +5305,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, 
 
   // ── Tool 7: Job Fit Analyzer ─────────────────────────────────────────────────
   const runJobFit = async () => {
+    if (!canUseAI) return;
     if (!resume.trim() || !jobDesc.trim()) return;
     setJobFitLoading(true); setJobFitError(""); setJobFitData(null);
     try {
@@ -5301,13 +5325,17 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
   };
 
   // ── Tool 8: LinkedIn Intelligence ────────────────────────────────────────────
-  // Deterministic scoring + content generation (Free, all tiers) + interpretive
-  // analysis (Premium, when available) computed and persisted in one orchestrated
-  // call -- see runLinkedinIntelligenceAnalysis in src/data/linkedinIntelligence.js.
+  // Deterministic scoring (zero AI cost) + content generation (Pro and above,
+  // corrected 2026-08-08 -- was previously commented "Free, all tiers") +
+  // interpretive analysis (Premium, when available) computed and persisted in
+  // one orchestrated call -- see runLinkedinIntelligenceAnalysis in
+  // src/data/linkedinIntelligence.js. Gated the same way as every other Resume
+  // AI action on this page: guarded by canUseAI below, before any AI call.
   // Ownership boundary: this component never computes a score or writes a
   // deterministic/generated-content field itself -- it only supplies inputs and
   // renders the persisted result.
   const runLinkedinOpt = async () => {
+    if (!canUseAI) return;
     if (!resume.trim()) return;
     setLinkedinOptLoading(true); setLinkedinOptError("");
     try {
@@ -5347,6 +5375,7 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
   // resumeOverride: explicit text for background regeneration after resume edits.
   // Background calls suppress UI errors so nothing appears on the Cover tab unexpectedly.
   const generateCoverVersions = async (resumeOverride = null) => {
+    if (!canUseAI) return;
     const resumeContent = resumeOverride ?? resume;
     const isBackground = resumeOverride !== null;
     if (!resumeContent.trim()) return;
@@ -5367,6 +5396,7 @@ BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, isBackground ? "resume_a
 
   // ── Tool 3: Deep Resume Insights ─────────────────────────────────────────────
   const runDeepInsights = async () => {
+    if (!canUseAI) return;
     if (!resume.trim()) return;
     setDeepInsightsLoading(true); setDeepInsightsError("");
     try {
@@ -5400,6 +5430,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, 
 
   const [applyingIssueFix, setApplyingIssueFix] = useState(null);
   const applyIssueFix = async (issue) => {
+    if (!canUseAI) return;
     setApplyingIssueFix(issue.problem);
     try {
       const fixed = await askClaude(`You are a professional resume editor. Apply exactly this fix to the resume: "${issue.fix}". Return ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${resume}`, 3000, "resume_analysis");
@@ -5410,6 +5441,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, 
   };
 
   const applyAllDeepFixes = async () => {
+    if (!canUseAI) return;
     if (!deepInsights || applyingAllFixes) return;
     setApplyingAllFixes(true);
     try {
@@ -5442,6 +5474,7 @@ RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, 
   };
 
   const handleImproveResume = async () => {
+    if (!canUseAI) return;
     if (!selectedKeywords.length) return;
     setImproving(true); setImproveError(""); setLibrarySaved(false); setLibrarySaveError("");
     const kwList = selectedKeywords.join(", ");
@@ -5631,7 +5664,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               )}
 
               {/* AI Builder: form (resume not yet generated) */}
-              {resumeSource === "ai" && !resume.trim() && (
+              {resumeSource === "ai" && !resume.trim() && !canUseAI && (
+                <LockedAICard icon="✨" title={t("resume.lockedBuilderTitle")} description={t("resume.lockedBuilderDesc")} benefits={t("resume.lockedBuilderBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+              )}
+              {resumeSource === "ai" && !resume.trim() && canUseAI && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}20`, borderRadius: 9, padding: "10px 14px" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6 }}>{t("resume.prefilledFromProfile")}</div>
@@ -5698,12 +5734,49 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{jobDesc ? t("resume.wordCount").replace("{n}", jobDesc.split(/\s+/).filter(Boolean).length) : t("resume.jobDescTip")}</div>
             </Card>
           </div>
+
+          {/* Resume Completeness Check — deterministic, zero AI, all tiers.
+              "What's present or missing" -- never a quality score. */}
+          {resumeCompleteness && (
+            <Card style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{t("resume.completenessTitle")}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.purple }}>{t("resume.completenessSummary").replace("{n}", resumeCompleteness.passedCount).replace("{total}", resumeCompleteness.totalCount)}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                {[
+                  ["contact", t("resume.completenessContact")],
+                  ["summary", t("resume.completenessSummaryItem")],
+                  ["experience", t("resume.completenessExperience")],
+                  ["education", t("resume.completenessEducation")],
+                  ["skills", t("resume.completenessSkills")],
+                  ["lengthOk", t("resume.completenessLength")],
+                ].map(([key, label]) => {
+                  const present = resumeCompleteness.checks[key];
+                  return (
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: present ? C.text : C.textMuted }}>
+                      <span style={{ color: present ? C.green : C.textMuted, fontWeight: 800, flexShrink: 0 }}>{present ? "✓" : "—"}</span>
+                      {label}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 14, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <div className="resume-action-bar" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, maxWidth: 600, margin: "0 auto", width: "100%" }}>
             <Btn variant="secondary" loading={savingResume} disabled={!resume.trim() || !profile?.id} onClick={handleSaveResume} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{resumeSaved ? t("resume.savedShort") : savingResume ? t("resume.saving") : t("resume.saveResume")}</Btn>
-            <Btn onClick={analyze} loading={loading} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{loading ? t("resume.analyzing") : t("resume.analyzeAndTailor")}</Btn>
+            <Btn onClick={() => { if (!canUseAI) { document.getElementById("resume-locked-analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }); return; } analyze(); }} loading={loading} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{loading ? t("resume.analyzing") : canUseAI ? t("resume.analyzeAndTailor") : t("resume.analyzeAndTailorLocked")}</Btn>
             <Btn variant="secondary" disabled={loading} onClick={() => { setResume(SAMPLE_RESUME); setJobDesc(SAMPLE_JOB); }} style={{ width: "100%", padding: "12px 16px", fontSize: 14 }}>{t("resume.trySample")}</Btn>
           </div>
+
+          {/* First Pro upgrade moment -- featured, shown once there's a resume to analyze */}
+          {!canUseAI && resume.trim() && (
+            <div id="resume-locked-analysis" style={{ marginTop: 14 }}>
+              <LockedAICard featured icon="🔒" title={t("resume.lockedAnalysisTitle")} description={t("resume.lockedAnalysisDesc")} benefits={t("resume.lockedAnalysisBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+            </div>
+          )}
         </>
   );
 
@@ -6024,7 +6097,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                       })}
                     </div>
                   </div>
-                  {results.keywordsMissing?.length > 0 && (
+                  {results.keywordsMissing?.length > 0 && !canUseAI && (
+                    <LockedAICard title={t("resume.lockedImproveTitle")} description={t("resume.lockedImproveDesc")} benefits={t("resume.lockedImproveBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                  )}
+                  {results.keywordsMissing?.length > 0 && canUseAI && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {improveError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: "8px 12px", color: C.red, fontSize: 12 }}>{improveError}</div>}
                       <Btn onClick={handleImproveResume} loading={improving} disabled={!selectedKeywords.length || improving || improvedBtnDone} style={{ width: "100%", ...(improvedBtnDone ? { background: C.green } : {}) }}>
@@ -6096,7 +6172,10 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               ))}
             </div>
           )}
-          {tab === "cover" && (() => {
+          {tab === "cover" && !canUseAI && (
+            <LockedAICard title={t("resume.lockedCoverTitle")} description={t("resume.lockedCoverDesc")} benefits={t("resume.lockedCoverBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+          )}
+          {tab === "cover" && canUseAI && (() => {
             const currentCoverText = editingCoverLetter ? editedCoverText : (coverVersions?.[activeCoverVersion] || results.coverLetter);
             return (
             <div>
@@ -6260,6 +6339,12 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               )}
 
               {/* Deep Insights — grammar, readability, action verbs, formatting */}
+              {!canUseAI && (
+                <div style={{ borderTop: `1.5px solid ${C.border}`, paddingTop: 16 }}>
+                  <LockedAICard title={t("resume.lockedDeepInsightsTitle")} description={t("resume.lockedDeepInsightsDesc")} benefits={t("resume.lockedDeepInsightsBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                </div>
+              )}
+              {canUseAI && (
               <div style={{ borderTop: `1.5px solid ${C.border}`, paddingTop: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{t("resume.deepAnalysisTitle")}</div>
@@ -6378,6 +6463,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
         </div>
@@ -6529,7 +6615,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 if (!resume.trim()) { setToolGuidancePanelId("benchmark"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "benchmark" ? null : "benchmark"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: t("resume.readyToBenchmark"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+              getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: t("resume.readyToBenchmark"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🔍", title: t("resume.jobFitToolTitle"), desc: t("resume.jobFitToolDesc"),
               active: true, panelId: "jobfit",
               action: () => {
@@ -6537,14 +6623,14 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 if (!jobDesc.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg(t("resume.addJobDescFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "jobfit" ? null : "jobfit"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: t("resume.readyToAnalyze"), color: C.textMuted } : { text: t("resume.addResumeAndJob"), color: C.textMuted } },
+              getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: t("resume.readyToAnalyze"), color: C.textMuted } : { text: t("resume.addResumeAndJob"), color: C.textMuted } },
             { icon: "📝", title: t("resume.linkedinToolTitle"), desc: t("resume.linkedinToolDesc"),
               active: true, panelId: "linkedin-opt",
               action: () => {
                 if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
                 setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
-              getStatus: () => linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.completenessScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
+              getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.completenessScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🎤", title: t("resume.voiceToolTitle"), desc: t("resume.voiceToolDesc"),
               active: false, panelId: null,
               comingSoon: t("resume.voiceToolComingSoon") },
@@ -6588,18 +6674,21 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.benchmarkPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.refreshBtn")}</Btn>}
+                {canUseAI && benchmarkData && <Btn onClick={runBenchmark} loading={benchmarkLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.refreshBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
-            {resume.trim() && !benchmarkData && !benchmarkLoading && (
+            {!canUseAI && (
+              <LockedAICard title={t("resume.lockedBenchmarkTitle")} description={t("resume.lockedBenchmarkDesc")} benefits={t("resume.lockedBenchmarkBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+            )}
+            {canUseAI && resume.trim() && !benchmarkData && !benchmarkLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.benchmarkPreparing")}</div>
               </div>
             )}
-            {benchmarkError &&<div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{benchmarkError}</div>}
-            {benchmarkLoading && (
+            {canUseAI && benchmarkError &&<div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{benchmarkError}</div>}
+            {canUseAI && benchmarkLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
@@ -6608,30 +6697,19 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 </div>
               </div>
             )}
-            {benchmarkData && (() => {
-              const { atsScore, industryAverage, topCandidateAverage, percentile, percentileLabel, keywordCoverage, formattingScore, experienceScore, skillsScore, educationScore, overallRanking, industryLabel, recommendations } = benchmarkData;
+            {canUseAI && benchmarkData && (() => {
+              const { atsScore, keywordCoverage, formattingScore, experienceScore, skillsScore, educationScore, overallRanking, recommendations } = benchmarkData;
               const rankColor = overallRanking === "Excellent" ? C.green : overallRanking === "Strong" ? C.green : overallRanking === "Above Average" ? C.yellow : overallRanking === "Average" ? C.orange : C.red;
               return (
                 <>
-                  {/* Vs market comparison */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-                    {[
-                      { label: t("resume.yourScore"), val: `${atsScore ?? "—"}`, color: hubHealthColor(atsScore), sub: t("resume.atsScoreSub") },
-                      { label: t("resume.industryAvg"), val: `${industryAverage ?? "—"}`, color: C.textMid, sub: industryLabel || t("resume.yourIndustry") },
-                      { label: t("resume.top25"), val: `${topCandidateAverage ?? "—"}`, color: C.purple, sub: t("resume.targetBenchmark") },
-                    ].map(({ label, val, color, sub }) => (
-                      <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
-                        <div style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>{val}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginTop: 4 }}>{label}</div>
-                        <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{sub}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Percentile + ranking */}
+                  {/* Your resume's own score + quality assessment -- both computed from this
+                      resume's actual content, never a claim about other candidates or the
+                      market (no such comparison data exists in this app). */}
                   <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
-                    <div style={{ flex: 1, background: C.purpleLight, border: `1.5px solid ${C.purple}20`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: C.purple }}>{percentileLabel || `Top ${100 - (percentile || 50)}%`}</div>
-                      <div style={{ fontSize: 11, color: C.purple, marginTop: 2 }}>{t("resume.candidatePercentile")}</div>
+                    <div style={{ flex: 1, background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: hubHealthColor(atsScore), lineHeight: 1 }}>{atsScore ?? "—"}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginTop: 4 }}>{t("resume.yourScore")}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{t("resume.atsScoreSub")}</div>
                     </div>
                     <div style={{ flex: 1, background: `${rankColor}12`, border: `1.5px solid ${rankColor}30`, borderRadius: 10, padding: "10px 16px", textAlign: "center" }}>
                       <div style={{ fontSize: 18, fontWeight: 800, color: rankColor }}>{tStatusVal(overallRanking, t)}</div>
@@ -6679,18 +6757,21 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.jobFitPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.reAnalyzeBtn")}</Btn>}
+                {canUseAI && jobFitData && <Btn onClick={runJobFit} loading={jobFitLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.reAnalyzeBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
-            {resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading && (
+            {!canUseAI && (
+              <LockedAICard title={t("resume.lockedJobFitTitle")} description={t("resume.lockedJobFitDesc")} benefits={t("resume.lockedJobFitBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+            )}
+            {canUseAI && resume.trim() && jobDesc.trim() && !jobFitData && !jobFitLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.analyzingJobFit")}</div>
               </div>
             )}
-            {jobFitError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{jobFitError}</div>}
-            {jobFitLoading && (
+            {canUseAI && jobFitError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{jobFitError}</div>}
+            {canUseAI && jobFitLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
@@ -6699,7 +6780,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 </div>
               </div>
             )}
-            {jobFitData && (() => {
+            {canUseAI && jobFitData && (() => {
               const { overallMatch, matchLabel, requiredSkillsMatch, preferredSkillsMatch, missingSkills, keywordMatchScore, experienceMatch, educationMatch, seniorityMatch, applicationReadiness, topRecommendations, coverLetterTip } = jobFitData;
               const matchColor = overallMatch >= 80 ? C.green : overallMatch >= 65 ? C.yellow : overallMatch >= 50 ? C.orange : C.red;
               const readinessColor = applicationReadiness === "Ready to Apply" ? C.green : applicationReadiness === "Almost Ready" ? C.yellow : C.orange;
@@ -6806,18 +6887,21 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("resume.linkedinPanelTitle")}</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.linkedinRegenerateBtn")}</Btn>}
+                {canUseAI && linkedinOptData && <Btn onClick={runLinkedinOpt} loading={linkedinOptLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px" }}>{t("resume.linkedinRegenerateBtn")}</Btn>}
                 <button onClick={() => setActiveToolPanel(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.textMuted, lineHeight: 1, padding: "13px 14px" }}>×</button>
               </div>
             </div>
-            {resume.trim() && !linkedinOptData && !linkedinOptLoading && (
+            {!canUseAI && (
+              <LockedAICard title={t("resume.lockedLinkedinTitle")} description={t("resume.lockedLinkedinDesc")} benefits={t("resume.lockedLinkedinBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+            )}
+            {canUseAI && resume.trim() && !linkedinOptData && !linkedinOptLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div style={{ fontSize: 13, color: C.textMuted }}>{t("resume.generatingLinkedin")}</div>
               </div>
             )}
-            {linkedinOptError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{linkedinOptError}</div>}
-            {linkedinOptLoading && (
+            {canUseAI && linkedinOptError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 8, padding: "8px 12px", color: C.red, fontSize: 12 }}>{linkedinOptError}</div>}
+            {canUseAI && linkedinOptLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: C.bgSoft, borderRadius: 12 }}>
                 <div style={{ width: 18, height: 18, border: `2.5px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                 <div>
@@ -6826,7 +6910,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 </div>
               </div>
             )}
-            {linkedinOptData && (() => {
+            {canUseAI && linkedinOptData && (() => {
               const {
                 headline, aboutSection, experienceOptimizations, recruiterVisibilityTips,
                 completenessScore, keywordCoverageScore, keywordsMissing,
@@ -6956,7 +7040,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               );
             })()}
             {/* Refine with LinkedIn profile text — shown after results */}
-            {linkedinOptData && (
+            {canUseAI && linkedinOptData && (
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.textMid, marginBottom: 6 }}>{t("resume.refineWithLinkedin")}</div>
                 <textarea value={linkedinProfile} onChange={e => setLinkedinProfile(e.target.value)} placeholder={t("resume.linkedinProfilePlaceholder")} style={{ width: "100%", minHeight: 70, background: "#fff", border: `1.5px solid ${C.border}`, borderRadius: 9, color: C.text, fontSize: 12, lineHeight: 1.6, padding: "8px 12px", resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }} />
@@ -12607,7 +12691,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} billingState={billingState} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}

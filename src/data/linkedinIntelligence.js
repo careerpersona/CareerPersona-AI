@@ -13,13 +13,14 @@ const TABLE = "linkedin_profile_analyses";
 // LinkedIn Intelligence's platform-memory table -- the single writer, per the
 // locked blueprint's Ownership Rule (§5/§6). Mirrors useReferralAnalyses /
 // useOutcomeAnalyses exactly: row-per-analysis, most-recent-first, never
-// updated in place. Applies to all tiers -- Free-tier deterministic scores
-// and generated content are always written; Premium interpretive fields
-// (strategy_analysis / recruiter_visibility_intelligence) are included in
-// THE SAME insert when available, never written via a second call against
-// an existing row -- this hook has no update path at all, so a historical
-// row can never be recalculated in place, structurally, not just by
-// convention.
+// updated in place. The whole feature (deterministic scoring + generated
+// content +, when available, the Premium interpretive layer) requires
+// Pro-and-above -- see the corrected note on runLinkedinIntelligenceAnalysis
+// below. Premium interpretive fields (strategy_analysis /
+// recruiter_visibility_intelligence) are included in THE SAME insert when
+// available, never written via a second call against an existing row --
+// this hook has no update path at all, so a historical row can never be
+// recalculated in place, structurally, not just by convention.
 export function useLinkedInProfileAnalyses(userId) {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,14 +87,23 @@ function rowToAnalysis(r) {
 }
 
 // Orchestrates one full LinkedIn Intelligence run: computes deterministic
-// facts (Free, all tiers), generates content (Free, all tiers), and --
-// Premium only, when available -- generates the interpretive analysis, then
-// persists everything in ONE insert. Mirrors runReferralAnalysis's
-// structure. Ownership boundary (per Phase 3 guidance): this function
-// consumes the deterministic engine's output, it never recomputes a score;
-// it writes only strategy_analysis/recruiter_visibility_intelligence among
-// the interpretive columns, never the deterministic or generated-content
-// columns of a historical row (there is no update path for those at all).
+// facts (zero AI cost, no tier restriction on the computation itself), then
+// generates content via Claude (Pro and above -- corrected 2026-08-08; this
+// was previously commented "Free, all tiers", which was never actually
+// consistent with the rest of the app's Free-tier-is-$0-AI-cost design and
+// has been corrected to match every other Resume AI feature), and -- Premium
+// only, when available -- generates the interpretive analysis, then persists
+// everything in ONE insert. Tier enforcement is entirely the caller's
+// responsibility (ResumePage gates this call behind the same canUseAI check
+// used for every other Resume AI action) plus the shared Worker entitlement
+// chain (worker.js handleClaude) that already blocks Free users from every
+// askClaude call regardless of feature -- this function adds no entitlement
+// logic of its own, by design. Mirrors runReferralAnalysis's structure.
+// Ownership boundary (per Phase 3 guidance): this function consumes the
+// deterministic engine's output, it never recomputes a score; it writes only
+// strategy_analysis/recruiter_visibility_intelligence among the interpretive
+// columns, never the deterministic or generated-content columns of a
+// historical row (there is no update path for those at all).
 export async function runLinkedinIntelligenceAnalysis({
   resumeText, linkedinProfileText, jobDesc, targetRole, resumeId, isPremium, saveAnalysis, userContext,
 }) {
