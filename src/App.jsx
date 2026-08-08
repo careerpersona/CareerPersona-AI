@@ -9961,7 +9961,7 @@ const resolvedMissingSkills = (skills, resumeText) => {
   return (skills || []).filter(s => !lower.includes(String(s).toLowerCase()));
 };
 
-function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
+function PackageView({ item, resumes, savedJob, patchQueueItem, profile, canUseAI }) {
   const { t } = useI18n();
   const [editingField, setEditingField] = useState(null);
   const [editText, setEditText] = useState("");
@@ -9984,7 +9984,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
   const integrity = validateSmartApplyPackage(smartApplyDocFieldsFromRow(item), resolveCountry(profile?.country));
 
   useEffect(() => {
-    if (!hasJobChanges || item.job_change_analysis || !savedJob || !patchQueueItem) return;
+    if (!canUseAI || !hasJobChanges || item.job_change_analysis || !savedJob || !patchQueueItem) return;
     let cancelled = false;
     const run = async () => {
       setAnalyzing(true);
@@ -10001,7 +10001,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile }) {
     };
     run();
     return () => { cancelled = true; };
-  }, [hasJobChanges, !!item.job_change_analysis, savedJob?.job_id, item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canUseAI, hasJobChanges, !!item.job_change_analysis, savedJob?.job_id, item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartEdit = (field, currentValue) => { setEditingField(field); setEditText(currentValue || ""); };
   // Saving an edit re-runs Package Integrity Validation against the updated document set
@@ -10370,7 +10370,7 @@ function MissingSkillsBadges({ skills }) {
   );
 }
 
-function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied, savedJobs, patchQueueItem, profile }) {
+function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retrying, resumes, justApplied, savedJobs, patchQueueItem, profile, canUseAI }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 1024px)").matches : false);
@@ -10432,19 +10432,27 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 13, color: C.red, marginBottom: 8 }}>{t("savedJobs.generationFailed")}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+            {canUseAI ? (
+              <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+            ) : (
+              <Btn variant="secondary" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.smartApplyLocked")}</Btn>
+            )}
             <Btn variant="ghost" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => onRemove(item)}>{t("savedJobs.removeBtn")}</Btn>
           </div>
         </div>
       )}
       {item.status === "needs_review" && (
         <div style={{ marginTop: 10 }}>
-          <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+          {canUseAI ? (
+            <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} loading={retrying} onClick={() => onRetry(item)}>{t("savedJobs.retryGeneration")}</Btn>
+          ) : (
+            <Btn variant="secondary" disabled style={{ fontSize: 13, padding: "9px 14px" }}>{t("savedJobs.smartApplyLocked")}</Btn>
+          )}
         </div>
       )}
       {expanded && isViewable && (
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-          <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} profile={profile} />
+          <PackageView item={item} resumes={resumes} savedJob={savedJob} patchQueueItem={patchQueueItem} profile={profile} canUseAI={canUseAI} />
         </div>
       )}
     </Card>
@@ -10454,8 +10462,40 @@ function SmartApplyQueueCard({ item, onApply, onRemove, onRetry, applying, retry
 function SavedJobDetailsView({ job }) {
   const { t } = useI18n();
   const hasJobChanges = !!job.previous_description && job.previous_description !== job.description;
+  // Deterministic Compatibility Breakdown, zero AI -- reuses the exact record persisted
+  // at save time (src/data/savedJobs.js compatibilityBreakdown, the same buildCompatibilityRecord
+  // output Job Search computes live). Only the four numeric components are stored (no
+  // matched/missing skill names -- job.skills itself isn't persisted on a saved job), so
+  // this shows category scores only, not the skill-chip detail Job Search shows pre-save.
+  const cr = job.compatibilityBreakdown;
+  const compatRows = cr ? [
+    { key: "skills", label: t("jobSearch.compatSkillsLabel"), raw: cr.raw_components?.skills },
+    { key: "jobTitle", label: t("jobSearch.compatTitleLabel"), raw: cr.raw_components?.jobTitle },
+    { key: "salary", label: t("jobSearch.compatSalaryLabel"), raw: cr.raw_components?.salary },
+    { key: "location", label: t("jobSearch.compatLocationLabel"), raw: cr.raw_components?.location },
+  ] : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {cr && (
+        <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("jobSearch.compatBreakdownTitle").replace("{v}", job.matchScore ?? cr.match_score)}</div>
+          {compatRows.map(row => (
+            <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 12.5, color: C.textMid, fontWeight: 600, width: 90, flexShrink: 0 }}>{row.label}</span>
+              {row.raw == null ? (
+                <span style={{ fontSize: 11.5, color: C.textMuted }}>{t("jobSearch.compatDataUnavailable")}</span>
+              ) : (
+                <>
+                  <div style={{ flex: 1, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 4, width: `${Math.round(row.raw * 100)}%`, background: matchScoreColor(Math.round(row.raw * 100)) }} />
+                  </div>
+                  <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "right", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5, marginBottom: 6 }}>{t("savedJobs.jobDescriptionLabel")}</div>
         {job.description ? (
@@ -10478,8 +10518,12 @@ function SavedJobDetailsView({ job }) {
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markNeedsReview, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markNeedsReview, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem, billingState, onNavigate }) {
   const { t, language } = useI18n();
+  // Same billingState -> canUseAI derivation already used by JobSearchPage/ResumePage --
+  // reused, not a second entitlement source. Real enforcement stays server-side.
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
   const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
@@ -10540,6 +10584,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
   };
 
   const handleRetry = async (item) => {
+    if (!canUseAI) return;
     const resumeText = (resumes || []).find(r => r.id === item.resume_id)?.content ||
       (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("cp_jobs_resume") || "" : "");
     if (!resumeText.trim()) { setQueueError(t("savedJobs.retryNoResume")); return; }
@@ -10573,6 +10618,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
   };
 
   const handlePrepareSmartApply = async (job) => {
+    if (!canUseAI) return;
     if (!profile?.id) return;
     const resumeText =
       (resumes || []).find(r => r.id === activeResumeId)?.content ||
@@ -10685,7 +10731,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                         </Btn>
                       )}
                       {!isApplied && !readyEntry && (
-                        isPreparing || activeEntry?.status === "queued" ? (
+                        !canUseAI ? (
+                          <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => { if (!isExpanded) toggleJobExpanded(job.job_id); }}>{t("savedJobs.smartApplyLocked")}</Btn>
+                        ) : isPreparing || activeEntry?.status === "queued" ? (
                           <Btn disabled style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>{t("savedJobs.preparingSmartApply")}</Btn>
                         ) : activeEntry?.status === "failed" ? (
                           <Btn variant="secondary" style={{ fontSize: 13, padding: secPad, whiteSpace: "nowrap", ...(compact ? { flex: 1, minWidth: 0 } : {}) }} onClick={() => handlePrepareSmartApply(job)}>{t("savedJobs.retryGeneration")}</Btn>
@@ -10718,7 +10766,18 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
                   const viewEntry = readyEntry || (activeEntry?.status === "needs_review" ? activeEntry : null);
                   return (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                      {viewEntry ? <PackageView item={viewEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} profile={profile} /> : <SavedJobDetailsView job={job} />}
+                      {viewEntry ? (
+                        <PackageView item={viewEntry} resumes={resumes} savedJob={job} patchQueueItem={patchQueueItem} profile={profile} canUseAI={canUseAI} />
+                      ) : (
+                        <>
+                          <SavedJobDetailsView job={job} />
+                          {!canUseAI && !isApplied && (
+                            <div style={{ marginTop: 14 }}>
+                              <LockedAICard featured icon="🔒" title={t("savedJobs.lockedSmartApplyTitle")} description={t("savedJobs.lockedSmartApplyDesc")} benefits={t("savedJobs.lockedSmartApplyBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   );
                 })()}
@@ -10740,7 +10799,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {visibleQueue.map(item => (
-              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} savedJobs={savedJobs} patchQueueItem={patchQueueItem} profile={profile} />
+              <SmartApplyQueueCard key={item.id} item={item} onApply={handleMarkApplied} onRemove={handleRemoveFromQueue} onRetry={handleRetry} applying={applyingId === item.id} retrying={retryingId === item.id} resumes={resumes} justApplied={appliedId === item.id} savedJobs={savedJobs} patchQueueItem={patchQueueItem} profile={profile} canUseAI={canUseAI} />
             ))}
           </div>
         </div>
@@ -12693,7 +12752,7 @@ export default function App() {
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} billingState={billingState} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} onNavigate={setPage} billingState={billingState} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
