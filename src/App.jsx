@@ -8887,37 +8887,22 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
     }
   };
 
-  if (!isPremium) {
-    return (
-      <Card style={{ textAlign: "center", padding: 48 }}>
-        <div style={{ fontSize: 40, marginBottom: 14 }}>📈</div>
-        <div style={{ fontWeight: 700, fontSize: 18, color: C.text, marginBottom: 8 }}>{t("tracker.oiPremiumTitle")}</div>
-        <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 20, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>{t("tracker.oiPremiumBody")}</div>
-        <Btn onClick={() => { window.location.hash = "#pricing"; }}>{t("tracker.oiUpgradeBtn")}</Btn>
-      </Card>
-    );
-  }
-
   const latestAnalysis = latest?.analysis;
   const tierLabel = { early_signal: t("tracker.tierEarlySignal"), emerging: t("tracker.tierEmerging"), high_confidence: t("tracker.tierHighConfidence") };
   const tierColor = { early_signal: C.yellow, emerging: C.blue, high_confidence: C.green };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Permanent explainer -- full before any real analysis exists, collapses to a
-          small expandable panel once one does, but never disappears entirely. */}
-      <OutcomeIntelligenceIntro collapsed={!!latestAnalysis} t={t} />
-
-      {/* Illustrative-only examples of the value being built toward -- removed once
-          a real analysis exists, since the real Top Insights zone replaces them. */}
-      {!latestAnalysis && <OutcomeExampleInsights t={t} />}
-
-      {/* Zone 1 -- Funnel Overview: real data, not AI, always visible regardless of tier.
-          Always available from the first tracked application. */}
+      {/* Zone 1 -- Funnel Overview: real data, not AI. Unconditional -- renders for
+          every tier, including Free, before the Premium gate below. Never required
+          a minimum outcome count; the numbers are just 0 until applications exist.
+          The Run Analysis trigger inside this same card stays Premium-only (was
+          previously gated only by the whole-component early return below; now
+          gated explicitly here since the card itself is no longer behind it). */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{t("tracker.oiFunnelHeading")}</div>
-          <Btn onClick={runAnalysis} loading={running} disabled={outcomesLoggedCount < 1} style={{ fontSize: 12, padding: "7px 14px" }}>{t("tracker.oiRunAnalysis")}</Btn>
+          {isPremium && <Btn onClick={runAnalysis} loading={running} disabled={outcomesLoggedCount < 1} style={{ fontSize: 12, padding: "7px 14px" }}>{t("tracker.oiRunAnalysis")}</Btn>}
         </div>
         {runError && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{runError}</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }} className="two-col">
@@ -8935,73 +8920,92 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
         </div>
       </Card>
 
-      {/* At 0 decided outcomes there's nothing to synthesize yet -- no separate locked
-          panel; the six analysis cards below already explain what's coming and why,
-          independently of each other. */}
-      {confidenceTier && !latestAnalysis && (
-        <Card style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 13, color: C.textMuted }}>{t("tracker.oiReadyToAnalyze")}</div>
+      {!isPremium ? (
+        <Card style={{ textAlign: "center", padding: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>📈</div>
+          <div style={{ fontWeight: 700, fontSize: 18, color: C.text, marginBottom: 8 }}>{t("tracker.oiPremiumTitle")}</div>
+          <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 20, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>{t("tracker.oiPremiumBody")}</div>
+          <Btn onClick={() => { window.location.hash = "#pricing"; }}>{t("tracker.oiUpgradeBtn")}</Btn>
         </Card>
-      )}
+      ) : (
+        <>
+          {/* Permanent explainer -- full before any real analysis exists, collapses to a
+              small expandable panel once one does, but never disappears entirely. */}
+          <OutcomeIntelligenceIntro collapsed={!!latestAnalysis} t={t} />
 
-      {latestAnalysis && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted, flexWrap: "wrap" }}>
-          <span style={{ background: `${tierColor[latest.confidence_tier]}15`, color: tierColor[latest.confidence_tier], fontWeight: 700, padding: "3px 10px", borderRadius: 12 }}>{tierLabel[latest.confidence_tier]}</span>
-          <span>{t("tracker.oiLastAnalyzed").replace("{date}", new Date(latest.generated_at).toLocaleDateString(language))}</span>
-        </div>
-      )}
+          {/* Illustrative-only examples of the value being built toward -- removed once
+              a real analysis exists, since the real Top Insights zone replaces them. */}
+          {!latestAnalysis && <OutcomeExampleInsights t={t} />}
 
-      {/* Zone 2 -- Top AI Insights */}
-      {latestAnalysis && (
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {(latestAnalysis.topInsights || []).map((ins, i) => (
-              <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>{ins.text}</div>
-                <div style={{ fontSize: 11, color: C.textMuted }}>{ins.evidence}</div>
+          {/* At 0 decided outcomes there's nothing to synthesize yet -- no separate locked
+              panel; the six analysis cards below already explain what's coming and why,
+              independently of each other. */}
+          {confidenceTier && !latestAnalysis && (
+            <Card style={{ textAlign: "center", padding: 40 }}>
+              <div style={{ fontSize: 13, color: C.textMuted }}>{t("tracker.oiReadyToAnalyze")}</div>
+            </Card>
+          )}
+
+          {latestAnalysis && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted, flexWrap: "wrap" }}>
+              <span style={{ background: `${tierColor[latest.confidence_tier]}15`, color: tierColor[latest.confidence_tier], fontWeight: 700, padding: "3px 10px", borderRadius: 12 }}>{tierLabel[latest.confidence_tier]}</span>
+              <span>{t("tracker.oiLastAnalyzed").replace("{date}", new Date(latest.generated_at).toLocaleDateString(language))}</span>
+            </div>
+          )}
+
+          {/* Zone 2 -- Top AI Insights */}
+          {latestAnalysis && (
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(latestAnalysis.topInsights || []).map((ins, i) => (
+                  <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>{ins.text}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>{ins.evidence}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
-      )}
+            </Card>
+          )}
 
-      {/* Zone 3 -- What's Working / What to Change */}
-      {latestAnalysis && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 14, color: C.green, marginBottom: 10 }}>✓ {t("tracker.oiWhatsWorking")}</div>
-            {(latestAnalysis.whatWorking || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
-          </Card>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 14, color: C.orange, marginBottom: 10 }}>→ {t("tracker.oiWhatToChange")}</div>
-            {(latestAnalysis.whatToChange || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
-          </Card>
-        </div>
-      )}
+          {/* Zone 3 -- What's Working / What to Change */}
+          {latestAnalysis && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="two-col">
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.green, marginBottom: 10 }}>✓ {t("tracker.oiWhatsWorking")}</div>
+                {(latestAnalysis.whatWorking || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.orange, marginBottom: 10 }}>→ {t("tracker.oiWhatToChange")}</div>
+                {(latestAnalysis.whatToChange || []).map((w, i) => <div key={i} style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{w}</div>)}
+              </Card>
+            </div>
+          )}
 
-      {/* Zone 4 -- Six Analysis Deep Dives: always rendered, each section independently
-          shows a real finding or its own positive availability message. Works even
-          before the very first Run Analysis click (latestAnalysis undefined). */}
-      <OutcomeAnalysisDeepDives analysis={latestAnalysis} t={t} />
+          {/* Zone 4 -- Six Analysis Deep Dives: always rendered, each section independently
+              shows a real finding or its own positive availability message. Works even
+              before the very first Run Analysis click (latestAnalysis undefined). */}
+          <OutcomeAnalysisDeepDives analysis={latestAnalysis} t={t} />
 
-      {/* Zone 5 -- Recommendation Results: self-hides when there are none */}
-      <RecommendationResults evaluations={evaluations} t={t} language={language} />
+          {/* Zone 5 -- Recommendation Results: self-hides when there are none */}
+          <RecommendationResults evaluations={evaluations} t={t} language={language} />
 
-      {/* Zone 6 -- Analysis History */}
-      {analyses.length > 1 && (
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {analyses.map(a => (
-              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                <span>{new Date(a.generated_at).toLocaleDateString(language)}</span>
-                <span style={{ color: tierColor[a.confidence_tier] }}>{tierLabel[a.confidence_tier]}</span>
-                <span>{t("tracker.oiOutcomesLogged").replace("{n}", a.outcomes_logged_count)}</span>
+          {/* Zone 6 -- Analysis History */}
+          {analyses.length > 1 && (
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {analyses.map(a => (
+                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <span>{new Date(a.generated_at).toLocaleDateString(language)}</span>
+                    <span style={{ color: tierColor[a.confidence_tier] }}>{tierLabel[a.confidence_tier]}</span>
+                    <span>{t("tracker.oiOutcomesLogged").replace("{n}", a.outcomes_logged_count)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );
