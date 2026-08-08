@@ -2669,11 +2669,25 @@ Return ONLY this JSON, no markdown:
     2000, "outcome_intelligence"
   );
 
+  // Validates the full response shape, not just the version tag -- a response can
+  // satisfy v===1 while still being missing a requested section or a top-level array
+  // (model omission, or JSON truncated at a brace boundary that still balances). Either
+  // failure throws instead of returning null, so the caller's existing try/catch
+  // (OutcomeIntelligencePanel.runAnalysis) surfaces the error and skips saveAnalysis --
+  // no discarded response silently persisted as a null or partial analysis.
   try {
     const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
     const parsed = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
-    return parsed?.v === 1 ? parsed : null;
-  } catch { return null; }
+    const hasAllSections = !!parsed && SECTIONS.every(sec => {
+      const entry = parsed.analyses?.[sec.key];
+      return entry && typeof entry === "object" && Object.keys(entry).length > 0;
+    });
+    const hasTopLevelArrays = Array.isArray(parsed?.topInsights) && Array.isArray(parsed?.whatWorking) && Array.isArray(parsed?.whatToChange);
+    if (parsed?.v !== 1 || !hasAllSections || !hasTopLevelArrays) throw new Error("outcome_intelligence_invalid_response");
+    return parsed;
+  } catch {
+    throw new Error("outcome_intelligence_invalid_response");
+  }
 }
 
 // Orchestrates one full analysis run: computes deterministic patterns/funnel, calls the
