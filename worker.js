@@ -8,7 +8,6 @@
 //
 // Routes (JWT auth required):
 //   POST /                             → Claude AI proxy + entitlement + quota
-//   POST /api/trial/activate           → stamp trial_started_at on first login
 //   POST /api/billing/checkout-session → create Stripe Checkout session
 //   POST /api/billing/confirm-session  → optimistic upgrade after checkout
 //   POST /api/billing/cancel           → set cancel_at_period_end (FTC)
@@ -72,14 +71,12 @@ const ALLOWED_ORIGINS = [
 // KV TTL in seconds, keyed by subscription_status.
 // More volatile states get shorter TTLs to pick up changes faster.
 const KV_TTL = {
-  trial_active:    900,   // 15 min — trial_ends_at matters
-  trial_expired:   3600,  // 1 hr  — stable terminal state
   pro_active:      1800,  // 30 min
   pro_past_due:    300,   // 5 min  — needs fast resolution
   pro_cancelled:   3600,  // 1 hr  — wait for current_period_end
   premium_active:  1800,  // 30 min
   admin:           3600,  // 1 hr  — rarely changes
-  no_subscription: 3600,  // 1 hr  — stable until trial activation
+  no_subscription: 3600,  // 1 hr  — stable until checkout
 };
 const CONFIG_KV_TTL = 3600; // platform_config values change rarely
 
@@ -328,23 +325,6 @@ function getCapabilities(sub, config) {
     salaryAnalysisLimit:  Infinity,
   };
   switch (status) {
-    case "trial_active": {
-      const ends = sub.trial_ends_at ? new Date(sub.trial_ends_at).getTime() : 0;
-      if (ends <= now) {
-        return { plan: "trial_expired", canUseAI: false, canUseJobs: true,
-          aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0 };
-      }
-      return {
-        plan: "trial", canUseAI: true, canUseJobs: true,
-        aiRequestLimit:       parseInt(config.trial_ai_requests ?? "10"),
-        resumeAnalysisLimit:  parseInt(config.trial_resume_analyses ?? "3"),
-        interviewSessionLimit: parseInt(config.trial_interview_sessions ?? "3"),
-        salaryAnalysisLimit:  parseInt(config.trial_salary_analyses ?? "2"),
-      };
-    }
-    case "trial_expired":
-      return { plan: "trial_expired", canUseAI: false, canUseJobs: true,
-        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0 };
     case "pro_active":
       return { plan: "pro", canUseAI: true, canUseJobs: true, ...proLimits };
     case "premium_active":
@@ -385,7 +365,7 @@ function getCapabilities(sub, config) {
 
 function getPeriodKey(sub) {
   const s = sub.subscription_status ?? "no_subscription";
-  if (s === "trial_active" || s === "trial_expired" || s === "no_subscription") return "trial";
+  if (s === "no_subscription") return "free";
   const d = new Date();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
@@ -420,12 +400,9 @@ function computeBillingState(sub) {
   const status = sub.subscription_status ?? "no_subscription";
   const cancelAtPeriodEnd = sub.cancel_at_period_end ?? false;
   const now = Date.now();
-  const trialEnd  = sub.trial_ends_at        ? new Date(sub.trial_ends_at).getTime()        : 0;
   const periodEnd = sub.current_period_end   ? new Date(sub.current_period_end).getTime()   : 0;
   const graceEnd  = sub.grace_period_ends_at ? new Date(sub.grace_period_ends_at).getTime() : 0;
   switch (status) {
-    case "trial_active":   return trialEnd > now ? "TRIAL" : "PRO_EXPIRED";
-    case "trial_expired":  return "PRO_EXPIRED";
     case "pro_active":     return cancelAtPeriodEnd ? "PRO_CANCELING" : "PRO_ACTIVE";
     case "pro_past_due":   return graceEnd > now ? "PRO_PAST_DUE" : "PRO_EXPIRED";
     case "pro_cancelled":  return periodEnd > now ? "PRO_CANCELING" : "PRO_EXPIRED";
@@ -468,7 +445,7 @@ function computeQuotas(caps, usage) {
 }
 
 const BILLING_STATE_PLAN = {
-  FREE: "Free", TRIAL: "Free Trial",
+  FREE: "Free",
   PRO_ACTIVE: "Pro", PRO_CANCELING: "Pro", PRO_PAST_DUE: "Pro", PRO_EXPIRED: "Pro",
   PREMIUM_ACTIVE: "Premium", PREMIUM_CANCELING: "Premium", ADMIN: "Admin",
 };
@@ -583,44 +560,6 @@ async function handleHealth(request, env) {
   }, 200);
 }
 
-// Blueprint #3: trial activation — stamps trial_started_at on first verified login.
-// Idempotent: returns current state if already activated.
-async function handleTrialActivate(request, env) {
-  const auth = await requireAuth(request, env);
-  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
-  const { userId } = auth;
-  const rows = await supabaseGet("profiles", {
-    id: `eq.${userId}`,
-    select: "subscription_status,trial_started_at,trial_ends_at",
-  }, env);
-  const profile = rows?.[0];
-  if (!profile) return corsResponse(request, { error: "user_not_found" }, 404);
-  if (profile.trial_started_at) {
-    return corsResponse(request, {
-      activated: false,
-      subscription_status: profile.subscription_status,
-      trial_started_at: profile.trial_started_at,
-      trial_ends_at: profile.trial_ends_at,
-    });
-  }
-  const config = await getConfig(env);
-  const trialDays = parseInt(config.trial_days ?? "7");
-  const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + trialDays * 86400 * 1000);
-  await supabasePatch("profiles", { id: `eq.${userId}` }, {
-    subscription_status: "trial_active",
-    trial_started_at: now.toISOString(),
-    trial_ends_at: trialEndsAt.toISOString(),
-  }, env);
-  await invalidateSubscription(userId, env);
-  return corsResponse(request, {
-    activated: true,
-    subscription_status: "trial_active",
-    trial_started_at: now.toISOString(),
-    trial_ends_at: trialEndsAt.toISOString(),
-  });
-}
-
 // Blueprint #1 + #3: JWT auth → KV → Supabase → Layer 1 → Layer 2 → execute.
 // `feature` field in body routes to the correct quota bucket; stripped before
 // forwarding so Claude never sees it.
@@ -640,9 +579,7 @@ async function handleClaude(request, env, ctx) {
 
   // Layer 1: entitlement check
   if (!caps.canUseAI) {
-    const s = sub.subscription_status;
-    const error = s === "trial_expired" || s === "no_subscription" ? "trial_expired" : "not_entitled";
-    return corsResponse(request, { error, upgradeRequired: true }, 403);
+    return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
   }
 
   // Layer 2: quota check (skip for unlimited capabilities like admin)
@@ -808,7 +745,7 @@ async function handleBillingState(request, env) {
   if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
   const { userId } = auth;
   // Always invalidate the per-user KV cache before reading so any DB change
-  // (e.g. admin promotion, trial activation) is visible immediately rather
+  // (e.g. admin promotion, checkout completion) is visible immediately rather
   // than after the KV TTL expires.
   await invalidateSubscription(userId, env);
   const [sub, config] = await Promise.all([getSubscription(userId, env), getConfig(env)]);
@@ -816,17 +753,12 @@ async function handleBillingState(request, env) {
   const periodKey = getPeriodKey(sub);
   const usage = await getUsage(userId, periodKey, env);
   const billingState = computeBillingState(sub);
-  const now = Date.now();
-  const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
-  const daysRemaining = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - now) / 86400000)) : null;
   return corsResponse(request, {
     billingState,
     subscriptionStatus: sub.subscription_status ?? "no_subscription",
     planDisplayName: BILLING_STATE_PLAN[billingState] ?? "Free",
     canUseAI: caps.canUseAI,
     canUseJobs: caps.canUseJobs,
-    trialEndsAt: sub.trial_ends_at ?? null,
-    daysRemaining,
     periodEnd: sub.current_period_end ?? null,
     cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
     paymentMethodOnFile: !!sub.stripe_customer_id,
@@ -1026,7 +958,7 @@ async function supabaseUpsert(table, data, onConflict, env) {
 // ── Scheduler: eligible users ────────────────────────────────────────────────
 // Proactive Job Alerts is Premium Feature #4 -- same premium-only gate
 // already established for Referral Intelligence (isPremium = premium_active
-// or admin), not the broader "canUseAI" set that also includes trial/pro.
+// or admin), not the broader "canUseAI" set that also includes pro.
 async function getPremiumUserIds(env) {
   const rows = await supabaseGet("profiles", { select: "id", subscription_status: "in.(premium_active,admin)" }, env);
   return rows.map(r => r.id);
@@ -1581,7 +1513,6 @@ export default {
 
       if (method === "POST") {
         if (path === "/api/jobs")                    return handleJobSearch(request, env);
-        if (path === "/api/trial/activate")          return handleTrialActivate(request, env);
         if (path === "/api/billing/checkout-session") return handleCheckoutSession(request, env);
         if (path === "/api/billing/confirm-session") return handleConfirmSession(request, env);
         if (path === "/api/billing/cancel")          return handleCancelSubscription(request, env);

@@ -64,7 +64,6 @@ async function newCtx(browser, uid, email, { contacts = [], watchlist = [], save
   await context.route(`**/${SUPABASE_HOST}/rest/v1/outcome_patterns*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/referral_analyses*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(referralAnalyses) }));
   await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: 'PREMIUM', plan: 'Premium', quotas: { ai_request: { unlimited: true } } }) }));
-  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/trial/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activated: true }) }));
 
   const page = await context.newPage();
   page.on('pageerror', err => { pageErrors.push(err.message); console.log('*** PAGE ERROR:', err.message); });

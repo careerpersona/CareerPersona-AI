@@ -28,7 +28,7 @@ import { useCareerProgressAnalysis } from "./data/careerProgress";
 import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
 import { useUserContext } from "./data/userContext";
 import { loadSkillSynonyms } from "./data/skillSynonyms";
-import { extractSkillKeywords, buildCompatibilityRecord } from "./lib/compatibility";
+import { extractSkillKeywords, buildCompatibilityRecord, normalizeSkillSet } from "./lib/compatibility";
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { useJobWatchlist } from "./data/jobWatchlist";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
@@ -128,14 +128,7 @@ const useAuth = () => {
     const syncFromSession = async (session) => {
       if (!session?.user) return;
       if (session.access_token) {
-        // 1. Activate trial (idempotent — safe every login)
-        try {
-          await fetch(`${WORKER_URL}/api/trial/activate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-          });
-        } catch (_) {}
-        // 2. Fetch canonical billing state (Worker is single source of truth)
+        // 1. Fetch canonical billing state (Worker is single source of truth)
         try {
           const stateRes = await fetch(`${WORKER_URL}/api/billing/state`, {
             headers: { "Authorization": `Bearer ${session.access_token}` },
@@ -147,7 +140,7 @@ const useAuth = () => {
           }
         } catch (_) {}
       }
-      // 3. Fetch profile (non-billing fields: name, email, language, etc.)
+      // 2. Fetch profile (non-billing fields: name, email, language, etc.)
       const merged = await fetchProfile(session.user.id, session.user.email);
       login(merged);
     };
@@ -7104,10 +7097,46 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
   );
 }
 
+// Reusable locked-feature card for Job Search's richer, in-context Pro upsell.
+// No existing shared component covers this shape (searched: OutcomeIntelligencePanel's
+// and ReferralIntelligencePanel.jsx's premium gates are single-sentence, no benefits
+// list, no featured variant) -- kept local to this file section since Job Search is
+// its only consumer today, per "keep the component localized." All copy is passed in
+// as already-translated strings, matching every other component in this file.
+function LockedAICard({ icon = "🔒", title, description, benefits, buttonLabel, onUpgrade, featured = false }) {
+  return (
+    <div style={{
+      background: "#fff",
+      border: featured ? `2px solid ${C.purple}` : `1.5px solid ${C.purple}22`,
+      borderRadius: 14,
+      padding: "18px 20px",
+      marginBottom: 10,
+      boxShadow: featured ? "0 2px 12px rgba(107,33,232,0.08)" : "none",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 800, color: C.text }}>{title}</span>
+      </div>
+      <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{description}</div>
+      <ul style={{ listStyle: "none", margin: "0 0 14px", padding: 0, display: "grid", gap: 5 }}>
+        {(benefits || []).map((b, i) => (
+          <li key={i} style={{ fontSize: 12.5, color: C.textMid, display: "flex", gap: 7, alignItems: "flex-start" }}>
+            <span style={{ color: C.purple, fontWeight: 800, flexShrink: 0 }}>✓</span>{b}
+          </li>
+        ))}
+      </ul>
+      <Btn onClick={onUpgrade} style={{ width: "100%" }}>{buttonLabel}</Btn>
+    </div>
+  );
+}
+
 function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes, onQueueChange, queue, enqueue, markReady, markNeedsReview, markFailed, purgeQueueByJobId, onNavigate, billingState, activeResumeId, onResumeLoad, saveResume, onNavigateResume, jobWatchlist, companyWatchlist }) {
   const { t, language } = useI18n();
   const [filters, setFilters] = useSessionState("cp_jobs_filters", { title: profile?.preferred_job_title || "", keywords: "", country: "US", city: profile?.location || "", remote: profile?.work_type === "Remote", employmentType: "Any", experienceLevel: "Any", salaryMin: "" });
   const [jobs, setJobs] = useSessionState("cp_jobs_results", []); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [searched, setSearched] = useSessionState("cp_jobs_searched", false); const [page, setPage] = useSessionState("cp_jobs_page", 1); const [hasMore, setHasMore] = useSessionState("cp_jobs_hasmore", false); const [sourceCounts, setSourceCounts] = useSessionState("cp_jobs_sourcecounts", null);
+  // Vendor split (Adzuna/JSearch) stays tracked for internal diagnostics only --
+  // job seekers don't need provider names, so this no longer renders anywhere.
+  useEffect(() => { if (sourceCounts) console.debug("[JobSearch] source split", sourceCounts); }, [sourceCounts]);
   // Active resume is derived from the single shared source of truth (resumes + activeResumeId,
   // both owned at the root and shared with Dashboard/SavedJobs/Resume pages) rather than a
   // separate local copy — this is what keeps every screen in sync automatically.
@@ -7118,6 +7147,23 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
   const [uploadingResume, setUploadingResume] = useState(false);
   const [smartApplying, setSmartApplying] = useState(null);
   const userContext = useUserContext({ profile, applications, savedJobs });
+  // Job Details expansion — same Set-based toggle pattern as SavedJobsPage's
+  // expandedJobs/toggleJobExpanded (App.jsx ~10276), reused rather than a new pattern.
+  const [expandedJobs, setExpandedJobs] = useState(new Set());
+  const toggleJobExpanded = (jobId) => {
+    setExpandedJobs(prev => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId); else next.add(jobId);
+      return next;
+    });
+  };
+  // Client-side-only signal for whether Smart Apply should attempt its real request.
+  // Mirrors the exact billingState -> plan string the server's canUseAI already gates
+  // on (worker.js getCapabilities) -- this does not duplicate or alter entitlement
+  // logic, it just reads the same computed value to avoid firing a request the
+  // server would reject anyway. Real enforcement stays server-side, unchanged.
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
   // ── Job Intelligence features ────────────────────────────────────────────
@@ -7449,6 +7495,17 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     }
   };
 
+  // Free-tier gate for the Smart Apply button. The server already rejects this
+  // request safely with zero Claude cost (verified: worker.js handleClaude's
+  // entitlement check runs before the Anthropic fetch) -- this exists purely so
+  // a Free user's click never fires a request that's going to be rejected, and
+  // never sees the resulting generic failure message. Paid users are completely
+  // unaffected: canUseAI is true, so this falls straight through to smartApply.
+  const handleSmartApplyClick = (job) => {
+    if (!canUseAI) { toggleJobExpanded(job.id); return; }
+    smartApply(job);
+  };
+
   // Sync lightweight employer/job fields for any saved job that appears in fresh search results.
   // Called after every successful search — initial and load-more.
   // Captures the previous description before overwriting so Employer Change Intelligence
@@ -7661,11 +7718,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>
               {t("jobSearch.jobsFoundFor").replace("{n}", displayJobs.length !== jobs.length ? `${displayJobs.length} of ${jobs.length}` : jobs.length)}"<strong style={{ color: C.text }}>{filters.title}</strong>"
-              {sourceCounts && <span style={{ marginLeft: 10, fontSize: 12 }}>
-                <span style={{ color: C.blue }}>Adzuna: {sourceCounts.adzuna}</span>
-                {" · "}
-                <span style={{ color: C.purple }}>JSearch: {sourceCounts.rapidapi}</span>
-              </span>}
               {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginLeft: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} {t("jobSearch.newBadge")}</span> : null; })()}
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -7681,6 +7733,72 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
             {displayJobs.map(job => {
               const cr = compatibilityByJobId[job.id];
               const displayMatch = cr ? cr.match_score : job.matchScore;
+              const isExpanded = expandedJobs.has(job.id);
+
+              // Matched/missing skill names for display -- recomputed here with the
+              // exact same normalizeSkillSet the Compatibility Engine uses internally
+              // (src/lib/compatibility/compatibility.js scoreSkillsMatch), so what's
+              // shown always agrees with the score. The engine itself is untouched;
+              // this is presentation only, using data already in scope.
+              let matchedSkills = [], missingSkills = [];
+              if (cr && job.skills?.length && resumeSkills?.length) {
+                const normJob = normalizeSkillSet(job.skills, skillDictionary);
+                const normResume = normalizeSkillSet(resumeSkills, skillDictionary);
+                matchedSkills = [...normJob].filter(s => normResume.has(s));
+                missingSkills = [...normJob].filter(s => !normResume.has(s));
+              }
+              const compatRows = cr ? [
+                { key: "skills", label: t("jobSearch.compatSkillsLabel"), raw: cr.raw_components.skills },
+                { key: "jobTitle", label: t("jobSearch.compatTitleLabel"), raw: cr.raw_components.jobTitle },
+                { key: "salary", label: t("jobSearch.compatSalaryLabel"), raw: cr.raw_components.salary },
+                { key: "location", label: t("jobSearch.compatLocationLabel"), raw: cr.raw_components.location },
+              ] : [];
+
+              // Free, always: full description + the deterministic compatibility
+              // breakdown (buildCompatibilityRecord, zero LLM cost). Locked cards
+              // (Pro-only) render below, gated on !canUseAI so Pro/Premium users who
+              // already have these features never see an upgrade prompt for them.
+              const expandedContent = isExpanded && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                  {job.description && (
+                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 14, whiteSpace: "pre-wrap" }}>{job.description}</div>
+                  )}
+                  {cr && (
+                    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("jobSearch.compatBreakdownTitle").replace("{v}", displayMatch)}</div>
+                      {compatRows.map(row => (
+                        <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+                          <span style={{ fontSize: 12.5, color: C.textMid, fontWeight: 600, width: 90, flexShrink: 0 }}>{row.label}</span>
+                          {row.raw == null ? (
+                            <span style={{ fontSize: 11.5, color: C.textMuted }}>{t("jobSearch.compatDataUnavailable")}</span>
+                          ) : row.key === "skills" ? (
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                              {matchedSkills.map(s => <span key={s} style={{ background: C.greenLight, color: C.green, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>✓ {s}</span>)}
+                              {missingSkills.map(s => <span key={s} style={{ background: C.redLight, color: C.red, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>✗ {s}</span>)}
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ flex: 1, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
+                                <div style={{ height: "100%", borderRadius: 4, width: `${Math.round(row.raw * 100)}%`, background: matchScoreColor(Math.round(row.raw * 100)) }} />
+                              </div>
+                              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "right", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!canUseAI && (
+                    <>
+                      {cr && <div style={{ fontSize: 12.5, color: C.textMid, fontWeight: 600, marginBottom: 12 }}>{t("jobSearch.proTransitionHeading")}</div>}
+                      <LockedAICard title={t("jobSearch.lockedAtsTitle")} description={t("jobSearch.lockedAtsDesc")} benefits={t("jobSearch.lockedAtsBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                      <LockedAICard title={t("jobSearch.lockedTailorTitle")} description={t("jobSearch.lockedTailorDesc")} benefits={t("jobSearch.lockedTailorBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                      <LockedAICard title={t("jobSearch.lockedCoverTitle")} description={t("jobSearch.lockedCoverDesc")} benefits={t("jobSearch.lockedCoverBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                      <LockedAICard featured title={t("jobSearch.lockedSmartApplyTitle")} description={t("jobSearch.lockedSmartApplyDesc")} benefits={t("jobSearch.lockedSmartApplyBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => onNavigate?.("pricing")} />
+                    </>
+                  )}
+                </div>
+              );
 
               if (isMobile || isTablet) {
                 const compact = isMobile;
@@ -7725,9 +7843,16 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                       ) : isSmartApplied(job) ? (
                         <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>{t("jobSearch.continueInSaved")}</Btn>
                       ) : (
-                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => smartApply(job)}>{t("jobSearch.smartApply")}</Btn>
+                        <Btn variant="secondary" style={{ width: "100%", fontSize: 11, padding: "8px 4px" }} onClick={() => handleSmartApplyClick(job)}>{canUseAI ? t("jobSearch.smartApply") : t("jobSearch.smartApplyLocked")}</Btn>
                       )}
                     </div>
+                    {/* View Details toggle — full-width, generous tap target: this is
+                        carrying more weight on mobile than before, since mobile cards
+                        never showed a description at all until now. */}
+                    <button onClick={() => toggleJobExpanded(job.id)} style={{ width: "100%", marginTop: 8, paddingTop: 10, borderTop: `1px dashed ${C.border}`, border: "none", borderTopStyle: "dashed", background: "none", color: C.purple, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "center" }}>
+                      {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")} {isExpanded ? "▴" : "▾"}
+                    </button>
+                    {expandedContent}
                   </Card>
                 );
               }
@@ -7749,9 +7874,14 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
                       <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 6 }}>{job.company} · {job.location}</div>
                       <div style={{ fontSize: 14, color: C.green, fontWeight: 700, marginBottom: 10 }}>{fmtSalary(job.salaryMin, job.salaryMax)}</div>
-                      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 10 }}>{job.description?.slice(0, 200)}…</div>
+                      {!isExpanded && <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 10 }}>{job.description?.slice(0, 200)}…</div>}
                       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>{job.skills?.slice(0, 5).map(s => <span key={s} style={{ background: C.purpleLight, color: C.purple, borderRadius: 6, padding: "3px 9px", fontSize: 12, fontWeight: 600 }}>{s}</span>)}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>{t("jobSearch.posted")} {job.datePosted ? new Date(job.datePosted).toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric' }) : t("jobSearch.recently")}</span>
+                        <button onClick={() => toggleJobExpanded(job.id)} style={{ border: "none", background: "none", color: C.purple, fontSize: 12.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                          {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")} {isExpanded ? "▴" : "▾"}
+                        </button>
+                      </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 120 }}>
                       <Btn variant={isSaved(job.id) ? "danger" : "secondary"} style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => toggleSave(job)}>{isSaved(job.id) ? t("jobSearch.saved") : t("jobSearch.saveJob")}</Btn>
@@ -7761,10 +7891,11 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                       ) : isSmartApplied(job) ? (
                         <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px", color: C.purple, fontWeight: 700 }} onClick={() => onNavigate?.("saved")}>{t("jobSearch.continueInSaved")}</Btn>
                       ) : (
-                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => smartApply(job)}>{t("jobSearch.smartApply")}</Btn>
+                        <Btn variant="secondary" style={{ fontSize: 13, padding: "9px 14px" }} onClick={() => handleSmartApplyClick(job)}>{canUseAI ? t("jobSearch.smartApply") : t("jobSearch.smartApplyLocked")}</Btn>
                       )}
                     </div>
                   </div>
+                  {expandedContent}
                 </Card>
               );
             })}
@@ -10543,7 +10674,7 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [successPlanName, setSuccessPlanName] = useState("");
-  const bs = billingState?.billingState || (profile?.subscription_status === "trial_active" ? "TRIAL" : "FREE");
+  const bs = billingState?.billingState || "FREE";
   const isAlreadyPro = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
 
   // Checkout return: detect session_id in URL hash after Stripe redirect
@@ -11762,13 +11893,10 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
   // Canonical billing state from Worker — all UI decisions derive from here
   const bs = billingState?.billingState || "FREE";
   const isActive = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
-  const isTrial = bs === "TRIAL";
   const isCanceling = bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING";
   const isPastDue = bs === "PRO_PAST_DUE";
   const isExpired = bs === "PRO_EXPIRED";
-  const planDisplayName = billingState?.planDisplayName || (isTrial ? t("settings.trialActive") : "Free");
-  const daysRemaining = billingState?.daysRemaining ?? null;
-  const trialEndsAt = billingState?.trialEndsAt ? new Date(billingState.trialEndsAt) : null;
+  const planDisplayName = billingState?.planDisplayName || "Free";
   const periodEnd = billingState?.periodEnd ? new Date(billingState.periodEnd) : null;
   const cancelAtPeriodEnd = billingState?.cancelAtPeriodEnd ?? false;
   const paymentMethodOnFile = billingState?.paymentMethodOnFile ?? false;
@@ -11879,19 +12007,14 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
           {/* Plan name */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.currentPlan")}</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: isActive ? C.purple : isTrial ? C.orange : C.text }}>{planDisplayName}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: isActive ? C.purple : C.text }}>{planDisplayName}</div>
           </div>
 
           {/* Status */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.status")}</div>
-            {isTrial && daysRemaining !== null && (
-              <div style={{ fontSize: 14, fontWeight: 700, color: daysRemaining > 2 ? C.green : C.orange }}>
-                {t("settings.trialDaysRemaining").replace("{n}", daysRemaining)}
-              </div>
-            )}
             {bs === "PRO_EXPIRED" && (
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.trialExpiredStatus")}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.subExpiredStatus")}</div>
             )}
             {(bs === "PRO_ACTIVE" || bs === "PREMIUM_ACTIVE" || bs === "ADMIN") && !cancelAtPeriodEnd && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.green }}>{t("settings.active")}</div>
@@ -11908,12 +12031,6 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
           </div>
 
           {/* Renewal / expiry date */}
-          {isTrial && trialEndsAt && (
-            <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.trialEnds")}</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{formatDate(trialEndsAt)}</div>
-            </div>
-          )}
           {isActive && periodEnd && !cancelAtPeriodEnd && (
             <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
               <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.nextRenewal")}</div>
@@ -12225,7 +12342,7 @@ export default function App() {
     { id: "pricing", icon: "💎", label: t("nav.pricing") },
   ];
   const subStatus = profile?.subscription_status || "no_subscription";
-  const SUB_LABEL = { trial_active: "Trial", trial_expired: "Trial Expired", pro_active: "Pro", pro_past_due: "Pro", pro_cancelled: "Pro", premium_active: "Premium", admin: "Admin" };
+  const SUB_LABEL = { pro_active: "Pro", pro_past_due: "Pro", pro_cancelled: "Pro", premium_active: "Premium", admin: "Admin" };
   const planName = SUB_LABEL[subStatus] || "Free";
   const isPaidPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
   // Application Outcome Intelligence is "Gate: Premium Only" per its locked blueprint --

@@ -57,7 +57,6 @@ async function txt(page) { return page.evaluate(() => document.body.innerText); 
   await context.route(/proxy\.dawn-voice-2790\.workers\.dev/, async (route) => {
     const url = route.request().url();
     if (url.includes('/api/billing')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: 'ADMIN', plan: 'Admin', quotas: { ai_request: { unlimited: true }, resume_analysis: { unlimited: true } } }) });
-    if (url.includes('/api/trial')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activated: true }) });
     return route.continue();
   });
 

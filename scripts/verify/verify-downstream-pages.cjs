@@ -60,7 +60,6 @@ const SAVED_JOB_ROW = {
   await context.route(`**/${SUPABASE_HOST}/rest/v1/saved_jobs*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([SAVED_JOB_ROW]) }));
   await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/?$/, (route) => { console.log('*** UNEXPECTED CLAUDE CALL:', route.request().url()); return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });
   await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: 'ADMIN', plan: 'Admin', quotas: { ai_request: { unlimited: true } } }) }));
-  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/trial/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activated: true }) }));
 
   const page = await context.newPage();
   const pageErrors = [];
