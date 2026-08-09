@@ -611,6 +611,16 @@ async function handleClaude(request, env, ctx) {
     return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
   }
 
+  // Layer 1d: LinkedIn Intelligence's Premium interpretive layer (Profile Strategy
+  // Analysis, Recruiter Visibility Intelligence, Profile Evolution Tracking) is
+  // Premium/Admin only -- the base content generation stays on the plain
+  // "linkedin_intelligence" feature key, Pro-allowed, unaffected by this check.
+  // Same pattern as Layer 1b/1c -- reuses caps.plan, no second entitlement system,
+  // no config or quota/pricing change.
+  if (feature === "linkedin_intelligence_premium" && caps.plan !== "premium" && caps.plan !== "admin") {
+    return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
+  }
+
   // Layer 2: quota check (skip for unlimited capabilities like admin)
   const limit = getFeatureLimit(feature, caps);
   const period = getPeriodKey(sub);

@@ -127,7 +127,7 @@ export async function runLinkedinIntelligenceAnalysis({
       targetRole,
     });
     if (premiumPrompt) {
-      const premiumRaw = await askClaude(premiumPrompt.prompt, 1200, "linkedin_intelligence");
+      const premiumRaw = await askClaude(premiumPrompt.prompt, 1200, "linkedin_intelligence_premium");
       const parsed = parseLinkedinPremiumResponse(premiumRaw);
       strategyAnalysis = parsed?.strategyAnalysis || null;
       recruiterVisibilityIntelligence = parsed?.recruiterVisibilityIntelligence || null;
@@ -166,7 +166,7 @@ export async function runProfileEvolutionAnalysis({ latest, previous, targetRole
   const built = buildProfileEvolutionPrompt(evolution, targetRole);
   if (!built) return { evolution, narrative: null };
 
-  const raw = await askClaude(built.prompt, 500, "linkedin_intelligence");
+  const raw = await askClaude(built.prompt, 500, "linkedin_intelligence_premium");
   const narrative = parseProfileEvolutionResponse(raw);
   return { evolution, narrative };
 }
