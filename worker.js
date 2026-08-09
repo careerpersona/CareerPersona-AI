@@ -373,6 +373,38 @@ function getCapabilities(sub, config) {
         opportunityIntelligenceLimit: active ? proFeatureLimits.opportunityIntelligenceLimit : 0,
       };
     }
+    case "premium_past_due": {
+      const grace = sub.grace_period_ends_at ? new Date(sub.grace_period_ends_at).getTime() : 0;
+      const inGrace = grace > now;
+      return {
+        plan: "premium_past_due", canUseAI: inGrace, canUseJobs: true,
+        aiRequestLimit:            inGrace ? aiRequestLimit : 0,
+        resumeAnalysisLimit:       inGrace ? premiumFeatureLimits.resumeAnalysisLimit : 0,
+        interviewSessionLimit:     inGrace ? premiumFeatureLimits.interviewSessionLimit : 0,
+        salaryAnalysisLimit:       inGrace ? premiumFeatureLimits.salaryAnalysisLimit : 0,
+        linkedinIntelligenceLimit: inGrace ? premiumFeatureLimits.linkedinIntelligenceLimit : 0,
+        networkingOutreachLimit:   inGrace ? premiumFeatureLimits.networkingOutreachLimit : 0,
+        smartApplyLimit:           inGrace ? premiumFeatureLimits.smartApplyLimit : 0,
+        jobIntelligenceLimit:      inGrace ? premiumFeatureLimits.jobIntelligenceLimit : 0,
+        opportunityIntelligenceLimit: inGrace ? premiumFeatureLimits.opportunityIntelligenceLimit : 0,
+      };
+    }
+    case "premium_cancelled": {
+      const end = sub.current_period_end ? new Date(sub.current_period_end).getTime() : 0;
+      const active = end > now;
+      return {
+        plan: "premium_cancelled", canUseAI: active, canUseJobs: true,
+        aiRequestLimit:            active ? aiRequestLimit : 0,
+        resumeAnalysisLimit:       active ? premiumFeatureLimits.resumeAnalysisLimit : 0,
+        interviewSessionLimit:     active ? premiumFeatureLimits.interviewSessionLimit : 0,
+        salaryAnalysisLimit:       active ? premiumFeatureLimits.salaryAnalysisLimit : 0,
+        linkedinIntelligenceLimit: active ? premiumFeatureLimits.linkedinIntelligenceLimit : 0,
+        networkingOutreachLimit:   active ? premiumFeatureLimits.networkingOutreachLimit : 0,
+        smartApplyLimit:           active ? premiumFeatureLimits.smartApplyLimit : 0,
+        jobIntelligenceLimit:      active ? premiumFeatureLimits.jobIntelligenceLimit : 0,
+        opportunityIntelligenceLimit: active ? premiumFeatureLimits.opportunityIntelligenceLimit : 0,
+      };
+    }
     case "admin":
       return {
         plan: "admin", canUseAI: true, canUseJobs: true,
@@ -439,6 +471,8 @@ function computeBillingState(sub) {
     case "pro_past_due":   return graceEnd > now ? "PRO_PAST_DUE" : "PRO_EXPIRED";
     case "pro_cancelled":  return periodEnd > now ? "PRO_CANCELING" : "PRO_EXPIRED";
     case "premium_active": return cancelAtPeriodEnd ? "PREMIUM_CANCELING" : "PREMIUM_ACTIVE";
+    case "premium_past_due":  return graceEnd > now ? "PREMIUM_PAST_DUE" : "PREMIUM_EXPIRED";
+    case "premium_cancelled": return periodEnd > now ? "PREMIUM_CANCELING" : "PREMIUM_EXPIRED";
     case "admin":          return "ADMIN";
     default:               return "FREE";
   }
@@ -483,7 +517,8 @@ function computeQuotas(caps, usage) {
 const BILLING_STATE_PLAN = {
   FREE: "Free",
   PRO_ACTIVE: "Pro", PRO_CANCELING: "Pro", PRO_PAST_DUE: "Pro", PRO_EXPIRED: "Pro",
-  PREMIUM_ACTIVE: "Premium", PREMIUM_CANCELING: "Premium", ADMIN: "Admin",
+  PREMIUM_ACTIVE: "Premium", PREMIUM_CANCELING: "Premium", PREMIUM_PAST_DUE: "Premium", PREMIUM_EXPIRED: "Premium",
+  ADMIN: "Admin",
 };
 
 // ─── STRIPE REST HELPERS ──────────────────────────────────────────────────────
@@ -685,16 +720,47 @@ async function handleClaude(request, env, ctx) {
   return corsResponse(request, d, r.status);
 }
 
+// Authoritative server-side tier detection -- the ONLY thing that decides
+// pro_active vs premium_active (and their past_due/cancelled equivalents) is
+// the actual Stripe Price ID attached to the actual Stripe Subscription
+// object, compared against the two configured Price IDs. Never reads a
+// client-supplied plan; a Checkout Session's requested `plan` only picks
+// which price to charge, it never bypasses this check. Defaults to "pro" for
+// any subscription whose price doesn't match the configured Premium Price ID
+// (including when Premium isn't configured yet) -- matches today's existing
+// behavior exactly and never silently grants Premium entitlement.
+function determineTierFromStripeSubscription(stripeSub, config) {
+  const priceId = stripeSub?.items?.data?.[0]?.price?.id;
+  if (priceId && config.stripe_price_id_premium && priceId === config.stripe_price_id_premium) {
+    return "premium";
+  }
+  return "pro";
+}
+
 // Blueprint #3: create Stripe Checkout session. Get-or-create Stripe customer,
 // then create a subscription checkout. Returns { url } for frontend redirect.
+// `plan` ("pro" | "premium", body param, defaults to "pro" so the existing
+// no-body Pro call keeps working unchanged) only selects which Price ID this
+// Checkout Session is created for -- it never establishes entitlement itself.
+// The actual tier a user is granted is always re-derived server-side from the
+// real Stripe subscription object once payment completes (see
+// determineTierFromStripeSubscription), never trusted from this request.
 async function handleCheckoutSession(request, env) {
   const auth = await requireAuth(request, env);
   if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
   if (!env.STRIPE_SECRET_KEY) return corsResponse(request, { error: "stripe_not_configured" }, 503);
   const { userId } = auth;
+  let plan = "pro";
+  try {
+    const body = await request.json();
+    if (body?.plan === "premium") plan = "premium";
+  } catch (_) { /* no body / not JSON — default to "pro", preserves the existing call shape */ }
   const config = await getConfig(env);
-  const priceId = config.stripe_price_id_pro;
-  if (!priceId) return corsResponse(request, { error: "stripe_price_not_configured" }, 503);
+  const priceId = plan === "premium" ? config.stripe_price_id_premium : config.stripe_price_id_pro;
+  // Fails safely rather than attempting checkout with a placeholder: until a
+  // real Premium Price ID is set in platform_config, Premium checkout is
+  // simply unavailable, same 503 shape Pro already uses when unconfigured.
+  if (!priceId) return corsResponse(request, { error: plan === "premium" ? "premium_price_not_configured" : "stripe_price_not_configured" }, 503);
   const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "stripe_customer_id" }, env);
   const profile = rows?.[0];
   if (!profile) return corsResponse(request, { error: "user_not_found" }, 404);
@@ -746,15 +812,18 @@ async function handleConfirmSession(request, env) {
     return corsResponse(request, { success: false, status: session.status, payment_status: session.payment_status });
   }
   const stripeSub = await stripeRequest("GET", `/subscriptions/${session.subscription}`, null, env);
+  const config = await getConfig(env);
+  const tier = determineTierFromStripeSubscription(stripeSub, config);
+  const newStatus = tier === "premium" ? "premium_active" : "pro_active";
   await supabasePatch("profiles", { id: `eq.${userId}` }, {
-    subscription_status: "pro_active",
+    subscription_status: newStatus,
     stripe_subscription_id: stripeSub.id,
     current_period_start: new Date(stripeSub.current_period_start * 1000).toISOString(),
     current_period_end: new Date(stripeSub.current_period_end * 1000).toISOString(),
     cancel_at_period_end: stripeSub.cancel_at_period_end,
   }, env);
   await invalidateSubscription(userId, env);
-  return corsResponse(request, { success: true, subscription_status: "pro_active" });
+  return corsResponse(request, { success: true, subscription_status: newStatus });
 }
 
 // Blueprint #3 + FTC compliance: cancel at period end — never immediate.
@@ -784,6 +853,116 @@ async function handleResumeSubscription(request, env) {
   await supabasePatch("profiles", { id: `eq.${userId}` }, { cancel_at_period_end: false }, env);
   await invalidateSubscription(userId, env);
   return corsResponse(request, { success: true, cancel_at_period_end: false });
+}
+
+// App-controlled plan changes (Pro <-> Premium) -- replaces reliance on
+// Customer Portal's native "update subscription" feature, which only offers
+// one portal-wide proration policy and can't express this app's asymmetric
+// per-direction rules (immediate+prorated upgrade, deferred+unprorated
+// downgrade). Portal plan-switching must be disabled in the Stripe Dashboard
+// (one-time account configuration, not code) so this endpoint is the only
+// path that changes a paid tier once a subscription exists.
+//
+// Ownership: identical pattern to handleCancelSubscription/
+// handleResumeSubscription above -- stripe_subscription_id is always looked
+// up from the authenticated user's own profiles row, never accepted from the
+// client, so a user can never target another user's subscription by
+// supplying a different customer/subscription ID.
+//
+// Tier authority: determineTierFromStripeSubscription() is consulted both
+// before (to validate the requested transition) and after (to confirm what
+// was actually granted) every change -- the client's requested `plan` only
+// selects which Stripe operation to perform, it never itself grants
+// entitlement.
+async function handleChangePlan(request, env) {
+  const auth = await requireAuth(request, env);
+  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
+  if (!env.STRIPE_SECRET_KEY) return corsResponse(request, { error: "stripe_not_configured" }, 503);
+  const { userId } = auth;
+
+  let plan;
+  try {
+    const body = await request.json();
+    plan = body?.plan;
+  } catch (_) { /* falls through to the validation below */ }
+  if (plan !== "pro" && plan !== "premium") {
+    return corsResponse(request, { error: "invalid_plan" }, 400);
+  }
+
+  const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "stripe_subscription_id" }, env);
+  const subId = rows?.[0]?.stripe_subscription_id;
+  if (!subId) return corsResponse(request, { error: "no_active_subscription" }, 400);
+
+  const [stripeSub, config] = await Promise.all([
+    stripeRequest("GET", `/subscriptions/${subId}`, null, env),
+    getConfig(env),
+  ]);
+  // Only a currently-active Stripe subscription is eligible -- past_due,
+  // canceled, or any other status resolves through the existing
+  // grace-period/checkout paths, not this endpoint.
+  if (stripeSub.status !== "active") {
+    return corsResponse(request, { error: "subscription_not_active" }, 400);
+  }
+  const currentTier = determineTierFromStripeSubscription(stripeSub, config);
+  if (currentTier === plan) {
+    return corsResponse(request, { error: "already_on_plan" }, 400);
+  }
+
+  if (plan === "premium") {
+    // Pro -> Premium: immediate upgrade. Stripe computes the exact prorated
+    // amount from the actual time remaining in the billing period -- no
+    // day-based math here, no assumed fixed amount. always_invoice charges
+    // that proration right away rather than silently deferring it to the
+    // next cycle, matching the locked "immediate upgrade" rule.
+    const premiumPriceId = config.stripe_price_id_premium;
+    if (!premiumPriceId) return corsResponse(request, { error: "premium_price_not_configured" }, 503);
+    const itemId = stripeSub.items?.data?.[0]?.id;
+    const updated = await stripeRequest("POST", `/subscriptions/${subId}`, {
+      "items[0][id]": itemId,
+      "items[0][price]": premiumPriceId,
+      proration_behavior: "always_invoice",
+    }, env);
+    const newTier = determineTierFromStripeSubscription(updated, config);
+    const newStatus = newTier === "premium" ? "premium_active" : "pro_active";
+    await supabasePatch("profiles", { id: `eq.${userId}` }, {
+      subscription_status: newStatus,
+      current_period_start: new Date(updated.current_period_start * 1000).toISOString(),
+      current_period_end: new Date(updated.current_period_end * 1000).toISOString(),
+      cancel_at_period_end: updated.cancel_at_period_end,
+    }, env);
+    await invalidateSubscription(userId, env);
+    return corsResponse(request, { success: true, subscription_status: newStatus });
+  }
+
+  // Premium -> Pro: schedule the downgrade for the end of the current
+  // billing period via a native Stripe Subscription Schedule -- no custom
+  // day-based calculation, no cron job. Nothing changes in our own DB now;
+  // the account keeps premium_active and Premium-tier quotas until the
+  // scheduled phase actually transitions. When it does, Stripe applies the
+  // new price to the subscription and fires customer.subscription.updated,
+  // which re-derives and writes the new tier (see processStripeEvent) --
+  // that's the single sync point, not this endpoint.
+  const proPriceId = config.stripe_price_id_pro;
+  if (!proPriceId) return corsResponse(request, { error: "stripe_price_not_configured" }, 503);
+  const schedule = await stripeRequest("POST", "/subscription_schedules", { from_subscription: subId }, env);
+  const currentPhase = schedule.phases?.[0];
+  const currentPhaseItem = currentPhase?.items?.[0];
+  const currentPhasePriceId = typeof currentPhaseItem?.price === "string" ? currentPhaseItem.price : currentPhaseItem?.price?.id;
+  await stripeRequest("POST", `/subscription_schedules/${schedule.id}`, {
+    "phases[0][items][0][price]": currentPhasePriceId,
+    "phases[0][items][0][quantity]": String(currentPhaseItem?.quantity ?? 1),
+    "phases[0][start_date]": String(currentPhase.start_date),
+    "phases[0][end_date]": String(currentPhase.end_date),
+    "phases[1][items][0][price]": proPriceId,
+    "phases[1][items][0][quantity]": "1",
+    "phases[1][proration_behavior]": "none",
+  }, env);
+  return corsResponse(request, {
+    success: true,
+    subscription_status: "premium_active",
+    scheduled_downgrade_to: "pro",
+    effective_at: new Date(currentPhase.end_date * 1000).toISOString(),
+  });
 }
 
 async function handlePortalSession(request, env) {
@@ -855,8 +1034,10 @@ async function processStripeEvent(event, env) {
   switch (type) {
     case "invoice.paid": {
       const sub = await stripeRequest("GET", `/subscriptions/${obj.subscription}`, null, env);
+      const config = await getConfig(env);
+      const tier = determineTierFromStripeSubscription(sub, config);
       await supabasePatch("profiles", { id: `eq.${userId}` }, {
-        subscription_status: "pro_active",
+        subscription_status: tier === "premium" ? "premium_active" : "pro_active",
         stripe_subscription_id: sub.id,
         current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
         current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
@@ -869,15 +1050,26 @@ async function processStripeEvent(event, env) {
       const config = await getConfig(env);
       const graceDays = parseInt(config.grace_period_days ?? "14");
       const graceEnds = new Date(Date.now() + graceDays * 86400 * 1000).toISOString();
+      // Same tier-detection as invoice.paid -- a failed invoice still carries
+      // a subscription reference, so the actual Price/Product on that
+      // subscription (not the previously-stored status) decides which
+      // past_due variant this account returns to at the end of its grace
+      // period.
+      const sub = await stripeRequest("GET", `/subscriptions/${obj.subscription}`, null, env);
+      const tier = determineTierFromStripeSubscription(sub, config);
       await supabasePatch("profiles", { id: `eq.${userId}` }, {
-        subscription_status: "pro_past_due",
+        subscription_status: tier === "premium" ? "premium_past_due" : "pro_past_due",
         grace_period_ends_at: graceEnds,
       }, env);
       break;
     }
-    case "customer.subscription.deleted":
+    case "customer.subscription.deleted": {
+      // event.data.object for a subscription.* event IS the Subscription
+      // itself -- items/price already embedded, no extra fetch needed.
+      const config = await getConfig(env);
+      const tier = determineTierFromStripeSubscription(obj, config);
       await supabasePatch("profiles", { id: `eq.${userId}` }, {
-        subscription_status: "pro_cancelled",
+        subscription_status: tier === "premium" ? "premium_cancelled" : "pro_cancelled",
         stripe_subscription_id: null,
       }, env);
       supabasePatch("subscriptions", { stripe_subscription_id: `eq.${obj.id}` }, {
@@ -886,12 +1078,32 @@ async function processStripeEvent(event, env) {
         ended_at: obj.ended_at ? new Date(obj.ended_at * 1000).toISOString() : new Date().toISOString(),
       }, env).catch(() => {});
       break;
-    case "customer.subscription.updated":
-      await supabasePatch("profiles", { id: `eq.${userId}` }, {
+    }
+    case "customer.subscription.updated": {
+      const patch = {
         cancel_at_period_end: obj.cancel_at_period_end,
         current_period_start: new Date(obj.current_period_start * 1000).toISOString(),
         current_period_end: new Date(obj.current_period_end * 1000).toISOString(),
-      }, env);
+      };
+      // Sync entitlement to whatever tier the subscription's actual price now
+      // reflects -- covers both an immediate handleChangePlan upgrade's own
+      // confirming webhook (already-correct, idempotent) and, critically, a
+      // scheduled Premium->Pro downgrade's phase transition actually landing
+      // (the only place that transition gets written -- handleChangePlan
+      // itself never touches subscription_status for a scheduled downgrade).
+      // Scoped to accounts currently pro_active/premium_active only: a
+      // past_due or cancelled account's status is owned exclusively by
+      // invoice.payment_failed / customer.subscription.deleted, so an
+      // unrelated subscription.updated event (e.g. Stripe's own retry
+      // bookkeeping) must never bounce it back to *_active on its own.
+      const profileRows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "subscription_status" }, env);
+      const currentStatus = profileRows?.[0]?.subscription_status;
+      if (currentStatus === "pro_active" || currentStatus === "premium_active") {
+        const config = await getConfig(env);
+        const tier = determineTierFromStripeSubscription(obj, config);
+        patch.subscription_status = tier === "premium" ? "premium_active" : "pro_active";
+      }
+      await supabasePatch("profiles", { id: `eq.${userId}` }, patch, env);
       supabasePatch("subscriptions", { stripe_subscription_id: `eq.${obj.id}` }, {
         cancel_at_period_end: obj.cancel_at_period_end,
         current_period_start: new Date(obj.current_period_start * 1000).toISOString(),
@@ -899,6 +1111,7 @@ async function processStripeEvent(event, env) {
         status: obj.status,
       }, env).catch(() => {});
       break;
+    }
   }
   await invalidateSubscription(userId, env);
 }
@@ -1581,6 +1794,7 @@ export default {
         if (path === "/api/billing/confirm-session") return handleConfirmSession(request, env);
         if (path === "/api/billing/cancel")          return handleCancelSubscription(request, env);
         if (path === "/api/billing/resume")          return handleResumeSubscription(request, env);
+        if (path === "/api/billing/change-plan")     return handleChangePlan(request, env);
         if (path === "/api/billing/portal-session")  return handlePortalSession(request, env);
         if (path === "/webhooks/stripe")             return handleStripeWebhook(request, env);
         return handleClaude(request, env, ctx); // POST / — Claude proxy (catch-all)

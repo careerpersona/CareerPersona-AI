@@ -2794,7 +2794,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   // chat are generic AI features (no feature-specific Premium gate, unlike Outcome
   // Intelligence), so Pro/Premium/Admin all pass, only Free is locked.
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState(null);
@@ -4427,7 +4427,7 @@ Location: Remote-first`;
 function JobIntelligencePage({ profile, applications, savedJobs, setPage, billingState }) {
   const { t } = useI18n();
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const { analysis: savedAnalysis, loading: analysisLoading, loadedFor, save: saveAnalysis } = useJobIntelligenceAnalysis(profile?.id);
   const { logActivity } = useActivityLog(profile?.id);
 
@@ -4770,7 +4770,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   // uses (App.jsx handleSmartApplyClick) -- same computed value, not a second
   // entitlement source. Real enforcement stays server-side (worker.js handleClaude).
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const [resume, setResume] = useSessionState("cp_resume_text", "");
   const [jobDesc, setJobDesc] = useSessionState("cp_resume_jobdesc", profile?.preferred_job_title ? t("resume.lookingForPosition").replace("{title}", profile.preferred_job_title) : "");
   // Deterministic Resume Completeness Check -- zero AI cost, available to every
@@ -7296,7 +7296,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
   // logic, it just reads the same computed value to avoid firing a request the
   // server would reject anyway. Real enforcement stays server-side, unchanged.
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false);
   const [isTablet, setIsTablet] = useState(() => typeof window !== "undefined" ? window.matchMedia("(min-width: 768px) and (max-width: 1024px)").matches : false);
   // ── Job Intelligence features ────────────────────────────────────────────
@@ -8109,7 +8109,7 @@ function InterviewPage({ profile, applications, savedJobs, billingState, setPage
   // Same billingState -> canUseAI derivation already used by Dashboard/Resume/Job
   // Search/Saved Jobs/Networking Outreach.
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
   const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useSessionState("cp_interview_filter", "All");
@@ -9439,7 +9439,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
 function SalaryPage({ profile, applications, savedJobs, billingState, setPage }) {
   const { t } = useI18n();
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const [form, setForm] = useState({ jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
@@ -9621,7 +9621,7 @@ function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist
   // Guards only the main outreach generator (main "Generate Outreach Messages" call) --
   // the separate follow-up generator's client lock/quota remain explicitly out of scope.
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   // Outer tab: Outreach (everything that already existed, untouched below) vs.
   // Intelligence (new, Phase 2 stub only -- real functionality lands in Phase 6).
   // Separate from `tab` (the existing linkedin/email/followup/tips selector) so
@@ -10603,7 +10603,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
   // Same billingState -> canUseAI derivation already used by JobSearchPage/ResumePage --
   // reused, not a second entitlement source. Real enforcement stays server-side.
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const userContext = useUserContext({ profile, applications: applications || [], savedJobs: savedJobs || [] });
   const fmtSalary = (min, max) => { if (!min && !max) return t("savedJobs.salaryNotListed"); const f = n => `$${Math.round(n/1000)}K`; if (min && max) return `${f(min)} – ${f(max)}`; return min ? `${f(min)}+` : t("savedJobs.salaryUpTo").replace("{v}", f(max)); };
   const fmtDate = (str) => { if (!str) return ""; try { return new Date(str).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
@@ -10891,14 +10891,21 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
 // ─── PRICING PAGE ──────────────────────────────────────────
 function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
   const { t } = useI18n();
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  // checkoutLoadingPlan / checkoutErrorPlan track WHICH card ("pro" | "premium")
+  // is loading or erroring, since there are now two independent checkout CTAs.
+  const [checkoutLoadingPlan, setCheckoutLoadingPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutErrorPlan, setCheckoutErrorPlan] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [successPlanName, setSuccessPlanName] = useState("");
   const bs = billingState?.billingState || "FREE";
-  const isAlreadyPro = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
+  // "Already has Pro or higher" -- Premium/Admin included so a Premium user
+  // visiting Pricing never sees a Pro checkout CTA (that would be a downgrade
+  // path, not offered here).
+  const isAlreadyPro = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
+  const isAlreadyPremium = ["PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
 
   // Checkout return: detect session_id in URL hash after Stripe redirect
   useEffect(() => {
@@ -10909,11 +10916,17 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
     if (!sessionId) return;
     window.history.replaceState({ page: "pricing" }, "", "#pricing");
     setConfirmLoading(true);
+    // Which plan checkout was attempted for -- stashed by handleCheckout right
+    // before the Stripe redirect, since the session_id alone doesn't say which
+    // plan was purchased. Used only for this error/success message's plan
+    // name; entitlement itself is always re-derived server-side from the
+    // actual Stripe subscription, never from this value.
+    const attemptedPlan = sessionStorage.getItem("cp_checkout_plan") || "pro";
     workerBillingPost("/api/billing/confirm-session", { session_id: sessionId })
       .then(async (data) => {
         if (data.success) {
           const newState = refreshBillingState ? await refreshBillingState() : null;
-          setSuccessPlanName(newState?.planDisplayName || "Pro");
+          setSuccessPlanName(newState?.planDisplayName || (attemptedPlan === "premium" ? "Premium" : "Pro"));
           setCheckoutSuccess(true);
         } else {
           setConfirmError(t("pricing.checkoutFailed"));
@@ -10922,26 +10935,35 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
       .catch((e) => {
         setConfirmError(
           e.workerError === "stripe_not_configured"
-            ? t("pricing.connectStripe").replace("{name}", "Pro")
+            ? t("pricing.connectStripe").replace("{name}", attemptedPlan === "premium" ? "Premium" : "Pro")
             : t("pricing.checkoutFailed")
         );
       })
-      .finally(() => setConfirmLoading(false));
+      .finally(() => { setConfirmLoading(false); sessionStorage.removeItem("cp_checkout_plan"); });
   }, []);
 
-  const handleCheckout = async () => {
-    setCheckoutLoading(true); setCheckoutError("");
+  const handleCheckout = async (plan) => {
+    setCheckoutLoadingPlan(plan); setCheckoutError(""); setCheckoutErrorPlan(null);
     try {
-      const { url } = await workerBillingPost("/api/billing/checkout-session");
+      sessionStorage.setItem("cp_checkout_plan", plan);
+      const { url } = await workerBillingPost("/api/billing/checkout-session", { plan });
       window.location.href = url;
     } catch (e) {
-      setCheckoutError(e.workerError === "stripe_not_configured" ? t("pricing.connectStripe").replace("{name}", "Pro") : e.message);
-    } finally { setCheckoutLoading(false); }
+      sessionStorage.removeItem("cp_checkout_plan");
+      setCheckoutErrorPlan(plan);
+      setCheckoutError(
+        e.workerError === "stripe_not_configured" ? t("pricing.connectStripe").replace("{name}", plan === "premium" ? "Premium" : "Pro")
+        : e.workerError === "premium_price_not_configured" ? t("pricing.premiumComingSoon")
+        : e.workerError === "stripe_price_not_configured" ? t("pricing.connectStripe").replace("{name}", "Pro")
+        : e.message
+      );
+    } finally { setCheckoutLoadingPlan(null); }
   };
 
   const plans = [
-    { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true },
-    { id: "pro", name: t("pricing.proName"), price: "$19", sub: t("pricing.proSub"), color: C.purple, popular: true, features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7"), t("pricing.proFeature8")], cta: t("pricing.proCta"), disabled: false },
+    { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true, checkoutPlan: null, alreadyHave: false },
+    { id: "pro", name: t("pricing.proName"), price: "$29.99", sub: t("pricing.proSub"), color: C.purple, popular: true, features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7"), t("pricing.proFeature8")], cta: t("pricing.proCta"), disabled: false, checkoutPlan: "pro", alreadyHave: isAlreadyPro },
+    { id: "premium", name: t("pricing.premiumName"), price: "$39.99", sub: t("pricing.premiumSub"), color: C.purple, features: [t("pricing.premiumFeature1"), t("pricing.premiumFeature2"), t("pricing.premiumFeature3"), t("pricing.premiumFeature4"), t("pricing.premiumFeature5"), t("pricing.premiumFeature6")], cta: t("pricing.premiumCta"), disabled: false, checkoutPlan: "premium", alreadyHave: isAlreadyPremium },
   ];
 
   return (
@@ -10975,7 +10997,7 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
         <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("pricing.heading")}</h1>
         <p style={{ color: C.textMuted, fontSize: 15 }}>{t("pricing.subheading")}</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 700, margin: "0 auto" }} className="two-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24, maxWidth: 980, margin: "0 auto" }} className="three-col">
         {plans.map(plan => (
           <Card key={plan.id} style={{ position: "relative", border: plan.popular ? `2px solid ${C.purple}` : `1px solid ${C.border}` }}>
             {plan.popular && <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 16px", borderRadius: 20, whiteSpace: "nowrap" }}>{t("pricing.mostPopular")}</div>}
@@ -10984,14 +11006,14 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
-              {checkoutError && plan.id === "pro" && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
+              {checkoutErrorPlan === plan.checkoutPlan && checkoutError && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
               <Btn
                 variant={plan.id === "free" ? "secondary" : "primary"}
-                style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || (plan.id === "pro" && isAlreadyPro)) ? 0.5 : 1 }}
-                disabled={plan.disabled || (plan.id === "pro" && isAlreadyPro) || checkoutLoading}
-                onClick={plan.id === "pro" && !isAlreadyPro ? handleCheckout : undefined}
+                style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || plan.alreadyHave) ? 0.5 : 1 }}
+                disabled={plan.disabled || plan.alreadyHave || checkoutLoadingPlan !== null}
+                onClick={plan.checkoutPlan && !plan.alreadyHave ? () => handleCheckout(plan.checkoutPlan) : undefined}
               >
-                {plan.id === "pro" && isAlreadyPro ? t("pricing.currentPlan") : (checkoutLoading && plan.id === "pro" ? "…" : plan.cta)}
+                {plan.alreadyHave ? t("pricing.currentPlan") : (checkoutLoadingPlan === plan.checkoutPlan ? "…" : plan.cta)}
               </Btn>
             </div>
           </Card>
@@ -11209,7 +11231,7 @@ function ProfilePage({ profile, updateProfile }) {
 function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus, referralPatterns, referralAnalysesHook, billingState }) {
   const { t } = useI18n();
   const bs = billingState?.billingState || "FREE";
-  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
+  const canUseAI = !["FREE", "PRO_EXPIRED", "PREMIUM_EXPIRED"].includes(bs);
   const [tab, setTab] = useState("opportunities");
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -12123,10 +12145,10 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
 
   // Canonical billing state from Worker — all UI decisions derive from here
   const bs = billingState?.billingState || "FREE";
-  const isActive = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "ADMIN"].includes(bs);
+  const isActive = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
   const isCanceling = bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING";
-  const isPastDue = bs === "PRO_PAST_DUE";
-  const isExpired = bs === "PRO_EXPIRED";
+  const isPastDue = bs === "PRO_PAST_DUE" || bs === "PREMIUM_PAST_DUE";
+  const isExpired = bs === "PRO_EXPIRED" || bs === "PREMIUM_EXPIRED";
   const planDisplayName = billingState?.planDisplayName || "Free";
   const periodEnd = billingState?.periodEnd ? new Date(billingState.periodEnd) : null;
   const cancelAtPeriodEnd = billingState?.cancelAtPeriodEnd ?? false;
@@ -12248,7 +12270,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
           {/* Status */}
           <div style={{ background: C.bgSoft, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{t("settings.status")}</div>
-            {bs === "PRO_EXPIRED" && (
+            {isExpired && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.subExpiredStatus")}</div>
             )}
             {(bs === "PRO_ACTIVE" || bs === "PREMIUM_ACTIVE" || bs === "ADMIN") && !cancelAtPeriodEnd && (
@@ -12257,7 +12279,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
             {(bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING") && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.orange }}>{t("settings.cancelsOn").replace("{date}", formatDate(periodEnd))}</div>
             )}
-            {bs === "PRO_PAST_DUE" && (
+            {isPastDue && (
               <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>{t("settings.pastDue")}</div>
             )}
             {bs === "FREE" && (
