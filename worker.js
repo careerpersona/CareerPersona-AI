@@ -590,6 +590,16 @@ async function handleClaude(request, env, ctx) {
     return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
   }
 
+  // Layer 1c: Referral Intelligence is Premium/Admin only, per its locked ADR and
+  // client-side isPremium gate -- canUseAI alone is too broad (also true for Pro),
+  // and getFeatureLimit has no dedicated case for this feature so quota alone
+  // wouldn't block it either (falls through to the generic aiRequestLimit, which
+  // Pro also has). Same pattern as the outcome_intelligence check above -- reuses
+  // caps.plan, no second entitlement system, no config or quota/pricing change.
+  if (feature === "referral_intelligence" && caps.plan !== "premium" && caps.plan !== "admin") {
+    return corsResponse(request, { error: "not_entitled", upgradeRequired: true }, 403);
+  }
+
   // Layer 2: quota check (skip for unlimited capabilities like admin)
   const limit = getFeatureLimit(feature, caps);
   const period = getPeriodKey(sub);
