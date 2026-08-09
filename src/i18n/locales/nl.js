@@ -380,6 +380,7 @@
     active: "Actief",
     nextRenewal: "Volgende Verlenging",
     upgradeToPro: "Upgraden naar PRO",
+    usageFeatureNetworking: "Netwerk Outreach",
     stripeManageSoon: "Stripe-abonnementsbeheer komt binnenkort beschikbaar.",
     cancelSubscription: "Abonnement Opzeggen",
     billing: "Facturering",

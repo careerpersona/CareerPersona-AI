@@ -380,6 +380,7 @@
     active: "सक्रिय",
     nextRenewal: "अगला नवीनीकरण",
     upgradeToPro: "PRO में अपग्रेड करें",
+    usageFeatureNetworking: "नेटवर्किंग आउटरीच",
     stripeManageSoon: "Stripe सदस्यता प्रबंधन जल्द ही उपलब्ध होगा।",
     cancelSubscription: "सदस्यता रद्द करें",
     billing: "बिलिंग",

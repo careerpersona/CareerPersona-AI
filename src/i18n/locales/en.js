@@ -413,6 +413,7 @@ export default {
     active: "Active",
     nextRenewal: "Next Renewal",
     upgradeToPro: "Upgrade to Pro",
+    usageFeatureNetworking: "Network Outreach",
     stripeManageSoon: "Stripe subscription management coming soon.",
     cancelSubscription: "Cancel Subscription",
     billing: "Billing",

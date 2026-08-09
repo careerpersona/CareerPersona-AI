@@ -9721,7 +9721,7 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
       const ctx = userContext.getContextString({ identity: true });
       const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}Networking outreach. Return ONLY JSON, no markdown:
 {"linkedinMessage":"<280 chars max>","linkedinNote":"<2 para InMail>","email":{"subject":"<subject>","body":"<100 word email>"},"followUp":"<follow up>","icebreakers":["<i1>","<i2>"],"doList":["<d1>","<d2>"],"dontList":["<dont1>","<dont2>"],"callToAction":"<ask>"}
-To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}${form.purpose === "referral" && form.jobDesc ? `, Referral for: ${form.jobDesc.slice(0,200)}` : ""}`, 2500);
+To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCompany}), From: ${form.yourBackground.slice(0,200)}, Purpose: ${form.purpose}${form.purpose === "referral" && form.jobDesc ? `, Referral for: ${form.jobDesc.slice(0,200)}` : ""}`, 2500, "networking_outreach");
       const parsed = safeParse(raw);
       if (!parsed) {
         setError(t("networking.aiError"));
@@ -12138,6 +12138,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     { key: "interview_prep",  label: t("settings.usageFeatureInterview"),  quota: quotas.interview_prep },
     { key: "salary_analysis", label: t("settings.usageFeatureSalary"),     quota: quotas.salary_analysis },
     { key: "linkedin_intelligence", label: t("settings.usageFeatureLinkedIn"), quota: quotas.linkedin_intelligence },
+    { key: "networking_outreach", label: t("settings.usageFeatureNetworking"), quota: quotas.networking_outreach },
   ];
 
   // Smart Apply Auto Prep (Premium Feature #5) — §5/§11 of the locked

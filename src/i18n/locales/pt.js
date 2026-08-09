@@ -380,6 +380,7 @@
     active: "Ativo",
     nextRenewal: "Próxima Renovação",
     upgradeToPro: "Atualizar para PRO",
+    usageFeatureNetworking: "Mensagens de Networking",
     stripeManageSoon: "O gerenciamento de assinatura via Stripe estará disponível em breve.",
     cancelSubscription: "Cancelar Assinatura",
     billing: "Faturamento",

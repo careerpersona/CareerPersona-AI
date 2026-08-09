@@ -380,6 +380,7 @@
     active: "有効",
     nextRenewal: "次回更新日",
     upgradeToPro: "PROにアップグレード",
+    usageFeatureNetworking: "ネットワーキング・アウトリーチ",
     stripeManageSoon: "Stripeによるサブスクリプション管理は近日公開予定です。",
     cancelSubscription: "サブスクリプションを解約",
     billing: "請求",

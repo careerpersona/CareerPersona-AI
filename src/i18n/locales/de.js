@@ -380,6 +380,7 @@
     active: "Aktiv",
     nextRenewal: "Nächste Verlängerung",
     upgradeToPro: "Auf PRO upgraden",
+    usageFeatureNetworking: "Netzwerk-Outreach",
     stripeManageSoon: "Die Verwaltung des Stripe-Abonnements ist bald verfügbar.",
     cancelSubscription: "Abonnement kündigen",
     billing: "Abrechnung",

@@ -327,13 +327,13 @@ function getCapabilities(sub, config) {
   // interview_prep session fires multiple calls (question gen, feedback scoring,
   // mock summary), so 100/120 raw calls corresponds to ~10/~12 sessions.
   const proFeatureLimits = {
-    resumeAnalysisLimit: 10, interviewSessionLimit: 100, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10,
+    resumeAnalysisLimit: 10, interviewSessionLimit: 100, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20,
   };
   const premiumFeatureLimits = {
-    resumeAnalysisLimit: 10, interviewSessionLimit: 120, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10,
+    resumeAnalysisLimit: 10, interviewSessionLimit: 120, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20,
   };
   const adminFeatureLimits = {
-    resumeAnalysisLimit: 2000, interviewSessionLimit: 2000, salaryAnalysisLimit: 2000, linkedinIntelligenceLimit: 2000,
+    resumeAnalysisLimit: 2000, interviewSessionLimit: 2000, salaryAnalysisLimit: 2000, linkedinIntelligenceLimit: 2000, networkingOutreachLimit: 2000,
   };
   const aiRequestLimit = parseInt(config.pro_ai_requests_monthly ?? "500");
   switch (status) {
@@ -351,6 +351,7 @@ function getCapabilities(sub, config) {
         interviewSessionLimit:     inGrace ? proFeatureLimits.interviewSessionLimit : 0,
         salaryAnalysisLimit:       inGrace ? proFeatureLimits.salaryAnalysisLimit : 0,
         linkedinIntelligenceLimit: inGrace ? proFeatureLimits.linkedinIntelligenceLimit : 0,
+        networkingOutreachLimit:   inGrace ? proFeatureLimits.networkingOutreachLimit : 0,
       };
     }
     case "pro_cancelled": {
@@ -363,6 +364,7 @@ function getCapabilities(sub, config) {
         interviewSessionLimit:     active ? proFeatureLimits.interviewSessionLimit : 0,
         salaryAnalysisLimit:       active ? proFeatureLimits.salaryAnalysisLimit : 0,
         linkedinIntelligenceLimit: active ? proFeatureLimits.linkedinIntelligenceLimit : 0,
+        networkingOutreachLimit:   active ? proFeatureLimits.networkingOutreachLimit : 0,
       };
     }
     case "admin":
@@ -372,7 +374,7 @@ function getCapabilities(sub, config) {
       };
     default: // no_subscription
       return { plan: "none", canUseAI: false, canUseJobs: true,
-        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0, linkedinIntelligenceLimit: 0 };
+        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0, linkedinIntelligenceLimit: 0, networkingOutreachLimit: 0 };
   }
 }
 
@@ -391,6 +393,9 @@ function getFeatureLimit(feature, caps) {
     // Own explicit Launch V1 ceiling (no longer inherits Resume Analysis's limit) --
     // still a distinct feature tracked under its own feature_usage key.
     case "linkedin_intelligence": return caps.linkedinIntelligenceLimit;
+    // 20/month Pro and Premium, per the confirmed Network Outreach pricing decision --
+    // own dedicated ceiling, previously fell through to the generic aiRequestLimit.
+    case "networking_outreach": return caps.networkingOutreachLimit;
     // Automatic continuations of an already-authorized primary action (a parallel
     // insights call, a post-improve re-score, a cover-letter refresh, a mock
     // interview's closing summary) -- never an independent customer request, so
@@ -445,6 +450,7 @@ function computeQuotas(caps, usage) {
     { key: "interview_prep",  limit: caps.interviewSessionLimit },
     { key: "salary_analysis", limit: caps.salaryAnalysisLimit },
     { key: "linkedin_intelligence", limit: caps.linkedinIntelligenceLimit },
+    { key: "networking_outreach", limit: caps.networkingOutreachLimit },
   ];
   const quotas = {};
   for (const { key, limit } of features) {
