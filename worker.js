@@ -318,26 +318,39 @@ async function getConfig(env) {
 function getCapabilities(sub, config) {
   const status = sub.subscription_status ?? "no_subscription";
   const now = Date.now();
-  const proLimits = {
-    aiRequestLimit:       parseInt(config.pro_ai_requests_monthly ?? "500"),
-    resumeAnalysisLimit:  Infinity,
-    interviewSessionLimit: Infinity,
-    salaryAnalysisLimit:  Infinity,
+  // Launch V1 frozen quota ceilings (Unit Economics decision, locked -- not derived
+  // or re-proposed here). Each of these four features tracks its own independent
+  // feature_usage row (user_id+feature+period_key), so none can consume another's
+  // budget. aiRequestLimit is unrelated and untouched -- still config-driven, still
+  // shared identically between Pro and Premium as before.
+  // interviewSessionLimit is a RAW AI-call count, not a session count -- one
+  // interview_prep session fires multiple calls (question gen, feedback scoring,
+  // mock summary), so 100/120 raw calls corresponds to ~10/~12 sessions.
+  const proFeatureLimits = {
+    resumeAnalysisLimit: 10, interviewSessionLimit: 100, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10,
   };
+  const premiumFeatureLimits = {
+    resumeAnalysisLimit: 10, interviewSessionLimit: 120, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10,
+  };
+  const adminFeatureLimits = {
+    resumeAnalysisLimit: 2000, interviewSessionLimit: 2000, salaryAnalysisLimit: 2000, linkedinIntelligenceLimit: 2000,
+  };
+  const aiRequestLimit = parseInt(config.pro_ai_requests_monthly ?? "500");
   switch (status) {
     case "pro_active":
-      return { plan: "pro", canUseAI: true, canUseJobs: true, ...proLimits };
+      return { plan: "pro", canUseAI: true, canUseJobs: true, aiRequestLimit, ...proFeatureLimits };
     case "premium_active":
-      return { plan: "premium", canUseAI: true, canUseJobs: true, ...proLimits };
+      return { plan: "premium", canUseAI: true, canUseJobs: true, aiRequestLimit, ...premiumFeatureLimits };
     case "pro_past_due": {
       const grace = sub.grace_period_ends_at ? new Date(sub.grace_period_ends_at).getTime() : 0;
       const inGrace = grace > now;
       return {
         plan: "pro_past_due", canUseAI: inGrace, canUseJobs: true,
-        aiRequestLimit:       inGrace ? proLimits.aiRequestLimit : 0,
-        resumeAnalysisLimit:  inGrace ? Infinity : 0,
-        interviewSessionLimit: inGrace ? Infinity : 0,
-        salaryAnalysisLimit:  inGrace ? Infinity : 0,
+        aiRequestLimit:            inGrace ? aiRequestLimit : 0,
+        resumeAnalysisLimit:       inGrace ? proFeatureLimits.resumeAnalysisLimit : 0,
+        interviewSessionLimit:     inGrace ? proFeatureLimits.interviewSessionLimit : 0,
+        salaryAnalysisLimit:       inGrace ? proFeatureLimits.salaryAnalysisLimit : 0,
+        linkedinIntelligenceLimit: inGrace ? proFeatureLimits.linkedinIntelligenceLimit : 0,
       };
     }
     case "pro_cancelled": {
@@ -345,21 +358,21 @@ function getCapabilities(sub, config) {
       const active = end > now;
       return {
         plan: "pro_cancelled", canUseAI: active, canUseJobs: true,
-        aiRequestLimit:       active ? proLimits.aiRequestLimit : 0,
-        resumeAnalysisLimit:  active ? Infinity : 0,
-        interviewSessionLimit: active ? Infinity : 0,
-        salaryAnalysisLimit:  active ? Infinity : 0,
+        aiRequestLimit:            active ? aiRequestLimit : 0,
+        resumeAnalysisLimit:       active ? proFeatureLimits.resumeAnalysisLimit : 0,
+        interviewSessionLimit:     active ? proFeatureLimits.interviewSessionLimit : 0,
+        salaryAnalysisLimit:       active ? proFeatureLimits.salaryAnalysisLimit : 0,
+        linkedinIntelligenceLimit: active ? proFeatureLimits.linkedinIntelligenceLimit : 0,
       };
     }
     case "admin":
       return {
         plan: "admin", canUseAI: true, canUseJobs: true,
-        aiRequestLimit: Infinity, resumeAnalysisLimit: Infinity,
-        interviewSessionLimit: Infinity, salaryAnalysisLimit: Infinity,
+        aiRequestLimit: Infinity, ...adminFeatureLimits,
       };
     default: // no_subscription
       return { plan: "none", canUseAI: false, canUseJobs: true,
-        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0 };
+        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0, linkedinIntelligenceLimit: 0 };
   }
 }
 
@@ -375,11 +388,9 @@ function getFeatureLimit(feature, caps) {
     case "resume_analysis":  return caps.resumeAnalysisLimit;
     case "interview_prep":   return caps.interviewSessionLimit;
     case "salary_analysis":  return caps.salaryAnalysisLimit;
-    // LinkedIn Intelligence shares the Resume Intelligence allowance rather than
-    // Infinity-by-default (the pre-fix behavior of falling through to the generic
-    // ai_request bucket) -- it's a distinct feature, tracked under its own
-    // feature_usage key, but not yet given its own tier-differentiated cap.
-    case "linkedin_intelligence": return caps.resumeAnalysisLimit;
+    // Own explicit Launch V1 ceiling (no longer inherits Resume Analysis's limit) --
+    // still a distinct feature tracked under its own feature_usage key.
+    case "linkedin_intelligence": return caps.linkedinIntelligenceLimit;
     // Automatic continuations of an already-authorized primary action (a parallel
     // insights call, a post-improve re-score, a cover-letter refresh, a mock
     // interview's closing summary) -- never an independent customer request, so
@@ -433,7 +444,7 @@ function computeQuotas(caps, usage) {
     { key: "resume_analysis", limit: caps.resumeAnalysisLimit },
     { key: "interview_prep",  limit: caps.interviewSessionLimit },
     { key: "salary_analysis", limit: caps.salaryAnalysisLimit },
-    { key: "linkedin_intelligence", limit: caps.resumeAnalysisLimit },
+    { key: "linkedin_intelligence", limit: caps.linkedinIntelligenceLimit },
   ];
   const quotas = {};
   for (const { key, limit } of features) {
