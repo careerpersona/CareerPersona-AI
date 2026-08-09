@@ -78,7 +78,9 @@ async function newCtx(browser, uid, email, opts = {}) {
   await context.route(`**/${SUPABASE_HOST}/rest/v1/saved_jobs*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedJobs) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/applications*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(applications) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/outcome_patterns*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
-  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: subStatus === 'premium_active' ? 'PREMIUM' : 'FREE', plan: subStatus === 'premium_active' ? 'Premium' : 'Free', quotas: { ai_request: { unlimited: true } } }) }));
+  const billingStateFor = (s) => s === 'premium_active' ? 'PREMIUM_ACTIVE' : s === 'pro_active' ? 'PRO_ACTIVE' : 'FREE';
+  const planDisplayNameFor = (s) => s === 'premium_active' ? 'Premium' : s === 'pro_active' ? 'Pro' : 'Free';
+  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ billingState: billingStateFor(subStatus), planDisplayName: planDisplayNameFor(subStatus), quotas: { ai_request: { unlimited: true } } }) }));
 
   const page = await context.newPage();
   page.on('pageerror', err => { pageErrors.push(err.message); console.log('*** PAGE ERROR:', err.message); });
@@ -114,15 +116,18 @@ async function gotoNetworkIntelligence(page) {
     check('S1: Run Analysis disabled', await page.getByRole('button', { name: 'Run Analysis' }).isDisabled());
     check('S1: No "ready to analyze" prompt (nothing available)', !bodyText.includes('click Run Analysis above'));
 
-    // Premium behavior: same profile but non-premium should show the upsell and leave Outreach untouched.
-    const nonPrem = await newCtx(browser, '10000000-0000-0000-0000-000000000002', 's1np@test.dev', { subStatus: 'no_subscription' });
+    // Premium behavior: same profile but non-premium (Pro, paying but not Premium) should
+    // show the upsell and leave Outreach untouched -- Pro (not Free) is required here so
+    // this still proves Referral Intelligence's Premium gate doesn't leak into Outreach,
+    // now that Outreach itself is correctly, separately locked for true Free users.
+    const nonPrem = await newCtx(browser, '10000000-0000-0000-0000-000000000002', 's1np@test.dev', { subStatus: 'pro_active' });
     await gotoNetworkIntelligence(nonPrem.page);
     const npText = await nonPrem.page.evaluate(() => document.body.innerText);
     check('S1: Non-Premium shows upsell, not the Snapshot', npText.includes('Upgrade to Premium') && !npText.includes('Referral Snapshot'));
     await nonPrem.page.getByRole('button', { name: 'Outreach' }).click();
     await nonPrem.page.waitForTimeout(300);
     const npOutreach = await nonPrem.page.evaluate(() => document.body.innerText);
-    check('S1: Non-Premium Outreach tab still fully functional', npOutreach.includes('Their Name'));
+    check('S1: Non-Premium (Pro) Outreach tab still fully functional', npOutreach.includes('Their Name'));
     await nonPrem.context.close();
 
     // Opportunity integration: empty state there too.

@@ -67,7 +67,9 @@ async function newCtx(browser, uid, email, { subStatus, contacts = [], watchlist
   await context.route(`**/${SUPABASE_HOST}/rest/v1/saved_jobs*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedJobs) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/applications*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(applications) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/outcome_patterns*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(outcomePatterns) }));
-  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: subStatus === 'premium_active' ? 'PREMIUM' : 'FREE', plan: subStatus === 'premium_active' ? 'Premium' : 'Free', quotas: { ai_request: { unlimited: true } } }) }));
+  const billingStateFor = (s) => s === 'premium_active' ? 'PREMIUM_ACTIVE' : s === 'pro_active' ? 'PRO_ACTIVE' : 'FREE';
+  const planDisplayNameFor = (s) => s === 'premium_active' ? 'Premium' : s === 'pro_active' ? 'Pro' : 'Free';
+  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ billingState: billingStateFor(subStatus), planDisplayName: planDisplayNameFor(subStatus), quotas: { ai_request: { unlimited: true } } }) }));
 
   const page = await context.newPage();
   await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [SUPABASE_SESSION_KEY, JSON.stringify(session)]);
@@ -81,10 +83,10 @@ async function newCtx(browser, uid, email, { subStatus, contacts = [], watchlist
 (async () => {
   const browser = await chromium.launch({ headless: true });
 
-  // ===== Scenario 1: non-Premium user =====
+  // ===== Scenario 1: non-Premium user (Pro, paying but not Premium) =====
   {
-    const { context, page } = await newCtx(browser, '11111111-1111-1111-1111-111111111111', 's1@test.dev', { subStatus: 'no_subscription' });
-    console.log('\n=== SCENARIO 1: non-Premium user ===');
+    const { context, page } = await newCtx(browser, '11111111-1111-1111-1111-111111111111', 's1@test.dev', { subStatus: 'pro_active' });
+    console.log('\n=== SCENARIO 1: non-Premium user (Pro) ===');
     let bodyText = await page.evaluate(() => document.body.innerText);
     check('Outreach tab (default) shows the existing form, unaffected', bodyText.includes('Their Name') && bodyText.includes('Their Role'));
 

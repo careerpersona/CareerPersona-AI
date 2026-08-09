@@ -4423,8 +4423,10 @@ Salary: $140,000–$180,000 + equity + benefits
 Location: Remote-first`;
 
 // ─── JOB INTELLIGENCE PAGE ───────────────────────────────────────────────────
-function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
+function JobIntelligencePage({ profile, applications, savedJobs, setPage, billingState }) {
   const { t } = useI18n();
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const { analysis: savedAnalysis, loading: analysisLoading, loadedFor, save: saveAnalysis } = useJobIntelligenceAnalysis(profile?.id);
   const { logActivity } = useActivityLog(profile?.id);
 
@@ -4446,6 +4448,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
   }, [savedAnalysis, analysisLoading, loadedFor, profile?.id]);
 
   const generate = async () => {
+    if (!canUseAI) return;
     setGenLoading(true);
     setGenError(null);
     try {
@@ -4674,9 +4677,9 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
             <p style={{ fontSize: 13, color: C.textMuted }}>{t("jobIntel.subtitle")}</p>
           </div>
         </div>
-        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={generate} loading={genLoading}>
+        {canUseAI && <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={generate} loading={genLoading}>
           {genLoading ? t("jobIntel.analyzing") : t("jobIntel.regenerate")}
-        </Btn>
+        </Btn>}
       </div>
 
       {a?.generatedAt && (
@@ -4695,6 +4698,9 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{t("jobIntel.loadingTakes")}</div>
         </Card>
       ) : !a ? (
+        !canUseAI ? (
+          <LockedAICard icon="🧠" title={t("jobIntel.lockedTitle")} description={t("jobIntel.lockedDesc")} benefits={t("jobIntel.lockedBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage?.("pricing")} />
+        ) : (
         <Card style={{ padding: "40px 20px", textAlign: "center" }}>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 16 }}>
             {(savedJobs?.length ?? 0) === 0
@@ -4703,6 +4709,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage }) {
           </div>
           <Btn onClick={generate} disabled={genLoading}>{genLoading ? t("jobIntel.analyzing") : t("jobIntel.generateAnalysis")}</Btn>
         </Card>
+        )
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Summary strip */}
@@ -8096,8 +8103,12 @@ function VoiceInputBtn({ onTranscript, currentText, language }) {
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
-function InterviewPage({ profile, applications, savedJobs }) {
+function InterviewPage({ profile, applications, savedJobs, billingState, setPage }) {
   const { t, language } = useI18n();
+  // Same billingState -> canUseAI derivation already used by Dashboard/Resume/Job
+  // Search/Saved Jobs/Networking Outreach.
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const INTERVIEW_CAT_LABEL_KEY = { "All": "interview.catAll", "Behavioral": "interview.catBehavioral", "Technical": "interview.catTechnical", "Situational": "interview.catSituational", "Culture Fit": "interview.catCultureFit" };
   const tCat = (c) => t(INTERVIEW_CAT_LABEL_KEY[c] || c);
   const [jobDesc, setJobDesc] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useSessionState("cp_interview_filter", "All");
@@ -8253,6 +8264,7 @@ function InterviewPage({ profile, applications, savedJobs }) {
 
   // ── Generate questions (with full JD, resume context, STAR) ──
   const generate = async () => {
+    if (!canUseAI) return;
     if (!jobDesc.trim()) { setError(t("interview.noJobDesc")); return; }
     setLoading(true); setQuestions([]); setError("");
     try {
@@ -8279,6 +8291,7 @@ ${jobDesc.slice(0, 2500)}${resumeBlock}`, 8000, "interview_prep");
 
   // ── Feedback for a single answer (now includes JD + resume context) ──
   const getFeedbackFor = async (question, ans) => {
+    if (!canUseAI) throw new Error("not_entitled");
     const ctx = userContext.getContextString({ identity: true });
     const resumeBlock = resume.trim() ? `\nCANDIDATE BACKGROUND:${resume.slice(0, 600)}` : "";
     const jdBlock = jobDesc.trim() ? `\nJOB CONTEXT:${jobDesc.slice(0, 600)}` : "";
@@ -8331,6 +8344,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200, "interview_prep");
   };
 
   const buildMockSummary = async (answersMap) => {
+    if (!canUseAI) return;
     const scores = Object.values(answersMap).map(a => a.feedback?.score).filter(n => typeof n === "number");
     const avg = scores.length ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10 : 0;
     const answeredCount = Object.keys(answersMap).length;
@@ -8461,6 +8475,9 @@ Return ONLY this JSON (no markdown):
 
       {/* SETUP */}
       {!questions.length && (
+        !canUseAI ? (
+          <LockedAICard icon="🎤" title={t("interview.lockedTitle")} description={t("interview.lockedDesc")} benefits={t("interview.lockedBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage?.("pricing")} />
+        ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
           <Card style={{ width: "100%" }}>
             <Textarea label={t("interview.jobDescLabel")} placeholder={t("interview.jobDescPlaceholder")} value={jobDesc} onChange={e => setJobDesc(e.target.value)} style={{ minHeight: 220, width: "100%" }} />
@@ -8489,6 +8506,7 @@ Return ONLY this JSON (no markdown):
             <Btn variant="secondary" disabled={loading} onClick={() => setJobDesc(SAMPLE_JOB)}>{t("interview.trySample")}</Btn>
           </div>
         </div>
+        )
       )}
 
       {loading && <Spinner steps={[t("interview.spinner1"),t("interview.spinner2"),t("interview.spinner3"),t("interview.spinner4")]} currentStep={1} />}
@@ -9417,8 +9435,10 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
 }
 
 // ─── SALARY PAGE ───────────────────────────────────────────
-function SalaryPage({ profile, applications, savedJobs }) {
+function SalaryPage({ profile, applications, savedJobs, billingState, setPage }) {
   const { t } = useI18n();
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const [form, setForm] = useState({ jobTitle: profile?.preferred_job_title || "", location: profile?.location || "", experience: profile?.years_experience || "", skills: "", company: "" });
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
@@ -9470,6 +9490,7 @@ function SalaryPage({ profile, applications, savedJobs }) {
   };
 
   const analyze = async () => {
+    if (!canUseAI) return;
     if (!form.jobTitle || !form.location) { setError(t("salary.titleLocationRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
@@ -9496,6 +9517,9 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("salary.heading")}</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 24 }}>{t("salary.subtitle")}</p>
+      {!canUseAI ? (
+        <LockedAICard icon="💰" title={t("salary.lockedTitle")} description={t("salary.lockedDesc")} benefits={t("salary.lockedBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage?.("pricing")} />
+      ) : (
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }} className="two-col">
           <Input label={t("salary.jobTitleLabel")} placeholder={t("salary.jobTitlePlaceholder")} value={form.jobTitle} onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))} />
@@ -9510,6 +9534,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
           {results && <Btn variant="secondary" onClick={() => { setResults(null); setError(""); }}>{t("salary.newSearch")}</Btn>}
         </div>
       </Card>
+      )}
       {loading && <Spinner steps={[t("salary.step1"), t("salary.step2"), t("salary.step3")]} currentStep={1} />}
       {results && (
         <div>
@@ -9590,8 +9615,12 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
 }
 
 // ─── NETWORKING PAGE ───────────────────────────────────────
-function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist, referralPatterns, referralAnalysesHook }) {
+function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist, referralPatterns, referralAnalysesHook, billingState, setPage }) {
   const { t } = useI18n();
+  // Guards only the main outreach generator (main "Generate Outreach Messages" call) --
+  // the separate follow-up generator's client lock/quota remain explicitly out of scope.
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   // Outer tab: Outreach (everything that already existed, untouched below) vs.
   // Intelligence (new, Phase 2 stub only -- real functionality lands in Phase 6).
   // Separate from `tab` (the existing linkedin/email/followup/tips selector) so
@@ -9715,6 +9744,7 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
   };
 
   const generate = async () => {
+    if (!canUseAI) return;
     if (!form.targetCompany || !form.yourBackground) { setError(t("networking.fillRequired")); return; }
     setError(""); setLoading(true); setResults(null);
     try {
@@ -9752,6 +9782,9 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
 
       {mainTab === "outreach" && (
       <>
+      {!canUseAI ? (
+        <LockedAICard icon="✍️" title={t("networking.lockedOutreachTitle")} description={t("networking.lockedOutreachDesc")} benefits={t("networking.lockedOutreachBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage?.("pricing")} />
+      ) : (
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="two-col">
           <Input label={t("networking.theirName")} placeholder={t("networking.theirNamePlaceholder")} value={form.targetName} onChange={e => setForm(f => ({ ...f, targetName: e.target.value }))} />
@@ -9767,6 +9800,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
           {results && <Btn variant="secondary" onClick={() => { setResults(null); setDraft(null); setError(""); setEmailSent(false); setShowSavePrompt(false); }}>{t("networking.newMessageBtn")}</Btn>}
         </div>
       </Card>
+      )}
       {loading && <Spinner steps={[t("networking.spinnerStep1"),t("networking.spinnerStep2"),t("networking.spinnerStep3"),t("networking.spinnerStep4")]} currentStep={1} />}
       {results && (
         <div>
@@ -11171,8 +11205,10 @@ function ProfilePage({ profile, updateProfile }) {
 
 
 // ─── OPPORTUNITY INTELLIGENCE PAGE ─────────────────────────
-function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus, referralPatterns, referralAnalysesHook }) {
+function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist, watchlistAdd, watchlistRemove, watchlistUpdateStatus, referralPatterns, referralAnalysesHook, billingState }) {
   const { t } = useI18n();
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const [tab, setTab] = useState("opportunities");
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -11250,6 +11286,7 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   };
 
   const refreshAnalysis = async () => {
+    if (!canUseAI) return;
     setAnalysisLoading(true);
     setAnalysisError(null);
     try {
@@ -11310,10 +11347,14 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             <p style={{ fontSize: 13, color: C.textMuted }}>{t("opportunity.pageSubtitle")}</p>
           </div>
         </div>
-        <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={refreshAnalysis} loading={analysisLoading}>
+        {canUseAI && <Btn variant="secondary" style={{ fontSize: 12, padding: "6px 14px", flexShrink: 0 }} onClick={refreshAnalysis} loading={analysisLoading}>
           {analysisLoading ? t("opportunity.analyzing") : t("opportunity.refreshAnalysis")}
-        </Btn>
+        </Btn>}
       </div>
+
+      {!canUseAI && (
+        <LockedAICard icon="🎯" title={t("opportunity.lockedTitle")} description={t("opportunity.lockedDesc")} benefits={t("opportunity.lockedBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage?.("pricing")} />
+      )}
 
       {analysis?.generatedAt && (
         <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 20 }}>
@@ -11512,7 +11553,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
                 {analysisLoading ? t("opportunity.promoSignalsLoading") : t("opportunity.promoSignalsEmpty")}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
+                {canUseAI && !analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
@@ -11549,7 +11590,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
                 {analysisLoading ? t("opportunity.pivotLoading") : t("opportunity.pivotEmpty")}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
+                {canUseAI && !analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
@@ -11682,14 +11723,14 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                     </div>
                   ))}
                 </div>
-                <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{analysisLoading ? t("opportunity.analyzing") : t("opportunity.getAiDemandInsights")}</Btn>
+                {canUseAI && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{analysisLoading ? t("opportunity.analyzing") : t("opportunity.getAiDemandInsights")}</Btn>}
               </div>
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
                 {t("opportunity.trendingSkillsEmpty")}
                 <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
                   <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => setPage("jobs")}>{t("opportunity.findJobs")}</Btn>
-                  <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{t("opportunity.aiAnalysis")}</Btn>
+                  {canUseAI && <Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis} loading={analysisLoading}>{t("opportunity.aiAnalysis")}</Btn>}
                 </div>
               </div>
             )}
@@ -11722,7 +11763,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             ) : (
               <div style={{ fontSize: 13, color: C.textMuted }}>
                 {analysisLoading ? t("opportunity.emergingLoading") : t("opportunity.emergingEmpty")}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
+                {canUseAI && !analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             )}
           </Card>
@@ -11772,7 +11813,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
             ) : frequentCompanies.length === 0 ? (
               <div style={{ fontSize: 13, color: C.textMuted }}>
                 {analysisLoading ? t("opportunity.growingLoading") : t("opportunity.growingEmpty")}
-                {!analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
+                {canUseAI && !analysisLoading && <div style={{ marginTop: 10 }}><Btn variant="secondary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={refreshAnalysis}>{t("opportunity.generateAnalysis")}</Btn></div>}
               </div>
             ) : null}
           </Card>
@@ -12491,6 +12532,17 @@ export default function App() {
       return null;
     }
   };
+
+  // Populate billingState once when a session becomes available -- previously
+  // this only ever happened via SettingsPage's own local refresh-on-mount effect
+  // or after a Pricing checkout, so canUseAI-gated pages elsewhere in the app
+  // (Dashboard, Resume, Job Search, Saved Jobs, Interview, Salary, Job/Opportunity
+  // Intelligence, Networking Outreach) saw billingState stay null -- and therefore
+  // canUseAI false, even for paid users -- until the user happened to visit
+  // Settings first. Reuses the existing refreshBillingState (same function
+  // Settings/Pricing already call), not a new fetch or a second entitlement path.
+  useEffect(() => { if (user?.id) refreshBillingState(); }, [user?.id]);
+
   const handleSaveApp = (app) => setApplications(p => [app, ...p]);
   const goHome = () => { setPage("dashboard"); window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
 
@@ -12800,15 +12852,15 @@ export default function App() {
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} onNavigate={setPage} billingState={billingState} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
-        {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} />}
+        {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} billingState={billingState} setPage={setPage} />}
         {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
-        {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} />}
-        {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
+        {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} billingState={billingState} setPage={setPage} />}
+        {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} billingState={billingState} setPage={setPage} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
-        {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} />}
+        {page === "opportunity" && <OpportunityPage profile={profile} savedJobs={savedJobs} applications={applications} setPage={setPage} watchlist={companyWatchlist} watchlistAdd={watchlistAdd} watchlistRemove={watchlistRemove} watchlistUpdateStatus={watchlistUpdateStatus} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} billingState={billingState} />}
 
         {page === "alerts" && <ProactiveAlertsPanel userId={profile?.id} isPremium={isPremium} alertsHook={proactiveAlertsHook} />}
-        {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} />}
+        {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} billingState={billingState} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
       </main>
