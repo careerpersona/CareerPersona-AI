@@ -2786,8 +2786,14 @@ function MarkdownText({ text }) {
 }
 
 // ─── DASHBOARD PAGE ─────────────────────────────────────────
-function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume, isPremium, latestOutcomeAnalysis, onOpenOutcomeIntelligence }) {
+function DashboardPage({ profile, applications, savedJobs, setPage, resumes, smartApplyQueue, smartApplyQueueLoading, networkingSession, notifications, interviewSession, salaryData, networkContacts: networkContactsProp, activeResumeId, companyWatchlist, onNavigateResume, isPremium, latestOutcomeAnalysis, onOpenOutcomeIntelligence, billingState }) {
   const { t, language } = useI18n();
+  // Same billingState -> canUseAI derivation already used by JobSearchPage/ResumePage/
+  // SavedJobsPage -- Daily Briefing, Today's Action Plan, and the AI Career Assistant
+  // chat are generic AI features (no feature-specific Premium gate, unlike Outcome
+  // Intelligence), so Pro/Premium/Admin all pass, only Free is locked.
+  const bs = billingState?.billingState || "FREE";
+  const canUseAI = !["FREE", "PRO_EXPIRED"].includes(bs);
   const [briefing, setBriefing] = useState(() => { try { const c = sessionStorage.getItem("cp_briefing_dash"); if (!c) return null; const p = JSON.parse(c); if (p && !Array.isArray(p) && p.v === 2 && isToday(p.generatedAt)) return p; sessionStorage.removeItem("cp_briefing_dash"); return null; } catch { return null; } });
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState(null);
@@ -2826,8 +2832,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2 && isToday(savedBriefing.generatedAt)) {
       setBriefing(savedBriefing);
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
-    } else if (profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2 && isToday(briefing.generatedAt))) generateBriefing();
-  }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id]);
+    } else if (canUseAI && profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2 && isToday(briefing.generatedAt))) generateBriefing();
+  }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id, canUseAI]);
 
   const { plan: savedPlan, loading: planHistoryLoading, loadedFor: planLoadedFor, save: savePlan } = useAiActionPlan(profile?.id);
   const planAppliedForRef = useRef(undefined);
@@ -2843,8 +2849,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     if (savedPlan && savedPlan.v === 2 && Array.isArray(savedPlan.categories) && isToday(savedPlan.generatedAt)) {
       setDailyPlan(savedPlan);
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
-    } else if (profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
-  }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id]);
+    } else if (canUseAI && profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
+  }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id, canUseAI]);
 
   // ── Career Progress — load cached analysis for Dashboard summary card ──
   const { analysis: savedCpAnalysis, loading: cpAnalysisLoading, loadedFor: cpLoadedFor } = useCareerProgressAnalysis(profile?.id);
@@ -2954,6 +2960,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
   // Generate AI Briefing
   const generateBriefing = async () => {
+    if (!canUseAI) return;
     setBriefingLoading(true);
     setBriefingError(null);
     console.log("[Briefing] Starting generation for user", profile?.id);
@@ -2976,6 +2983,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
   // Generate Daily Plan
   const generatePlan = async () => {
+    if (!canUseAI) return;
     setPlanLoading(true);
     setPlanError(null);
     console.log("[ActionPlan] Starting generation for user", profile?.id);
@@ -2998,6 +3006,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
   // Chat
   const sendChat = async (directMsg) => {
+    if (!canUseAI) return;
     const userMsg = (typeof directMsg === "string" ? directMsg : chatInput).trim();
     if (!userMsg || chatLoading) return;
     chatScrollEnabledRef.current = true;
@@ -3124,40 +3133,46 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {/* Left: content */}
             <div className="briefing-content-col" style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.briefingTitle")}</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.briefingSubtitle")}</div>
-              {!briefingReady && !briefingError && (
-                <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>{briefingLoading || briefingHistoryLoading ? t("dashboard.briefingGenerating") : t("dashboard.briefingLoading")}</div>
-              )}
-              {!briefingReady && briefingError && (
-                <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: C.red }}>{briefingError}</span>
-                  <button onClick={generateBriefing} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.briefingRetry")}</button>
-                </div>
-              )}
-              {briefingReady && (
-                <div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
-                    {[
-                      briefing.summary,
-                      briefing.newMatchingJobs,
-                      briefing.highestPayingJobs,
-                      briefing.jobsClosingSoon,
-                    ].map((text, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                        <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                          <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>
-                        </div>
-                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4 }}>{hlBriefing(previewBriefing(text))}</div>
+              {!canUseAI ? (
+                <LockedAICard icon="🤖" title={t("dashboard.lockedBriefingTitle")} description={t("dashboard.lockedBriefingDesc")} benefits={t("dashboard.lockedBriefingBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.briefingTitle")}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.briefingSubtitle")}</div>
+                  {!briefingReady && !briefingError && (
+                    <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>{briefingLoading || briefingHistoryLoading ? t("dashboard.briefingGenerating") : t("dashboard.briefingLoading")}</div>
+                  )}
+                  {!briefingReady && briefingError && (
+                    <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: C.red }}>{briefingError}</span>
+                      <button onClick={generateBriefing} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.briefingRetry")}</button>
+                    </div>
+                  )}
+                  {briefingReady && (
+                    <div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
+                        {[
+                          briefing.summary,
+                          briefing.newMatchingJobs,
+                          briefing.highestPayingJobs,
+                          briefing.jobsClosingSoon,
+                        ].map((text, i) => (
+                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                            <div style={{ width: 20, height: 20, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                              <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>
+                            </div>
+                            <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4 }}>{hlBriefing(previewBriefing(text))}</div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  <div style={{ paddingTop: 0 }}>
-                    <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("briefing")}>
-                      {t("dashboard.viewFullBriefing")}
-                    </button>
-                  </div>
-                </div>
+                      <div style={{ paddingTop: 0 }}>
+                        <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("briefing")}>
+                          {t("dashboard.viewFullBriefing")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {/* Mobile-only: AI Spark icon shown instead of robot */}
@@ -3182,43 +3197,49 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
         {/* Today's Action Plan */}
         <Card style={{ padding: "8px 14px 8px", alignSelf: "flex-start" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.planTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.planSubtitle")}</div>
-          {!planReady && !planError && (
-            <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>
-              {planLoading || planHistoryLoading ? t("dashboard.planGenerating") : t("dashboard.planLoading")}
-            </div>
-          )}
-          {!planReady && planError && (
-            <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: C.red }}>{planError}</span>
-              <button onClick={generatePlan} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.planRetry")}</button>
-            </div>
-          )}
-          {planReady && (
-            <div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
-                {dailyPlan.categories.map((item, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {item.status === "completed" && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
-                    </div>
-                    <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, minWidth: 0 }}>
-                      <span style={{ display: "flex", flex: 1, minWidth: 0, overflow: "hidden" }}>
-                        <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{tPlanCat(item.id, t, item.category)}</span>
-                        {item.task && <span style={{ color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>&nbsp;—&nbsp;{item.task}</span>}
-                      </span>
-                      <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
-                    </div>
+          {!canUseAI ? (
+            <LockedAICard icon="🤖" title={t("dashboard.lockedPlanTitle")} description={t("dashboard.lockedPlanDesc")} benefits={t("dashboard.lockedPlanBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+          ) : (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.planTitle")}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4, lineHeight: 1.4 }}>{t("dashboard.planSubtitle")}</div>
+              {!planReady && !planError && (
+                <div style={{ padding: "6px 0 2px", color: C.textMuted, fontSize: 13 }}>
+                  {planLoading || planHistoryLoading ? t("dashboard.planGenerating") : t("dashboard.planLoading")}
+                </div>
+              )}
+              {!planReady && planError && (
+                <div style={{ padding: "6px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: C.red }}>{planError}</span>
+                  <button onClick={generatePlan} style={{ border: "none", background: "none", color: C.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{t("dashboard.planRetry")}</button>
+                </div>
+              )}
+              {planReady && (
+                <div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 0 }}>
+                    {dailyPlan.categories.map((item, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${item.status === "completed" ? C.green : C.purple}`, background: item.status === "completed" ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {item.status === "completed" && <span style={{ color: "#fff", fontSize: 9, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.4, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 4, minWidth: 0 }}>
+                          <span style={{ display: "flex", flex: 1, minWidth: 0, overflow: "hidden" }}>
+                            <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{tPlanCat(item.id, t, item.category)}</span>
+                            {item.task && <span style={{ color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>&nbsp;—&nbsp;{item.task}</span>}
+                          </span>
+                          <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{item.time}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div style={{ paddingTop: 0 }}>
-                <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("plan")}>
-                  {t("dashboard.viewFullPlan")}
-                </button>
-              </div>
-            </div>
+                  <div style={{ paddingTop: 0 }}>
+                    <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("plan")}>
+                      {t("dashboard.viewFullPlan")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </Card>
       </div>
@@ -3561,34 +3582,40 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           )}
         </div>
-        <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          {chatMessages.length === 0 && (
-            <div>
-              <div style={{ textAlign: "center", padding: "16px 0 10px", color: C.textMuted, fontSize: 14 }}>
-                <div style={{ fontSize: 24, marginBottom: 6 }}>🤖</div>
-                {t("dashboard.assistantEmpty")}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                {[t("dashboard.chatSuggest1"), t("dashboard.chatSuggest2"), t("dashboard.chatSuggest3"), t("dashboard.chatSuggest4"), t("dashboard.chatSuggest5"), t("dashboard.chatSuggest6"), t("dashboard.chatSuggest7"), t("dashboard.chatSuggest8")].map(p => (
-                  <button key={p} onClick={() => sendChat(p)} style={{ fontSize: 11, color: C.purple, background: `${C.purple}0D`, border: `1px solid ${C.purple}30`, borderRadius: 20, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{p}</button>
-                ))}
-              </div>
+        {!canUseAI ? (
+          <LockedAICard icon="🤖" title={t("dashboard.lockedChatTitle")} description={t("dashboard.lockedChatDesc")} benefits={t("dashboard.lockedChatBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+        ) : (
+          <>
+            <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              {chatMessages.length === 0 && (
+                <div>
+                  <div style={{ textAlign: "center", padding: "16px 0 10px", color: C.textMuted, fontSize: 14 }}>
+                    <div style={{ fontSize: 24, marginBottom: 6 }}>🤖</div>
+                    {t("dashboard.assistantEmpty")}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                    {[t("dashboard.chatSuggest1"), t("dashboard.chatSuggest2"), t("dashboard.chatSuggest3"), t("dashboard.chatSuggest4"), t("dashboard.chatSuggest5"), t("dashboard.chatSuggest6"), t("dashboard.chatSuggest7"), t("dashboard.chatSuggest8")].map(p => (
+                      <button key={p} onClick={() => sendChat(p)} style={{ fontSize: 11, color: C.purple, background: `${C.purple}0D`, border: `1px solid ${C.purple}30`, borderRadius: 20, padding: "4px 11px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chatMessages.map((m, i) => (
+                <div key={i} ref={m.role === "ai" && i === chatMessages.length - 1 ? aiResponseStartRef : null} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: 12, background: m.role === "user" ? C.purple : "#fff", color: m.role === "user" ? "#fff" : C.text, fontSize: 14, lineHeight: 1.6, boxShadow: m.role === "ai" ? "0 1px 4px rgba(0,0,0,0.06)" : "none" }}>
+                    {m.role === "ai" ? <MarkdownText text={m.text} /> : m.text}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && <div style={{ color: C.purple, fontSize: 13 }}>{t("dashboard.thinking")}</div>}
+              <div ref={chatEndRef} />
             </div>
-          )}
-          {chatMessages.map((m, i) => (
-            <div key={i} ref={m.role === "ai" && i === chatMessages.length - 1 ? aiResponseStartRef : null} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-              <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: 12, background: m.role === "user" ? C.purple : "#fff", color: m.role === "user" ? "#fff" : C.text, fontSize: 14, lineHeight: 1.6, boxShadow: m.role === "ai" ? "0 1px 4px rgba(0,0,0,0.06)" : "none" }}>
-                {m.role === "ai" ? <MarkdownText text={m.text} /> : m.text}
-              </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder={t("dashboard.chatPlaceholder")} style={{ flex: 1, minWidth: 0, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+              <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px", flexShrink: 0 }}>{t("dashboard.send")}</Btn>
             </div>
-          ))}
-          {chatLoading && <div style={{ color: C.purple, fontSize: 13 }}>{t("dashboard.thinking")}</div>}
-          <div ref={chatEndRef} />
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} placeholder={t("dashboard.chatPlaceholder")} style={{ flex: 1, minWidth: 0, border: `1.5px solid ${C.border}`, borderRadius: 9, padding: "12px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-          <Btn onClick={sendChat} disabled={!chatInput.trim()} loading={chatLoading} style={{ padding: "12px 20px", flexShrink: 0 }}>{t("dashboard.send")}</Btn>
-        </div>
+          </>
+        )}
       </Card>
     </div>
   );
@@ -12764,7 +12791,7 @@ export default function App() {
         </div>
       )}
       <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} onOpenOutcomeIntelligence={openTrackerInsights} />}
+        {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} onOpenOutcomeIntelligence={openTrackerInsights} billingState={billingState} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
