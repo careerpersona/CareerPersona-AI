@@ -9689,7 +9689,7 @@ Original subject: ${contact.subject || "N/A"}
 Original message: ${(contact.originalMessage || contact.linkedinMessage || "").slice(0, 400)}
 Method: ${contact.method}
 It has been about 7 days since the original outreach.
-Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it brief, professional, and warm. 2-3 paragraphs max.`, 800);
+Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it brief, professional, and warm. 2-3 paragraphs max.`, 800, "networking_outreach");
       setFuDraft(cleanPlaceholders(raw) || t("networking.followupError"));
     } catch (e) { console.error("[Networking] followup", e); setFuDraft(t("networking.followupError")); }
     finally { setFuLoading(false); }
