@@ -382,6 +382,8 @@
     upgradeToPro: "PRO로 업그레이드",
     usageFeatureNetworking: "네트워킹 아웃리치",
     usageFeatureSmartApply: "스마트 지원",
+    usageFeatureJobIntel: "채용공고 인텔리전스",
+    usageFeatureOpportunity: "기회 인텔리전스",
     stripeManageSoon: "Stripe 구독 관리는 곧 제공될 예정입니다.",
     cancelSubscription: "구독 취소",
     billing: "결제",

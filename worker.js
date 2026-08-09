@@ -327,13 +327,13 @@ function getCapabilities(sub, config) {
   // interview_prep session fires multiple calls (question gen, feedback scoring,
   // mock summary), so 100/120 raw calls corresponds to ~10/~12 sessions.
   const proFeatureLimits = {
-    resumeAnalysisLimit: 10, interviewSessionLimit: 100, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20, smartApplyLimit: 20,
+    resumeAnalysisLimit: 10, interviewSessionLimit: 100, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20, smartApplyLimit: 20, jobIntelligenceLimit: 20, opportunityIntelligenceLimit: 20,
   };
   const premiumFeatureLimits = {
-    resumeAnalysisLimit: 10, interviewSessionLimit: 120, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20, smartApplyLimit: 30,
+    resumeAnalysisLimit: 10, interviewSessionLimit: 120, salaryAnalysisLimit: 10, linkedinIntelligenceLimit: 10, networkingOutreachLimit: 20, smartApplyLimit: 30, jobIntelligenceLimit: 30, opportunityIntelligenceLimit: 30,
   };
   const adminFeatureLimits = {
-    resumeAnalysisLimit: 2000, interviewSessionLimit: 2000, salaryAnalysisLimit: 2000, linkedinIntelligenceLimit: 2000, networkingOutreachLimit: 2000, smartApplyLimit: 2000,
+    resumeAnalysisLimit: 2000, interviewSessionLimit: 2000, salaryAnalysisLimit: 2000, linkedinIntelligenceLimit: 2000, networkingOutreachLimit: 2000, smartApplyLimit: 2000, jobIntelligenceLimit: 2000, opportunityIntelligenceLimit: 2000,
   };
   const aiRequestLimit = parseInt(config.pro_ai_requests_monthly ?? "500");
   switch (status) {
@@ -353,6 +353,8 @@ function getCapabilities(sub, config) {
         linkedinIntelligenceLimit: inGrace ? proFeatureLimits.linkedinIntelligenceLimit : 0,
         networkingOutreachLimit:   inGrace ? proFeatureLimits.networkingOutreachLimit : 0,
         smartApplyLimit:           inGrace ? proFeatureLimits.smartApplyLimit : 0,
+        jobIntelligenceLimit:      inGrace ? proFeatureLimits.jobIntelligenceLimit : 0,
+        opportunityIntelligenceLimit: inGrace ? proFeatureLimits.opportunityIntelligenceLimit : 0,
       };
     }
     case "pro_cancelled": {
@@ -367,6 +369,8 @@ function getCapabilities(sub, config) {
         linkedinIntelligenceLimit: active ? proFeatureLimits.linkedinIntelligenceLimit : 0,
         networkingOutreachLimit:   active ? proFeatureLimits.networkingOutreachLimit : 0,
         smartApplyLimit:           active ? proFeatureLimits.smartApplyLimit : 0,
+        jobIntelligenceLimit:      active ? proFeatureLimits.jobIntelligenceLimit : 0,
+        opportunityIntelligenceLimit: active ? proFeatureLimits.opportunityIntelligenceLimit : 0,
       };
     }
     case "admin":
@@ -376,7 +380,7 @@ function getCapabilities(sub, config) {
       };
     default: // no_subscription
       return { plan: "none", canUseAI: false, canUseJobs: true,
-        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0, linkedinIntelligenceLimit: 0, networkingOutreachLimit: 0, smartApplyLimit: 0 };
+        aiRequestLimit: 0, resumeAnalysisLimit: 0, interviewSessionLimit: 0, salaryAnalysisLimit: 0, linkedinIntelligenceLimit: 0, networkingOutreachLimit: 0, smartApplyLimit: 0, jobIntelligenceLimit: 0, opportunityIntelligenceLimit: 0 };
   }
 }
 
@@ -403,6 +407,11 @@ function getFeatureLimit(feature, caps) {
     // Manual generation only -- Smart Apply Auto Prep is a separate automation
     // budget (checkAndConsumeAutomationBudget / automation_preferences), untouched.
     case "smart_apply": return caps.smartApplyLimit;
+    // 20/month Pro, 30/month Premium, per the locked Job Intelligence / Opportunity
+    // Intelligence quota decision -- own dedicated ceilings, previously fell through
+    // to the generic aiRequestLimit.
+    case "job_intelligence": return caps.jobIntelligenceLimit;
+    case "opportunity_intelligence": return caps.opportunityIntelligenceLimit;
     // Automatic continuations of an already-authorized primary action (a parallel
     // insights call, a post-improve re-score, a cover-letter refresh, a mock
     // interview's closing summary) -- never an independent customer request, so
@@ -459,6 +468,8 @@ function computeQuotas(caps, usage) {
     { key: "linkedin_intelligence", limit: caps.linkedinIntelligenceLimit },
     { key: "networking_outreach", limit: caps.networkingOutreachLimit },
     { key: "smart_apply",     limit: caps.smartApplyLimit },
+    { key: "job_intelligence", limit: caps.jobIntelligenceLimit },
+    { key: "opportunity_intelligence", limit: caps.opportunityIntelligenceLimit },
   ];
   const quotas = {};
   for (const { key, limit } of features) {

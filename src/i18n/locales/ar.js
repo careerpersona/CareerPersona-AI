@@ -382,6 +382,8 @@
     upgradeToPro: "الترقية إلى PRO",
     usageFeatureNetworking: "رسائل التواصل",
     usageFeatureSmartApply: "التقديم الذكي",
+    usageFeatureJobIntel: "ذكاء الوظائف",
+    usageFeatureOpportunity: "استخبارات الفرص",
     stripeManageSoon: "ستتوفر إدارة الاشتراك عبر Stripe قريبًا.",
     cancelSubscription: "إلغاء الاشتراك",
     billing: "الفوترة",

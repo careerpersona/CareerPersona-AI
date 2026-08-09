@@ -382,6 +382,8 @@
     upgradeToPro: "PROにアップグレード",
     usageFeatureNetworking: "ネットワーキング・アウトリーチ",
     usageFeatureSmartApply: "スマート応募",
+    usageFeatureJobIntel: "求人インテリジェンス",
+    usageFeatureOpportunity: "オポチュニティインテリジェンス",
     stripeManageSoon: "Stripeによるサブスクリプション管理は近日公開予定です。",
     cancelSubscription: "サブスクリプションを解約",
     billing: "請求",

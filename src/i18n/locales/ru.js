@@ -382,6 +382,8 @@
     upgradeToPro: "Перейти на PRO",
     usageFeatureNetworking: "Нетворкинг-сообщения",
     usageFeatureSmartApply: "Умная Подача",
+    usageFeatureJobIntel: "Анализ вакансий",
+    usageFeatureOpportunity: "Аналитика возможностей",
     stripeManageSoon: "Управление подпиской через Stripe скоро будет доступно.",
     cancelSubscription: "Отменить подписку",
     billing: "Оплата",

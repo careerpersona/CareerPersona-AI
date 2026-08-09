@@ -2545,7 +2545,8 @@ Task: Analyze historical application outcomes — response rates, what patterns 
 
 Return ONLY this JSON, no markdown:
 {"v":1,"marketPatterns":{"status":"<Excellent|Strong|Good|Fair|Limited>","summary":"<2-3 sentences>","evidence":["<pattern 1>","<pattern 2>","<pattern 3>"],"trends":"<1 sentence>"},"employerDemand":{"status":"<Excellent|Strong|Consistent|Good|Moderate|Limited>","summary":"<2-3 sentences>","topSkills":["<skill 1>","<skill 2>","<skill 3>","<skill 4>","<skill 5>"],"qualifications":["<qualification 1>","<qualification 2>"],"insight":"<1 sentence>"},"marketFit":{"status":"<Excellent|Strong|Good|Fair|Developing>","narrative":"<3-4 sentences>","strengths":["<strength 1>","<strength 2>"],"gaps":["<gap 1>","<gap 2>"],"positioning":"<1 sentence>"},"searchStrategy":{"status":"<Excellent|Focused|Aligned|Broad|Scattered|Needs Focus>","summary":"<2-3 sentences>","alignment":"<1 sentence>","recommendation":"<1 strategic sentence>"},"searchPerformance":{"status":"<Excellent|Strong|Improving|Stable|Fair|Needs Review>","summary":"<2-3 sentences>","patterns":["<pattern 1>","<pattern 2>"],"insight":"<1 sentence>"}}`,
-    1400
+    1400,
+    "job_intelligence"
   );
 
   let result;
@@ -11297,7 +11298,8 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
         `You are a career intelligence advisor. Generate opportunity intelligence for this job seeker. Return ONLY valid JSON with these exact keys:
 {"careerPivotOpportunities":[{"role":"...","fit":0,"reason":"1 sentence","skillsNeeded":["..."],"salaryUplift":"+X%"}],"trendingSkills":[{"skill":"...","demand":"Exploding|High|Growing","frequency":0,"salaryPremium":"+X%"}],"emergingIndustries":[{"industry":"...","growth":"+X% YoY","roles":["..."],"avgSalary":"$XXXk"}],"growingCompanies":[{"company":"...","signal":"1 sentence","category":"...","openRoles":0,"yourMatch":0}],"internalPromotionSignals":["1 sentence"]}
 User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.job_title || "not set"}. Skills from jobs: ${topSkills}. Companies: ${topCos}.`,
-        1800
+        1800,
+        "opportunity_intelligence"
       );
       const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
       const result = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
@@ -12181,6 +12183,8 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     { key: "linkedin_intelligence", label: t("settings.usageFeatureLinkedIn"), quota: quotas.linkedin_intelligence },
     { key: "networking_outreach", label: t("settings.usageFeatureNetworking"), quota: quotas.networking_outreach },
     { key: "smart_apply", label: t("settings.usageFeatureSmartApply"), quota: quotas.smart_apply },
+    { key: "job_intelligence", label: t("settings.usageFeatureJobIntel"), quota: quotas.job_intelligence },
+    { key: "opportunity_intelligence", label: t("settings.usageFeatureOpportunity"), quota: quotas.opportunity_intelligence },
   ];
 
   // Smart Apply Auto Prep (Premium Feature #5) — §5/§11 of the locked

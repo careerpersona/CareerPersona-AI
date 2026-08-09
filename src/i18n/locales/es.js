@@ -382,6 +382,8 @@
     upgradeToPro: "Actualizar a PRO",
     usageFeatureNetworking: "Mensajes de Networking",
     usageFeatureSmartApply: "Smart Apply",
+    usageFeatureJobIntel: "Inteligencia de Empleo",
+    usageFeatureOpportunity: "Inteligencia de Oportunidades",
     stripeManageSoon: "La gestión de suscripciones con Stripe estará disponible pronto.",
     cancelSubscription: "Cancelar Suscripción",
     billing: "Facturación",

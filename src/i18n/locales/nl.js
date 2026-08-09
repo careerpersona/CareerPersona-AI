@@ -382,6 +382,8 @@
     upgradeToPro: "Upgraden naar PRO",
     usageFeatureNetworking: "Netwerk Outreach",
     usageFeatureSmartApply: "Smart Apply",
+    usageFeatureJobIntel: "Vacature-intelligentie",
+    usageFeatureOpportunity: "Kansen Intelligentie",
     stripeManageSoon: "Stripe-abonnementsbeheer komt binnenkort beschikbaar.",
     cancelSubscription: "Abonnement Opzeggen",
     billing: "Facturering",

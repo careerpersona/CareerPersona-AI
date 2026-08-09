@@ -415,6 +415,8 @@ export default {
     upgradeToPro: "Upgrade to Pro",
     usageFeatureNetworking: "Network Outreach",
     usageFeatureSmartApply: "Smart Apply",
+    usageFeatureJobIntel: "Job Intelligence",
+    usageFeatureOpportunity: "Opportunity Intelligence",
     stripeManageSoon: "Stripe subscription management coming soon.",
     cancelSubscription: "Cancel Subscription",
     billing: "Billing",

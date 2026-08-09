@@ -382,6 +382,8 @@
     upgradeToPro: "PRO'ya Yükselt",
     usageFeatureNetworking: "Networking Mesajları",
     usageFeatureSmartApply: "Akıllı Başvuru",
+    usageFeatureJobIntel: "İş İlanı Zekâsı",
+    usageFeatureOpportunity: "Fırsat İstihbaratı",
     stripeManageSoon: "Stripe abonelik yönetimi yakında kullanıma sunulacak.",
     cancelSubscription: "Aboneliği İptal Et",
     billing: "Faturalama",
