@@ -381,6 +381,7 @@
     nextRenewal: "次回更新日",
     upgradeToPro: "PROにアップグレード",
     usageFeatureNetworking: "ネットワーキング・アウトリーチ",
+    usageFeatureSmartApply: "スマート応募",
     stripeManageSoon: "Stripeによるサブスクリプション管理は近日公開予定です。",
     cancelSubscription: "サブスクリプションを解約",
     billing: "請求",

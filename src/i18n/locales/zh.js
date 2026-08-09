@@ -381,6 +381,7 @@
     nextRenewal: "下次续订",
     upgradeToPro: "升级到 PRO",
     usageFeatureNetworking: "人脉拓展消息",
+    usageFeatureSmartApply: "智能申请",
     stripeManageSoon: "Stripe 订阅管理即将推出。",
     cancelSubscription: "取消订阅",
     billing: "账单",

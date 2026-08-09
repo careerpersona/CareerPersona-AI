@@ -381,6 +381,7 @@
     nextRenewal: "Próxima Renovación",
     upgradeToPro: "Actualizar a PRO",
     usageFeatureNetworking: "Mensajes de Networking",
+    usageFeatureSmartApply: "Smart Apply",
     stripeManageSoon: "La gestión de suscripciones con Stripe estará disponible pronto.",
     cancelSubscription: "Cancelar Suscripción",
     billing: "Facturación",

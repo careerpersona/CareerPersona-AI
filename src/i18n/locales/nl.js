@@ -381,6 +381,7 @@
     nextRenewal: "Volgende Verlenging",
     upgradeToPro: "Upgraden naar PRO",
     usageFeatureNetworking: "Netwerk Outreach",
+    usageFeatureSmartApply: "Smart Apply",
     stripeManageSoon: "Stripe-abonnementsbeheer komt binnenkort beschikbaar.",
     cancelSubscription: "Abonnement Opzeggen",
     billing: "Facturering",

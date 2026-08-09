@@ -381,6 +381,7 @@
     nextRenewal: "التجديد القادم",
     upgradeToPro: "الترقية إلى PRO",
     usageFeatureNetworking: "رسائل التواصل",
+    usageFeatureSmartApply: "التقديم الذكي",
     stripeManageSoon: "ستتوفر إدارة الاشتراك عبر Stripe قريبًا.",
     cancelSubscription: "إلغاء الاشتراك",
     billing: "الفوترة",

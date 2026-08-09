@@ -381,6 +381,7 @@
     nextRenewal: "Sonraki Yenileme",
     upgradeToPro: "PRO'ya Yükselt",
     usageFeatureNetworking: "Networking Mesajları",
+    usageFeatureSmartApply: "Akıllı Başvuru",
     stripeManageSoon: "Stripe abonelik yönetimi yakında kullanıma sunulacak.",
     cancelSubscription: "Aboneliği İptal Et",
     billing: "Faturalama",

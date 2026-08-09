@@ -414,6 +414,7 @@ export default {
     nextRenewal: "Next Renewal",
     upgradeToPro: "Upgrade to Pro",
     usageFeatureNetworking: "Network Outreach",
+    usageFeatureSmartApply: "Smart Apply",
     stripeManageSoon: "Stripe subscription management coming soon.",
     cancelSubscription: "Cancel Subscription",
     billing: "Billing",

@@ -7566,7 +7566,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       console.log(`[SmartApply] ⏳ [3/6] Calling Claude API for "${job.title}" (max 8000 tokens)`);
       _stage = "before_anthropic_request";
       console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before Anthropic request`);
-      _raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
+      _raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000, "smart_apply");
       _stage = "after_anthropic_response";
       console.log(`[SmartApply] ✅ [3/6] Claude responded: ${_raw.length} chars`);
       console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After Anthropic response. length=${_raw.length} first500=${JSON.stringify(_raw.slice(0, 500))}`);
@@ -10674,7 +10674,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       await resetToQueued(item.id);
       const ctx = userContext.getContextString({ identity: true });
       const job = { title: item.job_title, company: item.company, description: item.job_description || "" };
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, job, profile), 8000, "smart_apply");
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
@@ -10713,7 +10713,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       queued = await enqueue(profile.id, jobForQueue, resumeId);
       if (!queued) { onQueueChange?.(); return; } // already queued/ready
       const ctx = userContext.getContextString({ identity: true, applications: true });
-      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, jobForQueue, profile), 8000);
+      const raw = await askClaude(buildSmartApplyPrompt(ctx, resumeText, jobForQueue, profile), 8000, "smart_apply");
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
@@ -12180,6 +12180,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     { key: "salary_analysis", label: t("settings.usageFeatureSalary"),     quota: quotas.salary_analysis },
     { key: "linkedin_intelligence", label: t("settings.usageFeatureLinkedIn"), quota: quotas.linkedin_intelligence },
     { key: "networking_outreach", label: t("settings.usageFeatureNetworking"), quota: quotas.networking_outreach },
+    { key: "smart_apply", label: t("settings.usageFeatureSmartApply"), quota: quotas.smart_apply },
   ];
 
   // Smart Apply Auto Prep (Premium Feature #5) — §5/§11 of the locked

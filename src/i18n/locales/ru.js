@@ -381,6 +381,7 @@
     nextRenewal: "Следующее продление",
     upgradeToPro: "Перейти на PRO",
     usageFeatureNetworking: "Нетворкинг-сообщения",
+    usageFeatureSmartApply: "Умная Подача",
     stripeManageSoon: "Управление подпиской через Stripe скоро будет доступно.",
     cancelSubscription: "Отменить подписку",
     billing: "Оплата",
