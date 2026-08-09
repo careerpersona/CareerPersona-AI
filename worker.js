@@ -782,11 +782,34 @@ async function handleCheckoutSession(request, env) {
     await invalidateSubscription(userId, env);
   }
   const appUrl = "https://careerpersonaai.com";
+  // International currency: Stripe's own Adaptive Pricing, not a currency
+  // system of our own. The Price stays USD (the $29.99/$39.99 reference
+  // price, untouched) -- Stripe detects the customer's location, presents
+  // and charges an equivalent local-currency amount using a Stripe-guaranteed
+  // exchange rate, and reports the real charged amount back via
+  // presentment_details on the Checkout Session / PaymentIntent events. We
+  // never compute, store, or branch on a currency or exchange rate anywhere
+  // in this codebase. `adaptive_pricing[enabled]: true` is passed explicitly
+  // per-session (rather than relying silently on the Dashboard default) so
+  // this stays correct even if that account-level default is ever changed --
+  // it still requires Adaptive Pricing to be enabled for the account (see
+  // the Dashboard action noted at this function's top).
+  //
+  // This is a Checkout Session-only parameter -- once a subscription is
+  // created this way, Stripe continues billing every subsequent invoice for
+  // that subscription (renewals, and the proration/next-cycle invoices from
+  // handleChangePlan's upgrade/downgrade below) in the same established
+  // presentment currency automatically. Neither the Subscription Update API
+  // nor the Subscription Schedule API used by handleChangePlan has an
+  // adaptive-pricing parameter of its own -- none is needed, since currency
+  // presentment is a property of the subscription's off-session payment
+  // setup from checkout time, not of each individual price change.
   const session = await stripeRequest("POST", "/checkout/sessions", {
     customer: customerId,
     mode: "subscription",
     "line_items[0][price]": priceId,
     "line_items[0][quantity]": "1",
+    "adaptive_pricing[enabled]": "true",
     success_url: `${appUrl}/#pricing?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/#pricing`,
     "subscription_data[metadata][supabase_user_id]": userId,
