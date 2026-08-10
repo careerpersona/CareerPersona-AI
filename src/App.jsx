@@ -10889,8 +10889,79 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
 }
 
 // ─── PRICING PAGE ──────────────────────────────────────────
+// Full Plan Details — every distinct feature line is defined ONCE (as a t()
+// key) and referenced by key across whichever plan tiers include it, so Pro's
+// modal and Premium's modal never duplicate a separate translation for
+// something already listed under Free. Each plan's modal renders its own
+// full, additive list (Free's groups; Free+Pro's; Free+Pro+Premium's) with
+// nothing summarized as "Everything in X" -- the groups below are simply
+// concatenated per tier at render time.
+const FREE_FEATURE_GROUPS = [
+  { heading: "pricing.groupJobSearch", items: ["featJobSearch", "featMatchScore", "featSaveTrackJobs", "featJobChangeAlerts"] },
+  { heading: "pricing.groupApplications", items: ["featAppTracker"] },
+  { heading: "pricing.groupResumeFree", items: ["featResumeUpload", "featResumeCompleteness"] },
+  { heading: "pricing.groupCareerInsights", items: ["featOpportunityInsights", "featDashboardOverview", "featInterviewHistory"] },
+  { heading: "pricing.groupAccount", items: ["featProfileMgmt", "featBillingMgmt"] },
+];
+const PRO_FEATURE_GROUPS = [
+  { heading: "pricing.groupResumeAI", items: ["featResumeTailoring", "featAtsScoring", "featCoverLetters", "featDeepInsights", "featScoreBenchmarking", "featJobFitAnalysis"] },
+  { heading: "pricing.groupInterviewAI", items: ["featInterviewQuestions", "featInterviewFeedback", "featMockInterview"] },
+  { heading: "pricing.groupSalaryAI", items: ["featSalaryInsights"] },
+  { heading: "pricing.groupLinkedInAI", items: ["featLinkedInOptimization"] },
+  { heading: "pricing.groupNetworkingAI", items: ["featNetworkingMessages", "featFollowUpMessages"] },
+  { heading: "pricing.groupSmartApply", items: ["featSmartApply"] },
+  { heading: "pricing.groupIntelligenceAI", items: ["featJobIntelligence", "featOpportunityIntelligenceAI", "featJobChangeDetail"] },
+  { heading: "pricing.groupDailyAssistant", items: ["featDailyBriefing", "featActionPlan", "featCareerAssistant", "featCareerProgress"] },
+  { heading: "pricing.groupCheckout", items: ["featLocalCurrency"] },
+];
+const PREMIUM_FEATURE_GROUPS = [
+  { heading: "pricing.groupPremiumExclusive", items: ["featOutcomeIntelligence", "featReferralIntelligence", "featProactiveAlerts", "featSmartApplyAutoPrep", "featLinkedInPremiumInsights"] },
+  { heading: "pricing.groupHigherUsage", items: ["featHigherUsage"] },
+];
+const PLAN_DETAIL_GROUPS = {
+  free: FREE_FEATURE_GROUPS,
+  pro: [...FREE_FEATURE_GROUPS, ...PRO_FEATURE_GROUPS],
+  premium: [...FREE_FEATURE_GROUPS, ...PRO_FEATURE_GROUPS, ...PREMIUM_FEATURE_GROUPS],
+};
+
+// Full-screen overlay + centered scrollable panel -- this app has no existing
+// full-screen modal component to reuse (only anchored dropdowns and inline
+// confirms), so this is a small, self-contained one scoped to Pricing's own
+// "Full Plan Details" need rather than a new shared component.
+function PlanDetailsModal({ planId, planName, onClose }) {
+  const { t } = useI18n();
+  const groups = PLAN_DETAIL_GROUPS[planId] || [];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)" }} />
+      <div style={{ position: "relative", background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{t("pricing.detailsHeading").replace("{plan}", planName)}</div>
+          <button onClick={onClose} aria-label={t("pricing.detailsClose")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted, padding: 4, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: "18px 22px", overflowY: "auto" }}>
+          {groups.map((group, gi) => (
+            <div key={gi} style={{ marginBottom: gi === groups.length - 1 ? 0 : 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.purple, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>{t(group.heading)}</div>
+              {group.items.map((key, ii) => (
+                <div key={ii} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}>
+                  <span style={{ color: C.purple, flexShrink: 0, fontWeight: 700 }}>✓</span>{t(`pricing.${key}`)}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <Btn variant="secondary" style={{ width: "100%", justifyContent: "center" }} onClick={onClose}>{t("pricing.detailsClose")}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
   const { t } = useI18n();
+  const [detailsPlan, setDetailsPlan] = useState(null);
   // checkoutLoadingPlan / checkoutErrorPlan track WHICH card ("pro" | "premium")
   // is loading or erroring, since there are now two independent checkout CTAs.
   const [checkoutLoadingPlan, setCheckoutLoadingPlan] = useState(null);
@@ -10962,8 +11033,8 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
 
   const plans = [
     { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true, checkoutPlan: null, alreadyHave: false },
-    { id: "pro", name: t("pricing.proName"), price: "$29.99", sub: t("pricing.proSub"), color: C.purple, popular: true, features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7"), t("pricing.proFeature8")], cta: t("pricing.proCta"), disabled: false, checkoutPlan: "pro", alreadyHave: isAlreadyPro },
-    { id: "premium", name: t("pricing.premiumName"), price: "$39.99", sub: t("pricing.premiumSub"), color: C.purple, features: [t("pricing.premiumFeature1"), t("pricing.premiumFeature2"), t("pricing.premiumFeature3"), t("pricing.premiumFeature4"), t("pricing.premiumFeature5"), t("pricing.premiumFeature6")], cta: t("pricing.premiumCta"), disabled: false, checkoutPlan: "premium", alreadyHave: isAlreadyPremium },
+    { id: "pro", name: t("pricing.proName"), price: "$29.99", sub: t("pricing.proSub"), color: C.purple, popular: true, includesLabel: t("pricing.includesFree"), features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7")], cta: t("pricing.proCta"), disabled: false, checkoutPlan: "pro", alreadyHave: isAlreadyPro },
+    { id: "premium", name: t("pricing.premiumName"), price: "$39.99", sub: t("pricing.premiumSub"), color: C.purple, includesLabel: t("pricing.includesPro"), features: [t("pricing.premiumFeature1"), t("pricing.premiumFeature2"), t("pricing.premiumFeature3"), t("pricing.premiumFeature4"), t("pricing.premiumFeature5")], cta: t("pricing.premiumCta"), disabled: false, checkoutPlan: "premium", alreadyHave: isAlreadyPremium },
   ];
 
   return (
@@ -11004,6 +11075,7 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
             <div style={{ fontSize: 17, fontWeight: 800, color: plan.color, marginBottom: 4 }}>{plan.name}</div>
             <div style={{ marginBottom: 6 }}><span style={{ fontSize: 32, fontWeight: 900, color: C.text }}>{plan.price}</span><span style={{ fontSize: 14, color: C.textMuted, marginLeft: 4 }}>{plan.sub}</span></div>
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
+            {plan.includesLabel && <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, marginBottom: 10 }}>{plan.includesLabel}</div>}
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
               {checkoutErrorPlan === plan.checkoutPlan && checkoutError && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
@@ -11015,10 +11087,24 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
               >
                 {plan.alreadyHave ? t("pricing.currentPlan") : (checkoutLoadingPlan === plan.checkoutPlan ? "…" : plan.cta)}
               </Btn>
+              <button
+                onClick={() => setDetailsPlan(plan.id)}
+                style={{ display: "block", width: "100%", textAlign: "center", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.purple, padding: "10px 0 0", fontFamily: "inherit" }}
+              >
+                {t("pricing.viewFullDetails")}
+              </button>
             </div>
           </Card>
         ))}
       </div>
+
+      {detailsPlan && (
+        <PlanDetailsModal
+          planId={detailsPlan}
+          planName={plans.find(p => p.id === detailsPlan)?.name || ""}
+          onClose={() => setDetailsPlan(null)}
+        />
+      )}
     </div>
   );
 }
