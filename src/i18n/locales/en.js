@@ -223,6 +223,9 @@ export default {
     welcomeLead: "Welcome to",
     tagline: "Your personal AI career assistant.",
     cta: "Let's build your CareerPersona",
+    profileSavedMessage: "Great! Your profile is all set. Now let's build your resume.",
+    resumeSavedMessage: "Excellent! Your resume is ready. Now let's take you to your Dashboard.",
+    resumeSkippedMessage: "No problem. You can add your resume anytime. Let's continue to your Dashboard.",
   },
   auth: {
     tagline: "Your AI-powered career platform",
@@ -855,6 +858,7 @@ export default {
     savedShort: "✓ Saved",
     saving: "Saving…",
     saveResume: "💾 Save Resume",
+    skipForNow: "Skip for now",
     supportsHint: "Supports: PDF, DOCX, DOC, PNG, JPG, or paste text",
     resumePlaceholder: "Paste your resume here, or upload a file above…",
     wordCount: "{n} words",

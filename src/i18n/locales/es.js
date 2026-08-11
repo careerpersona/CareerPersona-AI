@@ -219,6 +219,9 @@
     welcomeLead: "Bienvenido a",
     tagline: "Tu asistente de carrera con IA personal.",
     cta: "Creemos tu CareerPersona",
+    profileSavedMessage: "¡Genial! Tu perfil está listo. Ahora vamos a crear tu currículum.",
+    resumeSavedMessage: "¡Excelente! Tu currículum está listo. Ahora vamos a llevarte a tu Panel.",
+    resumeSkippedMessage: "No hay problema. Puedes añadir tu currículum cuando quieras. Vamos a continuar a tu Panel.",
   },
   auth: {
     tagline: "Tu plataforma profesional impulsada por IA",
@@ -797,6 +800,7 @@
     savedShort: "✓ Guardado",
     saving: "Guardando…",
     saveResume: "💾 Guardar Currículum",
+    skipForNow: "Omitir por ahora",
     supportsHint: "Compatible con: PDF, DOCX, DOC, PNG, JPG, o pega el texto",
     resumePlaceholder: "Pega tu currículum aquí, o sube un archivo arriba…",
     wordCount: "{n} palabras",

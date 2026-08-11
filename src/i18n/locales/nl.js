@@ -219,6 +219,9 @@
     welcomeLead: "Welkom bij",
     tagline: "Je persoonlijke AI-carrièreassistent.",
     cta: "Laten we jouw CareerPersona opbouwen",
+    profileSavedMessage: "Geweldig! Je profiel is compleet. Laten we nu je cv opbouwen.",
+    resumeSavedMessage: "Uitstekend! Je cv is klaar. Op naar je Dashboard.",
+    resumeSkippedMessage: "Geen probleem. Je kunt je cv altijd later toevoegen. Op naar je Dashboard.",
   },
   auth: {
     tagline: "Jouw AI-gedreven loopbaanplatform",
@@ -797,6 +800,7 @@
     savedShort: "✓ Opgeslagen",
     saving: "Bezig met opslaan…",
     saveResume: "💾 Cv Opslaan",
+    skipForNow: "Voorlopig overslaan",
     supportsHint: "Ondersteunt: PDF, DOCX, DOC, PNG, JPG, of plak tekst",
     resumePlaceholder: "Plak hier je cv, of upload hierboven een bestand…",
     wordCount: "{n} woorden",

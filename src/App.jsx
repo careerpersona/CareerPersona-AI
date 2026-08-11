@@ -4764,7 +4764,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState }) {
+function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState, onOnboardingSave, onOnboardingSkip }) {
   const { t, language } = useI18n();
   // Mirrors the exact billingState -> canUseAI derivation JobSearchPage already
   // uses (App.jsx handleSmartApplyClick) -- same computed value, not a second
@@ -5222,6 +5222,10 @@ JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insig
       }
       setResumeSaved(true);
       setTimeout(() => setResumeSaved(false), 3000);
+      // Only present when this Resume visit originated from the first-launch
+      // flow (App.jsx conditionally passes this prop) -- a normal resume save
+      // by an existing user never receives it, so this is a no-op for them.
+      if (onOnboardingSave) onOnboardingSave();
     } catch (e) {
       console.error("handleSaveResume failed:", e?.code, e?.message, e);
       const isSessionError = e?.message?.includes("Session expired") || e?.message?.includes("Not signed in");
@@ -5840,6 +5844,16 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
           </div>
           {workspaceInputsJSX}
           {loading && <Spinner steps={[t("resume.resumeStep1"),t("resume.resumeStep2"),t("resume.resumeStep3"),t("resume.resumeStep4"),t("resume.resumeStep5")]} currentStep={loadStep} />}
+          {/* Only present when this Resume visit originated from the first-launch
+              flow (App.jsx conditionally passes this prop) -- existing users
+              never receive it, so this link never renders for them. */}
+          {onOnboardingSkip && (
+            <div style={{ textAlign: "center", marginTop: 18 }}>
+              <span onClick={onOnboardingSkip} style={{ fontSize: 13, color: C.textMuted, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                {t("resume.skipForNow")}
+              </span>
+            </div>
+          )}
         </>
       )}
 
@@ -11169,7 +11183,7 @@ const PROFILE_ERROR_MESSAGE_KEY = {
   phone: "profile.invalidPhone",
 };
 
-function ProfilePage({ profile, updateProfile }) {
+function ProfilePage({ profile, updateProfile, onOnboardingSave }) {
   const { t, language } = useI18n();
   const [form, setForm] = useState({
     full_name: profile?.full_name || "",
@@ -11228,6 +11242,10 @@ function ProfilePage({ profile, updateProfile }) {
     updateProfile(normalized);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    // Only present when this Profile visit originated from the first-launch
+    // flow (App.jsx conditionally passes this prop) -- a normal profile edit
+    // by an existing user never receives it, so this is a no-op for them.
+    if (onOnboardingSave) onOnboardingSave();
   };
 
   // Visible once a field has been blurred at least once, or a save was
@@ -12618,6 +12636,23 @@ function FirstLaunchExperience({ onComplete }) {
   );
 }
 
+// Brief interstitial shown only between first-time onboarding steps (Profile
+// save -> Resume, Resume save -> Dashboard). Uses the existing app background
+// and the same dark, high-contrast text color as the rest of the app -- no
+// new color system, no animation. Auto-continues after a short read pause.
+function OnboardingTransition({ message, onDone }) {
+  useEffect(() => {
+    const t1 = setTimeout(onDone, 1800);
+    return () => clearTimeout(t1);
+  }, [onDone]);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "0 32px" }}>
+      <div style={{ fontSize: 19, fontWeight: 700, color: C.text, textAlign: "center", letterSpacing: "-0.2px" }}>{message}</div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
   const { user, logout, recoveryMode, clearRecovery, authResolving } = useAuth();
@@ -12665,6 +12700,17 @@ export default function App() {
   // naturally never re-triggers on a mid-session refresh/navigation -- only
   // on an actual new logged-out-to-logged-in transition.
   const [showFirstLaunch, setShowFirstLaunch] = useState(false);
+  // True only for the single Profile visit that immediately follows the
+  // first-launch CTA -- consumed (reset to false) the moment that save
+  // fires, so it can never affect a later, ordinary profile edit.
+  const [profileIsOnboarding, setProfileIsOnboarding] = useState(false);
+  // Same pattern as profileIsOnboarding: true only for the single Resume
+  // visit that immediately follows the onboarding Profile save, consumed the
+  // moment that resume save fires.
+  const [resumeIsOnboarding, setResumeIsOnboarding] = useState(false);
+  // Brief message shown between onboarding steps -- { message, nextPage } or
+  // null. Not persisted; purely a transient hand-off between two pages.
+  const [onboardingTransition, setOnboardingTransition] = useState(null);
   const wasLoggedIn = useRef(!!profile);
   useEffect(() => {
     setProfile(user);
@@ -12888,7 +12934,18 @@ export default function App() {
   if (showFirstLaunch) {
     return (
       <I18nContext.Provider value={{ language, setLanguage, t }}>
-        <FirstLaunchExperience onComplete={() => { setShowFirstLaunch(false); setPage("profile"); }} />
+        <FirstLaunchExperience onComplete={() => { setShowFirstLaunch(false); setProfileIsOnboarding(true); setPage("profile"); }} />
+      </I18nContext.Provider>
+    );
+  }
+
+  if (onboardingTransition) {
+    return (
+      <I18nContext.Provider value={{ language, setLanguage, t }}>
+        <OnboardingTransition
+          message={onboardingTransition.message}
+          onDone={() => { const next = onboardingTransition.nextPage; setOnboardingTransition(null); setPage(next); }}
+        />
       </I18nContext.Provider>
     );
   }
@@ -13069,7 +13126,7 @@ export default function App() {
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
-        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} billingState={billingState} />}
+        {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} billingState={billingState} onOnboardingSave={resumeIsOnboarding ? () => { setResumeIsOnboarding(false); setOnboardingTransition({ message: t("firstLaunch.resumeSavedMessage"), nextPage: "dashboard" }); } : undefined} onOnboardingSkip={resumeIsOnboarding ? () => { setResumeIsOnboarding(false); setOnboardingTransition({ message: t("firstLaunch.resumeSkippedMessage"), nextPage: "dashboard" }); } : undefined} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
         {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} onNavigate={setPage} billingState={billingState} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
@@ -13083,7 +13140,7 @@ export default function App() {
         {page === "alerts" && <ProactiveAlertsPanel userId={profile?.id} isPremium={isPremium} alertsHook={proactiveAlertsHook} />}
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} billingState={billingState} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
-        {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} />}
+        {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
       </main>
     </div>
     </I18nContext.Provider>

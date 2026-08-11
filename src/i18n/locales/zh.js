@@ -219,6 +219,9 @@
     welcomeLead: "欢迎使用",
     tagline: "您的专属AI职业助手。",
     cta: "让我们开始构建您的CareerPersona",
+    profileSavedMessage: "太好了！您的个人资料已完成。现在让我们来创建您的简历。",
+    resumeSavedMessage: "太棒了！您的简历已准备就绪。现在带您前往仪表盘。",
+    resumeSkippedMessage: "没关系。您可以随时添加简历。我们继续前往您的仪表盘。",
   },
   auth: {
     tagline: "您的 AI 驱动职业平台",
@@ -797,6 +800,7 @@
     savedShort: "✓ 已保存",
     saving: "保存中…",
     saveResume: "💾 保存简历",
+    skipForNow: "暂时跳过",
     supportsHint: "支持：PDF、DOCX、DOC、PNG、JPG 或粘贴文本",
     resumePlaceholder: "在此粘贴您的简历，或在上方上传文件…",
     wordCount: "{n} 字",

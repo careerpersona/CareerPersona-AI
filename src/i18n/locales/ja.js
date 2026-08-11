@@ -219,6 +219,9 @@
     welcomeLead: "ようこそ",
     tagline: "あなた専属のAIキャリアアシスタント。",
     cta: "あなたのCareerPersonaを作成しましょう",
+    profileSavedMessage: "素晴らしい！プロフィールの設定が完了しました。次は履歴書を作成しましょう。",
+    resumeSavedMessage: "お見事です！履歴書の準備ができました。ダッシュボードへご案内します。",
+    resumeSkippedMessage: "問題ありません。履歴書はいつでも追加できます。ダッシュボードへ進みましょう。",
   },
   auth: {
     tagline: "AIを活用したキャリアプラットフォーム",
@@ -797,6 +800,7 @@
     savedShort: "✓ 保存済み",
     saving: "保存中…",
     saveResume: "💾 履歴書を保存",
+    skipForNow: "今はスキップ",
     supportsHint: "対応形式：PDF、DOCX、DOC、PNG、JPG、またはテキスト貼り付け",
     resumePlaceholder: "ここに履歴書を貼り付けるか、上のファイルをアップロードしてください…",
     wordCount: "{n}語",

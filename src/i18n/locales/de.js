@@ -219,6 +219,9 @@
     welcomeLead: "Willkommen bei",
     tagline: "Dein persönlicher KI-Karriereassistent.",
     cta: "Lass uns dein CareerPersona aufbauen",
+    profileSavedMessage: "Super! Dein Profil ist vollständig. Jetzt erstellen wir deinen Lebenslauf.",
+    resumeSavedMessage: "Ausgezeichnet! Dein Lebenslauf ist fertig. Weiter geht's zu deinem Dashboard.",
+    resumeSkippedMessage: "Kein Problem. Du kannst deinen Lebenslauf jederzeit hinzufügen. Weiter geht's zu deinem Dashboard.",
   },
   auth: {
     tagline: "Ihre KI-gestützte Karriereplattform",
@@ -797,6 +800,7 @@
     savedShort: "✓ Gespeichert",
     saving: "Wird gespeichert…",
     saveResume: "💾 Lebenslauf speichern",
+    skipForNow: "Vorerst überspringen",
     supportsHint: "Unterstützt: PDF, DOCX, DOC, PNG, JPG oder Text einfügen",
     resumePlaceholder: "Fügen Sie hier Ihren Lebenslauf ein oder laden Sie oben eine Datei hoch…",
     wordCount: "{n} Wörter",

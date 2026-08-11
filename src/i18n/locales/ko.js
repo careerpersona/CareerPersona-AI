@@ -219,6 +219,9 @@
     welcomeLead: "환영합니다",
     tagline: "당신만의 AI 커리어 어시스턴트.",
     cta: "당신의 CareerPersona를 만들어봐요",
+    profileSavedMessage: "좋아요! 프로필 설정이 완료되었습니다. 이제 이력서를 작성해볼까요.",
+    resumeSavedMessage: "훌륭해요! 이력서가 준비되었습니다. 이제 대시보드로 이동할게요.",
+    resumeSkippedMessage: "괜찮아요. 이력서는 나중에 언제든지 추가할 수 있어요. 대시보드로 이동할게요.",
   },
   auth: {
     tagline: "AI 기반 커리어 플랫폼",
@@ -797,6 +800,7 @@
     savedShort: "✓ 저장됨",
     saving: "저장 중…",
     saveResume: "💾 이력서 저장",
+    skipForNow: "지금은 건너뛰기",
     supportsHint: "지원 형식: PDF, DOCX, DOC, PNG, JPG 또는 텍스트 붙여넣기",
     resumePlaceholder: "여기에 이력서를 붙여넣거나 위에서 파일을 업로드하세요…",
     wordCount: "{n}단어",

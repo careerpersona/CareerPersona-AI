@@ -219,6 +219,9 @@
     welcomeLead: "Hoş geldiniz",
     tagline: "Kişisel yapay zeka kariyer asistanınız.",
     cta: "CareerPersona'nızı birlikte oluşturalım",
+    profileSavedMessage: "Harika! Profiliniz tamamlandı. Şimdi özgeçmişinizi oluşturalım.",
+    resumeSavedMessage: "Mükemmel! Özgeçmişiniz hazır. Şimdi sizi panonuza götürelim.",
+    resumeSkippedMessage: "Sorun değil. Özgeçmişinizi istediğiniz zaman ekleyebilirsiniz. Panonuza devam edelim.",
   },
   auth: {
     tagline: "Yapay zekâ destekli kariyer platformunuz",
@@ -797,6 +800,7 @@
     savedShort: "✓ Kaydedildi",
     saving: "Kaydediliyor…",
     saveResume: "💾 Özgeçmişi Kaydet",
+    skipForNow: "Şimdilik atla",
     supportsHint: "Desteklenir: PDF, DOCX, DOC, PNG, JPG veya metin yapıştırma",
     resumePlaceholder: "Özgeçmişinizi buraya yapıştırın veya yukarıdan bir dosya yükleyin…",
     wordCount: "{n} kelime",

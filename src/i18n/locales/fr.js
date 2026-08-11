@@ -219,6 +219,9 @@
     welcomeLead: "Bienvenue sur",
     tagline: "Votre assistant de carrière IA personnel.",
     cta: "Construisons votre CareerPersona",
+    profileSavedMessage: "Parfait ! Votre profil est prêt. Créons maintenant votre CV.",
+    resumeSavedMessage: "Excellent ! Votre CV est prêt. Direction votre tableau de bord.",
+    resumeSkippedMessage: "Pas de problème. Vous pourrez ajouter votre CV à tout moment. Direction votre tableau de bord.",
   },
   auth: {
     tagline: "Votre plateforme carrière propulsée par l'IA",
@@ -797,6 +800,7 @@
     savedShort: "✓ Enregistré",
     saving: "Enregistrement…",
     saveResume: "💾 Enregistrer le CV",
+    skipForNow: "Ignorer pour l'instant",
     supportsHint: "Compatible : PDF, DOCX, DOC, PNG, JPG, ou collez le texte",
     resumePlaceholder: "Collez votre CV ici, ou téléchargez un fichier ci-dessus…",
     wordCount: "{n} mots",
