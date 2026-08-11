@@ -215,6 +215,11 @@
     lockedChatDesc: "Chatta con un coach di carriera IA che conosce il tuo profilo, curriculum, candidature e obiettivi.",
     lockedChatBenefits: ["Consigli di carriera personalizzati", "Risposte basate sui tuoi dati", "Disponibile in qualsiasi momento"],
   },
+  firstLaunch: {
+    welcomeLead: "Benvenuto su",
+    tagline: "Il tuo assistente di carriera IA personale.",
+    cta: "Costruiamo il tuo CareerPersona",
+  },
   auth: {
     tagline: "La tua piattaforma di carriera basata sull'IA",
     signIn: "Accedi",

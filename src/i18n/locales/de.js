@@ -215,6 +215,11 @@
     lockedChatDesc: "Chatte mit einem KI-Karrierecoach, der dein Profil, deinen Lebenslauf, deine Bewerbungen und Ziele kennt.",
     lockedChatBenefits: ["Personalisierte Karriereberatung", "Antworten basierend auf deinen eigenen Daten", "Jederzeit verfügbar"],
   },
+  firstLaunch: {
+    welcomeLead: "Willkommen bei",
+    tagline: "Dein persönlicher KI-Karriereassistent.",
+    cta: "Lass uns dein CareerPersona aufbauen",
+  },
   auth: {
     tagline: "Ihre KI-gestützte Karriereplattform",
     signIn: "Anmelden",

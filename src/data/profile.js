@@ -13,6 +13,15 @@ export async function fetchProfile(userId, email) {
   return {
     id: userId,
     email: base?.email || email,
+    // Whether a profile_details row exists at all -- never touched by the
+    // signup trigger (handle_new_user() only inserts into `profiles`), and
+    // only ever created the first time the Profile page is actually saved
+    // (upsertProfile always includes every detail field on a save). This is
+    // the real signal for "has this account ever completed Profile/Job
+    // Preferences setup" -- full_name is NOT usable for this, since the
+    // signup form itself collects a name and a DB trigger copies it into
+    // profiles.full_name before the user ever reaches the app.
+    hasProfileDetails: !!details,
     full_name: base?.full_name || "",
     phone: base?.phone || "",
     country: base?.country || "",

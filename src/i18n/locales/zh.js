@@ -215,6 +215,11 @@
     lockedChatDesc: "与了解你的资料、简历、申请和目标的AI职业教练聊天。",
     lockedChatBenefits: ["个性化的职业建议", "基于你自身数据的回答", "随时可用"],
   },
+  firstLaunch: {
+    welcomeLead: "欢迎使用",
+    tagline: "您的专属AI职业助手。",
+    cta: "让我们开始构建您的CareerPersona",
+  },
   auth: {
     tagline: "您的 AI 驱动职业平台",
     signIn: "登录",

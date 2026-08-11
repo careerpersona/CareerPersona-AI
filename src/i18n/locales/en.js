@@ -219,6 +219,11 @@ export default {
     lockedChatDesc: "Chat with an AI career coach that knows your profile, resume, applications, and goals.",
     lockedChatBenefits: ["Personalized career advice", "Answers grounded in your own data", "Available anytime"],
   },
+  firstLaunch: {
+    welcomeLead: "Welcome to",
+    tagline: "Your personal AI career assistant.",
+    cta: "Let's build your CareerPersona",
+  },
   auth: {
     tagline: "Your AI-powered career platform",
     signIn: "Sign In",

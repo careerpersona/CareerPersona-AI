@@ -1398,11 +1398,11 @@ function Logo({ size = 36, onClick, className }) {
   );
 }
 
-function AppName({ size = 18, onClick, className }) {
+function AppName({ size = 18, onClick, className, aiGap = 5 }) {
   return (
     <span className={className} onClick={onClick} style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.5px", cursor: onClick ? "pointer" : "default" }}>
       <span style={{ color: C.text }}>Career</span><span style={{ color: C.purple }}>Persona</span>
-      <span className={className ? `${className}-badge` : undefined} style={{ display: "inline-flex", justifyContent: "center", alignItems: "center", letterSpacing: "normal", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "0 6px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>AI</span>
+      <span className={className ? `${className}-badge` : undefined} style={{ display: "inline-flex", justifyContent: "center", alignItems: "center", letterSpacing: "normal", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "0 6px", borderRadius: 5, marginLeft: aiGap, verticalAlign: "middle" }}>AI</span>
     </span>
   );
 }
@@ -12536,6 +12536,88 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
   );
 }
 
+// ─── FIRST-LAUNCH EXPERIENCE ───────────────────────────────
+// Locked design (approved, do not modify): 0-4s logo reveal (pure scale
+// growth from small, full color/opacity throughout -- no fade during the
+// reveal itself), 4-7s welcome message (holds, does not disappear), CTA
+// fades in at 7s and persists indefinitely until tapped. One tap -> directly
+// into the existing ProfilePage, no intermediate state, no second click.
+// Reuses the app's own Logo/AppName components (same stacked hero
+// composition already used on AuthPage: icon above, wordmark below) rather
+// than a separate image asset, so this is pixel-consistent with the rest of
+// the app's real brand mark, not a duplicate.
+function FirstLaunchExperience({ onComplete }) {
+  const { t } = useI18n();
+  const [grown, setGrown] = useState(false);
+  const [phase, setPhase] = useState("logo"); // "logo" -> "welcome" -> "cta"
+  const [ctaClicked, setCtaClicked] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setGrown(true));
+    const t1 = setTimeout(() => setPhase("welcome"), 4000);
+    const t2 = setTimeout(() => setPhase("cta"), 7000);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  const handleCta = () => {
+    if (ctaClicked) return; // one click only
+    setCtaClicked(true);
+    onComplete(); // direct hand-off -- no intermediate "Continuing..." state
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      {/* Section 1 (0-4s) -- logo reveal: exact approved horizontal lockup
+          (icon left, wordmark right -- matching the approved prototype's
+          composition, not the stacked AuthPage layout). Transform/scale is
+          the only thing that animates during the reveal itself; opacity
+          stays at 100% throughout, only dropping to 0 for the brief
+          hand-off into Section 2. Zero gap before the AI badge, as approved. */}
+      <div style={{
+        position: "absolute", display: "flex", alignItems: "center", gap: 16,
+        opacity: phase === "logo" ? 1 : 0,
+        transform: `scale(${grown ? 1 : 0.4})`,
+        transition: "transform 3.4s cubic-bezier(.16,1,.3,1), opacity 0.4s ease",
+        pointerEvents: "none",
+      }}>
+        <Logo size={54} />
+        <AppName size={28} aiGap={0} />
+      </div>
+
+      {/* Section 2 (4-7s, holds) + Section 3 (CTA joins at 7s, persists) */}
+      <div style={{
+        position: "absolute", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "0 32px",
+        opacity: phase !== "logo" ? 1 : 0,
+        transform: phase !== "logo" ? "translateY(0)" : "translateY(8px)",
+        transition: "opacity 0.8s ease 0.15s, transform 0.8s ease 0.15s",
+      }}>
+        <div style={{ fontSize: 17, fontWeight: 600, color: "#2A3646", marginBottom: 10 }}>{t("firstLaunch.welcomeLead")}</div>
+        <div style={{ marginBottom: 14 }}><AppName size={26} aiGap={0} /></div>
+        <div style={{ fontSize: 14, color: "#2A3646", marginBottom: 44 }}>{t("firstLaunch.tagline")}</div>
+
+        <button
+          onClick={handleCta}
+          disabled={ctaClicked}
+          style={{
+            fontSize: 14.5, fontWeight: 700, color: "#fff",
+            background: `linear-gradient(135deg, ${C.purple}, ${C.purpleMid})`,
+            border: "none", padding: "15px 30px", borderRadius: 999,
+            cursor: ctaClicked ? "default" : "pointer",
+            fontFamily: "inherit", letterSpacing: "-0.1px",
+            boxShadow: "0 6px 16px rgba(107,33,232,0.28)",
+            opacity: phase === "cta" ? (ctaClicked ? 0.72 : 1) : 0,
+            transform: phase === "cta" ? "scale(1)" : "scale(0.95)",
+            transition: "opacity 0.6s cubic-bezier(.2,.8,.2,1), transform 0.6s cubic-bezier(.2,.8,.2,1)",
+            pointerEvents: phase === "cta" ? "auto" : "none",
+          }}
+        >
+          {t("firstLaunch.cta")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
   const { user, logout, recoveryMode, clearRecovery, authResolving } = useAuth();
@@ -12569,10 +12651,28 @@ export default function App() {
   // Keep `profile` in sync with whatever useAuth resolves (fake local account,
   // or a real Supabase session synced via onAuthStateChange) and land on the
   // dashboard the moment a logged-out user becomes logged-in.
+  // First-launch experience: shown exactly once per fresh login transition,
+  // gated on hasProfileDetails (does a profile_details row exist yet) rather
+  // than a new onboarding-progress flag -- consistent with this app's
+  // established rule that a completion signal should come from actual
+  // source-of-truth data where one already exists. NOT gated on full_name:
+  // the signup form collects a name and handle_new_user() copies it into
+  // profiles.full_name before the user ever reaches the app, so it's always
+  // already set and can't distinguish a new account from a completed one.
+  // profile_details is never touched by that trigger and is only created the
+  // first time the Profile page is actually saved -- a real, pre-existing
+  // signal, not an invented one. Pure component state (not persisted), so it
+  // naturally never re-triggers on a mid-session refresh/navigation -- only
+  // on an actual new logged-out-to-logged-in transition.
+  const [showFirstLaunch, setShowFirstLaunch] = useState(false);
   const wasLoggedIn = useRef(!!profile);
   useEffect(() => {
     setProfile(user);
-    if (user && !wasLoggedIn.current) { setPage("dashboard"); window.scrollTo(0, 0); }
+    if (user && !wasLoggedIn.current) {
+      window.scrollTo(0, 0);
+      if (!user.hasProfileDetails) setShowFirstLaunch(true);
+      else setPage("dashboard");
+    }
     wasLoggedIn.current = !!user;
   }, [user]);
 
@@ -12784,6 +12884,14 @@ export default function App() {
     </div>
   );
   if (!user) return <AuthPage t={t} />;
+
+  if (showFirstLaunch) {
+    return (
+      <I18nContext.Provider value={{ language, setLanguage, t }}>
+        <FirstLaunchExperience onComplete={() => { setShowFirstLaunch(false); setPage("profile"); }} />
+      </I18nContext.Provider>
+    );
+  }
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>

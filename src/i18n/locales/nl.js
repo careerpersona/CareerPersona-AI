@@ -215,6 +215,11 @@
     lockedChatDesc: "Chat met een AI-carrièrecoach die je profiel, cv, sollicitaties en doelen kent.",
     lockedChatBenefits: ["Persoonlijk carrièreadvies", "Antwoorden gebaseerd op jouw eigen gegevens", "Altijd beschikbaar"],
   },
+  firstLaunch: {
+    welcomeLead: "Welkom bij",
+    tagline: "Je persoonlijke AI-carrièreassistent.",
+    cta: "Laten we jouw CareerPersona opbouwen",
+  },
   auth: {
     tagline: "Jouw AI-gedreven loopbaanplatform",
     signIn: "Inloggen",

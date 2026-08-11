@@ -215,6 +215,11 @@
     lockedChatDesc: "あなたのプロフィール、履歴書、応募状況、目標を理解しているAIキャリアコーチとチャットしましょう。",
     lockedChatBenefits: ["パーソナライズされたキャリアアドバイス", "あなた自身のデータに基づいた回答", "いつでも利用可能"],
   },
+  firstLaunch: {
+    welcomeLead: "ようこそ",
+    tagline: "あなた専属のAIキャリアアシスタント。",
+    cta: "あなたのCareerPersonaを作成しましょう",
+  },
   auth: {
     tagline: "AIを活用したキャリアプラットフォーム",
     signIn: "ログイン",

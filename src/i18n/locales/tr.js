@@ -215,6 +215,11 @@
     lockedChatDesc: "Profilinizi, özgeçmişinizi, başvurularınızı ve hedeflerinizi bilen bir AI kariyer koçuyla sohbet edin.",
     lockedChatBenefits: ["Kişiselleştirilmiş kariyer tavsiyeleri", "Kendi verilerinize dayalı yanıtlar", "Her zaman kullanılabilir"],
   },
+  firstLaunch: {
+    welcomeLead: "Hoş geldiniz",
+    tagline: "Kişisel yapay zeka kariyer asistanınız.",
+    cta: "CareerPersona'nızı birlikte oluşturalım",
+  },
   auth: {
     tagline: "Yapay zekâ destekli kariyer platformunuz",
     signIn: "Giriş Yap",

@@ -215,6 +215,11 @@
     lockedChatDesc: "프로필, 이력서, 지원 내역, 목표를 알고 있는 AI 커리어 코치와 대화하세요.",
     lockedChatBenefits: ["맞춤형 커리어 조언", "본인의 데이터에 기반한 답변", "언제든지 이용 가능"],
   },
+  firstLaunch: {
+    welcomeLead: "환영합니다",
+    tagline: "당신만의 AI 커리어 어시스턴트.",
+    cta: "당신의 CareerPersona를 만들어봐요",
+  },
   auth: {
     tagline: "AI 기반 커리어 플랫폼",
     signIn: "로그인",
