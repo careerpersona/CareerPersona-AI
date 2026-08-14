@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
+import { exportUserData, downloadJSON } from "./data/accountExport";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
 import { useReferralAnalyses } from "./data/referralIntelligence";
@@ -12245,6 +12246,10 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState("");
   const deleteConfirmPhrase = t("settings.deleteConfirmPhrase");
 
   // Canonical billing state from Worker — all UI decisions derive from here
@@ -12294,11 +12299,29 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     } finally { setBillingLoading(false); }
   };
 
-  const handleDelete = () => {
-    if (deleteText.toLowerCase() === deleteConfirmPhrase.toLowerCase()) {
-      localStorage.clear();
-      logout();
+  const handleDelete = async () => {
+    if (deleteText.toLowerCase() !== deleteConfirmPhrase.toLowerCase()) return;
+    setDeleteLoading(true); setDeleteError("");
+    try {
+      const { deletion_scheduled_purge_at } = await workerBillingPost("/api/account/request-deletion");
+      // Same local-state + localStorage sync as any other profile field
+      // update -- App() re-renders into the locked screen the moment
+      // profile.deletion_status flips, no logout/reload needed.
+      updateProfile({ deletion_status: "scheduled", deletion_requested_at: new Date().toISOString(), deletion_scheduled_purge_at });
+    } catch (e) {
+      setDeleteError(e.workerError === "stripe_not_configured" ? t("settings.stripeManageSoon") : e.message);
+      setDeleteLoading(false);
     }
+  };
+
+  const handleExportData = async () => {
+    setExportLoading(true); setExportError("");
+    try {
+      const data = await exportUserData(profile.id, profile.email);
+      downloadJSON(data, `careerpersona-data-export-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (e) {
+      setExportError(t("settings.exportFailed"));
+    } finally { setExportLoading(false); }
   };
 
   const USAGE_FEATURES = [
@@ -12534,6 +12557,13 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
       </Card>
 
       {/* ACCOUNT */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>📦</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.exportDataTitle")}</span></div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 14 }}>{t("settings.exportDataBody")}</div>
+        {exportError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginBottom: 12 }}>{exportError}</div>}
+        <Btn variant="secondary" onClick={handleExportData} loading={exportLoading}>{t("settings.exportMyData")}</Btn>
+      </Card>
+
       <Card>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.account")}</span></div>
         <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>{t("settings.deleteAccount")}</Btn>
@@ -12543,12 +12573,60 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
             <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>{t("settings.deletePermanentlyBody")}</div>
             <div style={{ fontSize: 13, color: C.textMid, marginBottom: 10 }}>{t("settings.typeToConfirm")} <strong>{deleteConfirmPhrase}</strong>:</div>
             <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder={deleteConfirmPhrase} style={{ width: "100%", border: `1.5px solid ${C.red}40`, borderRadius: 9, padding: "10px 14px", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box", fontFamily: "inherit" }} />
+            {deleteError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 10, color: C.red, fontSize: 12, marginBottom: 12 }}>{deleteError}</div>}
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn variant="danger" onClick={handleDelete} disabled={deleteText.toLowerCase() !== deleteConfirmPhrase.toLowerCase()}>{t("settings.permanentlyDelete")}</Btn>
-              <Btn variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>{t("settings.cancel")}</Btn>
+              <Btn variant="danger" onClick={handleDelete} disabled={deleteText.toLowerCase() !== deleteConfirmPhrase.toLowerCase()} loading={deleteLoading}>{t("settings.permanentlyDelete")}</Btn>
+              <Btn variant="secondary" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); setDeleteError(""); }}>{t("settings.cancel")}</Btn>
             </div>
           </div>
         )}
+      </Card>
+    </div>
+  );
+}
+
+// ─── ACCOUNT DELETION LOCKED SCREEN (Phase 7, Part A) ──────
+// Shown in place of the entire app -- no nav, no other page reachable --
+// whenever profile.deletion_status is "scheduled" or "in_progress". That
+// field is read fresh from `profiles` on every session sync (see
+// fetchProfile), so this gate re-applies on every login, tab reload, and
+// token refresh, on any device, without any client-only state to fall out
+// of sync.
+function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t }) {
+  const [canceling, setCanceling] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+  const purgeDate = profile?.deletion_scheduled_purge_at
+    ? new Date(profile.deletion_scheduled_purge_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+    : "—";
+
+  const handleCancel = async () => {
+    setCanceling(true); setError("");
+    try { await onCancelDeletion(); } catch (e) { setError(t("accountDeletion.cancelFailed")); }
+    finally { setCanceling(false); }
+  };
+
+  const handleExport = async () => {
+    setExporting(true); setError("");
+    try {
+      const data = await exportUserData(userId, email);
+      downloadJSON(data, `careerpersona-data-export-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (e) { setError(t("accountDeletion.exportFailed")); }
+    finally { setExporting(false); }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <Card style={{ maxWidth: 440, width: "100%", textAlign: "center", padding: 32 }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 10 }}>{t("accountDeletion.lockedTitle")}</div>
+        <div style={{ fontSize: 14, color: C.textMid, marginBottom: 8, lineHeight: 1.6 }}>{t("accountDeletion.lockedBody")}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.red, marginBottom: 24 }}>{purgeDate}</div>
+        {error && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Btn onClick={handleCancel} loading={canceling}>{t("accountDeletion.cancelDeletion")}</Btn>
+          <Btn variant="secondary" onClick={handleExport} loading={exporting}>{t("accountDeletion.exportMyData")}</Btn>
+        </div>
       </Card>
     </div>
   );
@@ -12930,6 +13008,28 @@ export default function App() {
     </div>
   );
   if (!user) return <AuthPage t={t} />;
+
+  if (profile?.deletion_status === "scheduled" || profile?.deletion_status === "in_progress") {
+    return (
+      <I18nContext.Provider value={{ language, setLanguage, t }}>
+        <AccountDeletionLockedPage
+          profile={profile}
+          userId={profile.id}
+          email={profile.email}
+          t={t}
+          onCancelDeletion={async () => {
+            await workerBillingPost("/api/account/cancel-deletion");
+            // updateProfile (defined below) also fires a client-side upsertProfile,
+            // which is a harmless no-op here -- deletion_status/deletion_requested_at/
+            // deletion_scheduled_purge_at aren't in its field allowlists, so only this
+            // local state + localStorage sync actually happens; the Worker call above
+            // is the only writer of these fields server-side.
+            updateProfile({ deletion_status: null, deletion_requested_at: null, deletion_scheduled_purge_at: null });
+          }}
+        />
+      </I18nContext.Provider>
+    );
+  }
 
   if (showFirstLaunch) {
     return (

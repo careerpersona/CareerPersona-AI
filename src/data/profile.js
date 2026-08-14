@@ -33,6 +33,14 @@ export async function fetchProfile(userId, email) {
     stripe_customer_id: base?.stripe_customer_id || null,
     current_period_end: base?.current_period_end || null,
     cancel_at_period_end: base?.cancel_at_period_end ?? false,
+    // Account Deletion (Phase 7, Part A) -- read fresh from `profiles` on
+    // every session sync (login, tab reload, and every token refresh via
+    // onAuthStateChange), never cached client-side. This is what lets the
+    // locked state hold across devices and outlive a token refresh: there is
+    // no local flag to fall out of sync, only this same read repeated.
+    deletion_status: base?.deletion_status || null,
+    deletion_requested_at: base?.deletion_requested_at || null,
+    deletion_scheduled_purge_at: base?.deletion_scheduled_purge_at || null,
     email_address: details?.email_address || "",
     preferred_job_title: details?.preferred_job_title || "",
     preferred_industry: details?.preferred_industry || "",

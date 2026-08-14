@@ -13,6 +13,8 @@
 //   POST /api/billing/cancel           → set cancel_at_period_end (FTC)
 //   POST /api/billing/resume           → clear cancel_at_period_end
 //   POST /api/billing/portal-session   → Stripe Customer Portal session
+//   POST /api/account/request-deletion → schedule 30-day account deletion, cancel Stripe immediately
+//   POST /api/account/cancel-deletion  → revert a scheduled (not yet started) deletion
 //
 // Routes (Stripe HMAC — no JWT):
 //   POST /webhooks/stripe              → process billing events, invalidate KV
@@ -245,6 +247,16 @@ async function supabasePost(table, data, env) {
     throw err;
   }
   return JSON.parse(body);
+}
+
+async function supabaseDelete(table, match, env) {
+  const url = new URL(`${env.SUPABASE_URL}/rest/v1/${table}`);
+  for (const [k, v] of Object.entries(match)) url.searchParams.set(k, v);
+  const r = await fetch(url.toString(), { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    throw Object.assign(new Error(`supabase_delete_${r.status}`), { status: r.status, body });
+  }
 }
 
 async function supabaseRPC(fn, args, env) {
@@ -537,6 +549,23 @@ async function stripeRequest(method, path, body, env) {
   const data = await r.json();
   if (!r.ok) throw Object.assign(new Error(data.error?.message ?? "stripe_error"), { stripeCode: data.error?.code });
   return data;
+}
+
+// Stripe moved current_period_start/current_period_end off the top-level
+// Subscription object onto each SubscriptionItem (API change supporting
+// multiple/flexible-billed items per subscription) -- confirmed directly
+// against a live GET /subscriptions/{id} response during Phase 7 testing,
+// where both fields were absent at the top level and present under
+// items.data[0] instead. Every subscription this app creates has exactly
+// one item (one price per subscription -- see handleCheckoutSession/
+// handleChangePlan, both single-price), so item[0]'s period is simply the
+// subscription's period. Applies uniformly everywhere a Subscription object
+// is read, regardless of source (a direct GET/POST response or a webhook
+// event's embedded data.object) -- it's the resource's current schema, not
+// an endpoint-specific quirk.
+function getSubscriptionPeriod(stripeSub) {
+  const item = stripeSub.items?.data?.[0];
+  return { start: item?.current_period_start ?? null, end: item?.current_period_end ?? null };
 }
 
 // Blueprint #4: HMAC-SHA256 Stripe webhook signature verification.
@@ -838,11 +867,12 @@ async function handleConfirmSession(request, env) {
   const config = await getConfig(env);
   const tier = determineTierFromStripeSubscription(stripeSub, config);
   const newStatus = tier === "premium" ? "premium_active" : "pro_active";
+  const period = getSubscriptionPeriod(stripeSub);
   await supabasePatch("profiles", { id: `eq.${userId}` }, {
     subscription_status: newStatus,
     stripe_subscription_id: stripeSub.id,
-    current_period_start: new Date(stripeSub.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(stripeSub.current_period_end * 1000).toISOString(),
+    current_period_start: new Date(period.start * 1000).toISOString(),
+    current_period_end: new Date(period.end * 1000).toISOString(),
     cancel_at_period_end: stripeSub.cancel_at_period_end,
   }, env);
   await invalidateSubscription(userId, env);
@@ -876,6 +906,99 @@ async function handleResumeSubscription(request, env) {
   await supabasePatch("profiles", { id: `eq.${userId}` }, { cancel_at_period_end: false }, env);
   await invalidateSubscription(userId, env);
   return corsResponse(request, { success: true, cancel_at_period_end: false });
+}
+
+// Account Deletion (Phase 7, Part A). Two-step lifecycle: request sets a
+// 30-day grace period and cancels billing immediately; the purge cron
+// (runAccountDeletionPurge, below) does the actual data erasure once
+// deletion_scheduled_purge_at arrives. Only "scheduled" data lives on
+// profiles until then -- no other table is touched by this endpoint.
+//
+// Immediate cancellation (DELETE, not cancel_at_period_end) is used here
+// deliberately, unlike handleCancelSubscription above: that endpoint is for
+// a user who cancels but keeps using the app, so billing them through the
+// period they already paid for is fair. Here the whole account -- including
+// the subscription's own record -- is being erased within 30 days regardless,
+// so continuing to bill (or leave a subscription active) through a period
+// the account won't survive to finish makes no sense; stopping billing right
+// away is the correct behavior for this specific flow.
+async function handleRequestAccountDeletion(request, env) {
+  const auth = await requireAuth(request, env);
+  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
+  const { userId } = auth;
+
+  const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "stripe_subscription_id,deletion_status" }, env);
+  const profileRow = rows?.[0];
+  if (!profileRow) return corsResponse(request, { error: "profile_not_found" }, 404);
+  if (profileRow.deletion_status === "scheduled" || profileRow.deletion_status === "in_progress") {
+    return corsResponse(request, { error: "deletion_already_scheduled" }, 400);
+  }
+
+  // Cancel billing first -- if this throws, the account is never marked for
+  // deletion with an active subscription still running.
+  if (profileRow.stripe_subscription_id && env.STRIPE_SECRET_KEY) {
+    try {
+      await stripeRequest("DELETE", `/subscriptions/${profileRow.stripe_subscription_id}`, null, env);
+    } catch (e) {
+      // Already-canceled/missing subscription on Stripe's side is not fatal --
+      // the account should still be able to schedule deletion.
+      if (e.stripeCode !== "resource_missing") {
+        return corsResponse(request, { error: "stripe_cancel_failed" }, 502);
+      }
+    }
+  }
+
+  const now = new Date();
+  const purgeAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  // account_deletion_log first: it's the durable record the purge scheduler
+  // actually drives off (see runAccountDeletionPurgeSchedule below) and the
+  // only thing that survives profiles being deleted mid-purge -- if this
+  // insert fails, nothing has been marked locked yet, so the request simply
+  // fails and the client can retry cleanly. profiles is patched second,
+  // purely for the client-facing lock (App.jsx reads this via fetchProfile).
+  await supabasePost("account_deletion_log", {
+    user_id: userId,
+    requested_at: now.toISOString(),
+    scheduled_purge_at: purgeAt.toISOString(),
+    status: "scheduled",
+  }, env);
+  await supabasePatch("profiles", { id: `eq.${userId}` }, {
+    deletion_status: "scheduled",
+    deletion_requested_at: now.toISOString(),
+    deletion_scheduled_purge_at: purgeAt.toISOString(),
+    subscription_status: "no_subscription",
+    cancel_at_period_end: false,
+  }, env);
+  await invalidateSubscription(userId, env);
+
+  return corsResponse(request, { success: true, deletion_scheduled_purge_at: purgeAt.toISOString() });
+}
+
+async function handleCancelAccountDeletion(request, env) {
+  const auth = await requireAuth(request, env);
+  if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
+  const { userId } = auth;
+
+  const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "deletion_status" }, env);
+  const status = rows?.[0]?.deletion_status;
+  if (status !== "scheduled") {
+    // Nothing to cancel (null), or the purge has already started ("in_progress"/
+    // "completed") -- once the purge cron has picked it up, cancellation is no
+    // longer safe to honor here.
+    return corsResponse(request, { error: status ? "deletion_already_in_progress" : "no_deletion_scheduled" }, 400);
+  }
+
+  await supabasePatch("profiles", { id: `eq.${userId}` }, {
+    deletion_status: null,
+    deletion_requested_at: null,
+    deletion_scheduled_purge_at: null,
+  }, env);
+  // Remove the tracking row too -- "no residual deletion flags" applies to
+  // account_deletion_log as much as to profiles. Nothing depends on this row
+  // existing once the scheduled deletion itself no longer does.
+  await supabaseDelete("account_deletion_log", { user_id: `eq.${userId}` }, env);
+
+  return corsResponse(request, { success: true });
 }
 
 // App-controlled plan changes (Pro <-> Premium) -- replaces reliance on
@@ -947,10 +1070,11 @@ async function handleChangePlan(request, env) {
     }, env);
     const newTier = determineTierFromStripeSubscription(updated, config);
     const newStatus = newTier === "premium" ? "premium_active" : "pro_active";
+    const updatedPeriod = getSubscriptionPeriod(updated);
     await supabasePatch("profiles", { id: `eq.${userId}` }, {
       subscription_status: newStatus,
-      current_period_start: new Date(updated.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(updated.current_period_end * 1000).toISOString(),
+      current_period_start: new Date(updatedPeriod.start * 1000).toISOString(),
+      current_period_end: new Date(updatedPeriod.end * 1000).toISOString(),
       cancel_at_period_end: updated.cancel_at_period_end,
     }, env);
     await invalidateSubscription(userId, env);
@@ -1059,11 +1183,12 @@ async function processStripeEvent(event, env) {
       const sub = await stripeRequest("GET", `/subscriptions/${obj.subscription}`, null, env);
       const config = await getConfig(env);
       const tier = determineTierFromStripeSubscription(sub, config);
+      const period = getSubscriptionPeriod(sub);
       await supabasePatch("profiles", { id: `eq.${userId}` }, {
         subscription_status: tier === "premium" ? "premium_active" : "pro_active",
         stripe_subscription_id: sub.id,
-        current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+        current_period_start: new Date(period.start * 1000).toISOString(),
+        current_period_end: new Date(period.end * 1000).toISOString(),
         cancel_at_period_end: sub.cancel_at_period_end,
         grace_period_ends_at: null,
       }, env);
@@ -1103,10 +1228,11 @@ async function processStripeEvent(event, env) {
       break;
     }
     case "customer.subscription.updated": {
+      const updatedPeriod = getSubscriptionPeriod(obj);
       const patch = {
         cancel_at_period_end: obj.cancel_at_period_end,
-        current_period_start: new Date(obj.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(obj.current_period_end * 1000).toISOString(),
+        current_period_start: new Date(updatedPeriod.start * 1000).toISOString(),
+        current_period_end: new Date(updatedPeriod.end * 1000).toISOString(),
       };
       // Sync entitlement to whatever tier the subscription's actual price now
       // reflects -- covers both an immediate handleChangePlan upgrade's own
@@ -1129,8 +1255,8 @@ async function processStripeEvent(event, env) {
       await supabasePatch("profiles", { id: `eq.${userId}` }, patch, env);
       supabasePatch("subscriptions", { stripe_subscription_id: `eq.${obj.id}` }, {
         cancel_at_period_end: obj.cancel_at_period_end,
-        current_period_start: new Date(obj.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(obj.current_period_end * 1000).toISOString(),
+        current_period_start: new Date(updatedPeriod.start * 1000).toISOString(),
+        current_period_end: new Date(updatedPeriod.end * 1000).toISOString(),
         status: obj.status,
       }, env).catch(() => {});
       break;
@@ -1795,6 +1921,171 @@ async function runSmartApplyAutoPrepSchedule(env) {
   console.log(`[smartApplyAutoPrep] Processed ${processed}/${userIds.length} eligible users, prepared ${totalPrepared} packages.`);
 }
 
+// ── Account Deletion Purge (Phase 7, Part A) ──────────────────────────────────
+// Every table found to hold personal data in the Phase 7 schema cross-check,
+// keyed by its own `user_id` column. `assistant_messages` is deliberately
+// omitted: it has no user_id column of its own and is guaranteed to cascade
+// (a real DB-level ON DELETE CASCADE FK) when its parent
+// assistant_conversations row is deleted below -- the one table in this list
+// that's safe to rely on a cascade for. `profiles` itself is handled
+// separately, last, since every other table's user_id references it.
+const ACCOUNT_DELETION_TABLES = [
+  "activity_log", "ai_action_plans", "ai_briefings", "ai_request_log",
+  "alert_candidates", "alert_learning_weights", "alerts", "applications",
+  "assistant_conversations", "automation_preferences", "career_progress_analysis",
+  "company_watchlist", "feature_usage", "interview_sessions", "job_intelligence_analysis",
+  "job_matches", "job_watchlist", "linkedin_profile_analyses", "market_signals",
+  "networking_contacts", "networking_sessions", "notifications", "opportunity_snapshots",
+  "outcome_analyses", "outcome_patterns", "profile_details", "recommendation_evaluations",
+  "referral_analyses", "resume_analysis_history", "salary_offers", "salary_research",
+  "saved_jobs", "smart_apply_queue", "stripe_events", "subscriptions",
+  "subscriptions_legacy", "usage_daily_summary", "user_resumes",
+];
+
+// Deletes every Storage object for this user's uploaded resume files (not
+// just the DB rows referencing them). Uploaded resume files are required
+// user data like any table row -- a failure here must throw (not just log)
+// so deletion_status is never marked "completed" while a file is still
+// sitting in Storage. Safe to resume: re-querying user_resumes for file_url
+// paths and re-issuing the same bulk delete is a no-op for anything already
+// removed (Supabase Storage's bulk delete does not error on missing paths).
+async function purgeResumeFiles(userId, env) {
+  const rows = await supabaseGet("user_resumes", { user_id: `eq.${userId}`, select: "file_url" }, env);
+  const paths = (rows || []).map(r => r.file_url).filter(Boolean);
+  if (!paths.length) return;
+  const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/resumes`, {
+    method: "DELETE",
+    headers: sbHeaders(env),
+    body: JSON.stringify({ prefixes: paths }),
+  });
+  if (!r.ok) throw new Error(`storage_purge_failed_${r.status}`);
+}
+
+// Deletes the Supabase Auth user via the Admin API. Treats "already gone"
+// (404) as success -- makes this step idempotent across resumed runs.
+async function purgeAuthUser(userId, env) {
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: sbHeaders(env),
+  });
+  if (!r.ok && r.status !== 404) {
+    throw new Error(`auth_user_delete_${r.status}`);
+  }
+}
+
+// Strict variant of invalidateSubscription (defined earlier, near the KV
+// cache helpers) for the purge only: that function is deliberately
+// best-effort/non-fatal for its other callers (handleCancelSubscription,
+// handleChangePlan, etc.) where a stale KV entry just self-heals via TTL.
+// The purge needs the opposite guarantee -- KV invalidation is one of the
+// five required stages, so a failure here must throw, not log and move on.
+async function purgeSubscriptionCache(userId, env) {
+  await env.SUBSCRIPTION_CACHE.delete(`sub:${userId}`);
+}
+
+// Full purge for one user, in the required order: Storage -> 38 tables ->
+// Auth user -> profiles -> KV. "completed" is written to account_deletion_log
+// -- never to profiles, which is already gone by the time every stage has
+// succeeded -- and only as the very last statement, after all five stages
+// have each individually succeeded (every helper here throws on real
+// failure; nothing swallows an error that should block completion). Every
+// step is independently idempotent (deleting zero matching rows twice, an
+// already-gone Auth user, or an already-deleted profiles row, is a no-op),
+// so a crash anywhere is always safe to resume on the next cron run.
+async function purgeUserAccount(userId, env) {
+  await purgeResumeFiles(userId, env);
+  for (const table of ACCOUNT_DELETION_TABLES) {
+    await supabaseDelete(table, { user_id: `eq.${userId}` }, env);
+  }
+  await purgeAuthUser(userId, env);
+  await supabaseDelete("profiles", { id: `eq.${userId}` }, env);
+  await purgeSubscriptionCache(userId, env);
+  // Single atomic UPDATE -- not a DELETE+INSERT -- so the record is never
+  // absent between "identifiable" and "anonymized". crypto.randomUUID() is
+  // freshly generated here with no mathematical or deterministic
+  // relationship to userId (not a hash of it, not derived from it in any
+  // way); user_id is nulled in the same statement that sets it, so a reader
+  // (including a crashed-and-resumed run of this same function) only ever
+  // sees either the pre-anonymization row (user_id present, status
+  // in_progress) or the fully anonymized one (user_id null, status
+  // completed) -- never a state in between.
+  await supabasePatch("account_deletion_log", { user_id: `eq.${userId}` }, {
+    user_id: null,
+    deletion_event_id: crypto.randomUUID(),
+    status: "completed",
+    completed_at: new Date().toISOString(),
+  }, env);
+}
+
+// 12-month retention cleanup for anonymized deletion records. Runs inside
+// the same daily purge schedule (0 3 * * *) rather than a separate cron --
+// reusing the existing scheduled infrastructure instead of standing up a
+// second scheduler for what is, functionally, another cleanup pass over the
+// same table. Targets only status='completed' rows (anonymized, no user_id
+// left to look up) past the retention window; naturally idempotent/resumable
+// since a row not reached this run is simply picked up by the next one --
+// the qualifying condition (completed_at older than 12 months) only becomes
+// more true over time, never less.
+//
+// The 12-month window is an operational product decision for now, not a
+// legal conclusion -- it requires legal review before being reflected in any
+// published Privacy Policy / retention policy.
+async function cleanupExpiredDeletionLogs(env) {
+  const cutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+  const expired = await supabaseGet("account_deletion_log", {
+    select: "id",
+    status: "eq.completed",
+    completed_at: `lte.${cutoff}`,
+  }, env);
+  let removed = 0;
+  for (const row of expired || []) {
+    try {
+      await supabaseDelete("account_deletion_log", { id: `eq.${row.id}` }, env);
+      removed++;
+    } catch (e) {
+      console.error("[accountDeletion] retention_cleanup_error", row.id, e.message);
+    }
+  }
+  console.log(`[accountDeletion] Removed ${removed}/${(expired || []).length} expired anonymized deletion records.`);
+}
+
+// Scheduler: drives entirely off account_deletion_log, not profiles --
+// profiles is deleted partway through purgeUserAccount, so it cannot be what
+// determines whether a purge is still outstanding. Finds every account whose
+// grace period has arrived (or whose purge was already started and needs
+// resuming after a prior partial failure) and purges each independently --
+// one user's failure never blocks another's, matching the per-user
+// try/catch pattern already established by
+// runSmartApplyAutoPrepSchedule/runProactiveJobAlertsSchedule above.
+async function runAccountDeletionPurgeSchedule(env) {
+  const candidates = await supabaseGet("account_deletion_log", {
+    select: "user_id,status,scheduled_purge_at",
+    status: "in.(scheduled,in_progress)",
+  }, env);
+  const now = Date.now();
+  const due = (candidates || []).filter(c =>
+    c.status === "in_progress" || new Date(c.scheduled_purge_at).getTime() <= now
+  );
+  let purged = 0;
+  for (const c of due) {
+    try {
+      if (c.status === "scheduled") {
+        await supabasePatch("account_deletion_log", { user_id: `eq.${c.user_id}` }, { status: "in_progress" }, env);
+        await supabasePatch("profiles", { id: `eq.${c.user_id}` }, { deletion_status: "in_progress" }, env);
+      }
+      await purgeUserAccount(c.user_id, env);
+      purged++;
+    } catch (e) {
+      console.error("[accountDeletion] purge_error", c.user_id, e.message);
+    }
+  }
+  console.log(`[accountDeletion] Purged ${purged}/${due.length} due accounts.`);
+
+  // Same daily run also sweeps expired anonymized records -- see
+  // cleanupExpiredDeletionLogs' own header for why this isn't a separate cron.
+  await cleanupExpiredDeletionLogs(env);
+}
+
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 
 export default {
@@ -1819,6 +2110,8 @@ export default {
         if (path === "/api/billing/resume")          return handleResumeSubscription(request, env);
         if (path === "/api/billing/change-plan")     return handleChangePlan(request, env);
         if (path === "/api/billing/portal-session")  return handlePortalSession(request, env);
+        if (path === "/api/account/request-deletion") return handleRequestAccountDeletion(request, env);
+        if (path === "/api/account/cancel-deletion")  return handleCancelAccountDeletion(request, env);
         if (path === "/webhooks/stripe")             return handleStripeWebhook(request, env);
         return handleClaude(request, env, ctx); // POST / — Claude proxy (catch-all)
       }
@@ -1831,13 +2124,19 @@ export default {
   },
 
   // Scheduler entry point (Cron Triggers, see wrangler.toml). event.cron
-  // identifies which of the 3 registered schedules fired; ctx.waitUntil keeps
+  // identifies which of the 4 registered schedules fired; ctx.waitUntil keeps
   // the invocation alive until the full user loop (bounded by
   // PROACTIVE_ALERTS_TIME_BUDGET_MS) finishes.
   async scheduled(event, env, ctx) {
     if (event.cron === "0 13 * * *") {
       ctx.waitUntil(
         runSmartApplyAutoPrepSchedule(env).catch(e => console.error("[smartApplyAutoPrep] schedule_error", e.message))
+      );
+      return;
+    }
+    if (event.cron === "0 3 * * *") {
+      ctx.waitUntil(
+        runAccountDeletionPurgeSchedule(env).catch(e => console.error("[accountDeletion] schedule_error", e.message))
       );
       return;
     }
