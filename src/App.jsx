@@ -2,7 +2,9 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { exportUserData, downloadJSON } from "./data/accountExport";
-import { PRIVACY_POLICY, TERMS_OF_SERVICE, REFUND_POLICY, FAIR_USE_POLICY, COOKIE_POLICY } from "./legal/documents";
+// Legal-page import intentionally removed (Phase 8 build-fix) -- see the
+// "LEGAL DOCUMENT PAGES" comment above LegalDocumentPage/SupportPage below
+// for why, and what restoring this line requires.
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
 import { useReferralAnalyses } from "./data/referralIntelligence";
@@ -12668,6 +12670,18 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
 }
 
 // ─── LEGAL DOCUMENT PAGES (internal inspection only) ───────
+// INTENTIONALLY DISCONNECTED (Phase 8 build-fix): the import of
+// PRIVACY_POLICY/TERMS_OF_SERVICE/REFUND_POLICY/FAIR_USE_POLICY/COOKIE_POLICY,
+// the "support"/"legal-*" validPages entries, and the render block for these
+// components have all been removed elsewhere in this file because
+// src/legal/documents.js is deliberately kept untracked (the Phase 7 legal
+// package is still unapproved) -- committing this file without also
+// committing that file breaks the Cloudflare Pages build. Do NOT delete the
+// functions below; they are correct and ready to use. To restore this
+// feature once the legal package is approved and committed: re-add the
+// import at the top of the file, re-add the 6 entries to validPages, and
+// re-add the render block that used to sit just before </main>.
+//
 // English-only by explicit instruction: these documents are not localized
 // and must not be added to src/i18n/locales/*.js until legally approved and
 // ready for translation. Not linked from primary navigation, footer,
@@ -12882,7 +12896,10 @@ export default function App() {
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const [billingState, setBillingState] = useState(null);
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","legal-privacy","legal-terms","legal-refund","legal-fairuse","legal-cookies"]);
+  // "support" and the "legal-*" routes intentionally removed (Phase 8
+  // build-fix) alongside the render block and import above/below -- see the
+  // "LEGAL DOCUMENT PAGES" comment near LegalDocumentPage/SupportPage.
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -13385,15 +13402,10 @@ export default function App() {
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} billingState={billingState} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
-        {/* Support + legal document pages -- English-only, internal inspection
-            only, deliberately not linked from primary navigation (see the
-            LEGAL DOCUMENT PAGES comment above the component definitions). */}
-        {page === "support" && <SupportPage onNavigate={setPage} />}
-        {page === "legal-privacy" && <LegalDocumentPage title="Privacy Policy" content={PRIVACY_POLICY} />}
-        {page === "legal-terms" && <LegalDocumentPage title="Terms of Service" content={TERMS_OF_SERVICE} />}
-        {page === "legal-refund" && <LegalDocumentPage title="Refund & Cancellation Policy" content={REFUND_POLICY} />}
-        {page === "legal-fairuse" && <LegalDocumentPage title="Fair Use / Acceptable Use Policy" content={FAIR_USE_POLICY} />}
-        {page === "legal-cookies" && <LegalDocumentPage title="Cookie Policy" content={COOKIE_POLICY} />}
+        {/* Support + legal document page render block intentionally removed
+            (Phase 8 build-fix) -- see the "LEGAL DOCUMENT PAGES" comment
+            above LegalDocumentPage/SupportPage for why, and what restoring
+            this requires. */}
       </main>
     </div>
     </I18nContext.Provider>
