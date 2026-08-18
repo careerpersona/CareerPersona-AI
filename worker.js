@@ -185,23 +185,65 @@ async function verifyJWT(token, env) {
   if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
     throw new Error("token_expired");
   }
+
+  // Phase 8, C6 — explicit claim hardening, additive to the signature/expiry
+  // checks above. Every caller of requireAuth() is invoked by the browser
+  // with the user's own Supabase session access_token (never the
+  // service_role key, which this Worker only ever uses server-side as a
+  // REST API header via sbHeaders() -- it's never presented back to this
+  // Worker as a Bearer token), and a real Supabase user session token always
+  // carries aud="authenticated" and role="authenticated". Rejecting anything
+  // else is a safe, exact-match check against the actual shape of every
+  // legitimate token this function receives, not a guessed value.
+  if (payload.aud !== "authenticated" || payload.role !== "authenticated") {
+    throw new Error("invalid_claims");
+  }
+
   return payload;
 }
 
 // ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 
-async function requireAuth(request, env) {
+// Phase 8, Finding C3 — server-side account-deletion lockout. Every caller of
+// requireAuth() is protected by default: once profiles.deletion_status is
+// 'scheduled' or 'in_progress', the request is rejected here, before the
+// handler's own logic runs, so a new endpoint added later inherits the lock
+// automatically instead of requiring every developer to remember to add a
+// check. The two legitimate exceptions (request-deletion, cancel-deletion)
+// opt out explicitly via { allowDeletionLocked: true } -- opt-out, not
+// opt-in, so the safe behavior is the default one.
+//
+// The deletion_status read here is deliberately uncached (unlike
+// getSubscription()'s KV-backed billing read) -- this is a security boundary,
+// and a stale cached value could let a locked account slip through for the
+// length of a cache TTL. If the read itself fails, the request is denied
+// (fail closed), matching the same "both failing must deny, never grant"
+// principle getSubscription() already documents for billing state.
+async function requireAuth(request, env, options = {}) {
+  const { allowDeletionLocked = false } = options;
   const bearer = request.headers.get("Authorization") || "";
   const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : null;
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
+  let userId;
   try {
     const payload = await verifyJWT(token, env);
-    const userId = payload.sub;
+    userId = payload.sub;
     if (!userId) return { ok: false, error: "unauthorized", status: 401 };
-    return { ok: true, userId };
   } catch (_) {
     return { ok: false, error: "unauthorized", status: 401 };
   }
+  if (!allowDeletionLocked) {
+    try {
+      const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "deletion_status" }, env);
+      const status = rows?.[0]?.deletion_status;
+      if (status === "scheduled" || status === "in_progress") {
+        return { ok: false, error: "account_scheduled_for_deletion", status: 423 };
+      }
+    } catch (_) {
+      return { ok: false, error: "unauthorized", status: 401 };
+    }
+  }
+  return { ok: true, userId };
 }
 
 // ─── SUPABASE REST HELPERS ────────────────────────────────────────────────────
@@ -923,7 +965,7 @@ async function handleResumeSubscription(request, env) {
 // the account won't survive to finish makes no sense; stopping billing right
 // away is the correct behavior for this specific flow.
 async function handleRequestAccountDeletion(request, env) {
-  const auth = await requireAuth(request, env);
+  const auth = await requireAuth(request, env, { allowDeletionLocked: true });
   if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
   const { userId } = auth;
 
@@ -975,7 +1017,7 @@ async function handleRequestAccountDeletion(request, env) {
 }
 
 async function handleCancelAccountDeletion(request, env) {
-  const auth = await requireAuth(request, env);
+  const auth = await requireAuth(request, env, { allowDeletionLocked: true });
   if (!auth.ok) return corsResponse(request, { error: auth.error }, auth.status);
   const { userId } = auth;
 

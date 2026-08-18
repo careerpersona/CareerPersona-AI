@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { exportUserData, downloadJSON } from "./data/accountExport";
+import { PRIVACY_POLICY, TERMS_OF_SERVICE, REFUND_POLICY, FAIR_USE_POLICY, COOKIE_POLICY } from "./legal/documents";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
 import { useReferralAnalyses } from "./data/referralIntelligence";
@@ -88,12 +89,25 @@ const isAuthCallbackUrl =
   initialLocationHash.includes("token_hash=") ||
   initialLocationSearch.includes("code=");
 
+// Detect a Supabase auth-link error redirect (expired or already-used
+// password-reset / email-verification link) the same way isAuthCallbackUrl
+// is detected above — GoTrue redirects with #error=...&error_code=...&
+// error_description=... (no access_token/token_hash/code, so isAuthCallbackUrl
+// is false for this case) when a one-time link is invalid or has expired.
+const authLinkErrorCode = (() => {
+  const match = initialLocationHash.match(/error_code=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+})();
+
 // After a successful auth callback, replace the auth params in the address bar
-// with the clean dashboard hash so the token isn't replayed on refresh.
+// with the clean dashboard hash so the token isn't replayed on refresh. Also
+// strips a consumed auth-link error (error=/error_code=/error_description=)
+// so refreshing the page doesn't keep showing the same expired-link banner.
 const cleanAuthCallbackUrl = () => {
   if (
     window.location.hash.includes("access_token=") ||
     window.location.hash.includes("token_hash=") ||
+    window.location.hash.includes("error_code=") ||
     window.location.search.includes("code=")
   ) {
     window.history.replaceState({ page: "dashboard" }, "", "#dashboard");
@@ -127,6 +141,16 @@ const useAuth = () => {
   };
 
   useEffect(() => {
+    // Strip a consumed auth-link error from the address bar on mount.
+    // Unlike a successful callback (cleaned via resolveAuthCallback below,
+    // gated on authResolving), a failed link redirect never sets
+    // authResolving true in the first place -- there's no token to exchange,
+    // so isAuthCallbackUrl is false -- so this can't rely on that same gate.
+    // cleanAuthCallbackUrl() is self-guarding (checks the URL itself before
+    // doing anything), so calling it unconditionally here is a no-op for a
+    // normal login visit with no auth params at all.
+    cleanAuthCallbackUrl();
+
     const syncFromSession = async (session) => {
       if (!session?.user) return;
       if (session.access_token) {
@@ -210,7 +234,7 @@ const useAuth = () => {
     setRecoveryMode(false);
   };
 
-  return { user, login, logout, recoveryMode, clearRecovery, authResolving };
+  return { user, login, logout, recoveryMode, clearRecovery, authResolving, authLinkErrorCode };
 };
 
 // ─── DEVELOPMENT MODE ────────────────────────────────────────────────────────
@@ -2058,11 +2082,19 @@ function ResetPasswordPage({ onDone, t }) {
 }
 
 // ─── AUTH PAGE ─────────────────────────────────────────────
-function AuthPage({ t }) {
+// Fixed, generic message for an expired/invalid Supabase auth link (password
+// reset or email verification -- GoTrue's error shape doesn't distinguish
+// which flow produced it, so one generic message correctly covers both).
+// Deliberately not Supabase's own error_description text -- see AuthPage.
+const AUTH_LINK_ERROR_MESSAGE = "This link is invalid or has expired. Please request a new one.";
+
+function AuthPage({ t, authLinkErrorCode }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  // Seeded from authLinkErrorCode on first mount only (useState initializer) --
+  // reuses this same error banner rather than introducing new UI.
+  const [error, setError] = useState(authLinkErrorCode ? AUTH_LINK_ERROR_MESSAGE : "");
   const [confirmPending, setConfirmPending] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -2183,9 +2215,12 @@ function AuthPage({ t }) {
                 <Btn onClick={handle} loading={loading} style={{ width: "100%", justifyContent: "center", padding: "13px 22px" }}>
                   {loading ? t("auth.pleaseWait") : mode === "login" ? t("auth.signIn") : t("auth.createAccount")}
                 </Btn>
-                <Btn variant="secondary" style={{ width: "100%", justifyContent: "center", padding: "13px" }} onClick={handleGoogle} loading={loading}>
-                  <span style={{ fontWeight: 800, color: C.blue, fontSize: 15 }}>G</span> {t("auth.continueWithGoogle")}
-                </Btn>
+                {/* Google OAuth button hidden (Phase 8, C1) — Google isn't
+                    enabled as a provider on the Supabase project yet, so
+                    clicking it redirected users to a raw Supabase error page.
+                    handleGoogle and the OAuth call are intentionally left
+                    intact below for a future real Google/Apple login project;
+                    only the render is removed here. */}
               </div>
             </>
           )}
@@ -12632,6 +12667,115 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
   );
 }
 
+// ─── LEGAL DOCUMENT PAGES (internal inspection only) ───────
+// English-only by explicit instruction: these documents are not localized
+// and must not be added to src/i18n/locales/*.js until legally approved and
+// ready for translation. Not linked from primary navigation, footer,
+// signup, or checkout -- reachable only via direct route/hash (and the
+// clearly-labeled links on SupportPage below) for internal review.
+//
+// Content lives in src/legal/documents.js as the verbatim approved English
+// drafts. renderLegalContent below is a small, deliberately simple
+// markdown-flavored formatter (headings, **bold**/*italic*, "- " lists,
+// "> " blockquotes, "---" rules) -- it only applies presentational styling
+// to text that is otherwise reproduced exactly; it never alters wording.
+// One known limitation: the single markdown table in the Privacy Policy
+// (Section 5's subprocessor table) doesn't match any of the patterns below,
+// so its rows render as plain paragraphs rather than an HTML table --
+// acceptable for an internal-inspection build, not a cosmetic priority here.
+
+function parseInline(text, keyPrefix) {
+  const parts = [];
+  const regex = /(\*\*.+?\*\*|\*.+?\*)/g;
+  let lastIndex = 0, key = 0, m;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > lastIndex) parts.push(text.slice(lastIndex, m.index));
+    const token = m[0];
+    if (token.startsWith("**")) parts.push(<strong key={`${keyPrefix}-b-${key++}`}>{token.slice(2, -2)}</strong>);
+    else parts.push(<em key={`${keyPrefix}-i-${key++}`}>{token.slice(1, -1)}</em>);
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
+function renderLegalContent(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  let listBuffer = [];
+  let key = 0;
+  const flushList = () => {
+    if (listBuffer.length) {
+      blocks.push(<ul key={`ul-${key++}`} style={{ margin: "0 0 14px", paddingLeft: 22, color: C.textMid, fontSize: 14, lineHeight: 1.7 }}>{listBuffer}</ul>);
+      listBuffer = [];
+    }
+  };
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) { flushList(); continue; }
+    if (line === "---") { flushList(); blocks.push(<hr key={`hr-${key++}`} style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "24px 0" }} />); continue; }
+    if (line.startsWith("### ")) { flushList(); blocks.push(<h4 key={`h-${key++}`} style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 8px" }}>{parseInline(line.slice(4), `h${key}`)}</h4>); continue; }
+    if (line.startsWith("## ")) { flushList(); blocks.push(<h3 key={`h-${key++}`} style={{ fontSize: 18, fontWeight: 800, color: C.text, margin: "26px 0 10px" }}>{parseInline(line.slice(3), `h${key}`)}</h3>); continue; }
+    if (line.startsWith("# ")) { flushList(); blocks.push(<h2 key={`h-${key++}`} style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: "0 0 12px" }}>{parseInline(line.slice(2), `h${key}`)}</h2>); continue; }
+    if (line.startsWith("- ")) { listBuffer.push(<li key={`li-${key++}`} style={{ marginBottom: 6 }}>{parseInline(line.slice(2), `li${key}`)}</li>); continue; }
+    if (line.startsWith("> ")) { flushList(); blocks.push(<div key={`bq-${key++}`} style={{ borderLeft: `3px solid ${C.purpleLight}`, paddingLeft: 14, margin: "10px 0", color: C.textMuted, fontSize: 13.5, fontStyle: "italic" }}>{parseInline(line.slice(2), `bq${key}`)}</div>); continue; }
+    flushList();
+    blocks.push(<p key={`p-${key++}`} style={{ margin: "0 0 14px", color: C.textMid, fontSize: 14, lineHeight: 1.75 }}>{parseInline(line, `p${key}`)}</p>);
+  }
+  flushList();
+  return blocks;
+}
+
+function LegalDocumentPage({ title, content }) {
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ background: C.redLight, border: `1.5px solid ${C.red}40`, borderRadius: 10, padding: "14px 18px", marginBottom: 24, fontWeight: 800, fontSize: 14, color: C.red, textAlign: "center" }}>
+        DRAFT — NOT FOR PUBLICATION — PENDING LEGAL REVIEW
+      </div>
+      <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 18 }}>{title}</h1>
+      {renderLegalContent(content)}
+    </div>
+  );
+}
+
+// ─── SUPPORT PAGE ───────────────────────────────────────────
+function SupportPage({ onNavigate }) {
+  const legalLinks = [
+    { id: "legal-privacy", label: "Privacy Policy" },
+    { id: "legal-terms", label: "Terms of Service" },
+    { id: "legal-refund", label: "Refund & Cancellation Policy" },
+    { id: "legal-fairuse", label: "Fair Use / Acceptable Use Policy" },
+    { id: "legal-cookies", label: "Cookie Policy" },
+  ];
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 6 }}>Contact / Support</h1>
+      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>Reach us directly by email — we don't yet have a ticketing system or support portal, so email is the fastest way to get help.</p>
+
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>Email Us</div>
+        <div style={{ fontSize: 15, color: C.purple, fontWeight: 700, marginBottom: 14 }}>info@sellatrend.com</div>
+        <div style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>When reporting a problem, please include:</div>
+        <ul style={{ margin: 0, paddingLeft: 20, color: C.textMid, fontSize: 13, lineHeight: 1.8 }}>
+          <li>The email address associated with your account</li>
+          <li>A description of the problem</li>
+          <li>The feature or area of CareerPersona AI you were using, if relevant</li>
+        </ul>
+      </Card>
+
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4 }}>Draft Legal Documents (Internal Review Only)</div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>These are early drafts for internal inspection and legal review. They are not published, finalized, or legally approved.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {legalLinks.map(l => (
+            <span key={l.id} onClick={() => onNavigate?.(l.id)} style={{ color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>{l.label} (draft)</span>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ─── FIRST-LAUNCH EXPERIENCE ───────────────────────────────
 // Locked design (approved, do not modify): 0-4s logo reveal (pure scale
 // growth from small, full color/opacity throughout -- no fade during the
@@ -12733,12 +12877,12 @@ function OnboardingTransition({ message, onDone }) {
 
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
-  const { user, logout, recoveryMode, clearRecovery, authResolving } = useAuth();
+  const { user, logout, recoveryMode, clearRecovery, authResolving, authLinkErrorCode } = useAuth();
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const [billingState, setBillingState] = useState(null);
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","legal-privacy","legal-terms","legal-refund","legal-fairuse","legal-cookies"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -13007,7 +13151,7 @@ export default function App() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
-  if (!user) return <AuthPage t={t} />;
+  if (!user) return <AuthPage t={t} authLinkErrorCode={authLinkErrorCode} />;
 
   if (profile?.deletion_status === "scheduled" || profile?.deletion_status === "in_progress") {
     return (
@@ -13241,6 +13385,15 @@ export default function App() {
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} billingState={billingState} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
+        {/* Support + legal document pages -- English-only, internal inspection
+            only, deliberately not linked from primary navigation (see the
+            LEGAL DOCUMENT PAGES comment above the component definitions). */}
+        {page === "support" && <SupportPage onNavigate={setPage} />}
+        {page === "legal-privacy" && <LegalDocumentPage title="Privacy Policy" content={PRIVACY_POLICY} />}
+        {page === "legal-terms" && <LegalDocumentPage title="Terms of Service" content={TERMS_OF_SERVICE} />}
+        {page === "legal-refund" && <LegalDocumentPage title="Refund & Cancellation Policy" content={REFUND_POLICY} />}
+        {page === "legal-fairuse" && <LegalDocumentPage title="Fair Use / Acceptable Use Policy" content={FAIR_USE_POLICY} />}
+        {page === "legal-cookies" && <LegalDocumentPage title="Cookie Policy" content={COOKIE_POLICY} />}
       </main>
     </div>
     </I18nContext.Provider>
