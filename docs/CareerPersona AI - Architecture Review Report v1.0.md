@@ -110,6 +110,7 @@ All 14 files exist and are correctly wired:
 ### Internationalisation
 - 14 languages supported via `I18nContext`
 - Language preference persisted to Supabase `profiles.preferred_language`
+- *(Note added 2026-08-19: this section predates the 2026-08-02 coverage audit. Known translation-key gaps exist — see `docs/backlog/Localization-Debt-Cleanup.md`.)*
 
 ### Career Progress (Dashboard card)
 - Progress bars for: profile %, saved jobs, applications, interviews, offers
