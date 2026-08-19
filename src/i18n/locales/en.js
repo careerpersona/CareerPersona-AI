@@ -21,6 +21,7 @@ export default {
   userMenu: {
     profile: "Profile",
     settings: "Settings",
+    support: "Contact / Support",
     signOut: "Sign Out",
     defaultName: "User",
   },

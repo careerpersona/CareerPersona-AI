@@ -17,6 +17,7 @@
   userMenu: {
     profile: "Profil",
     settings: "Ayarlar",
+    support: "İletişim / Destek",
     signOut: "Çıkış Yap",
     defaultName: "Kullanıcı",
   },

@@ -17,6 +17,7 @@
   userMenu: {
     profile: "Profilo",
     settings: "Impostazioni",
+    support: "Contatto / Assistenza",
     signOut: "Disconnetti",
     defaultName: "Utente",
   },

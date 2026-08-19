@@ -17,6 +17,7 @@
   userMenu: {
     profile: "个人资料",
     settings: "设置",
+    support: "联系 / 支持",
     signOut: "退出登录",
     defaultName: "用户",
   },

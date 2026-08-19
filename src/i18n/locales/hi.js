@@ -17,6 +17,7 @@
   userMenu: {
     profile: "प्रोफ़ाइल",
     settings: "सेटिंग्स",
+    support: "संपर्क / सहायता",
     signOut: "साइन आउट करें",
     defaultName: "उपयोगकर्ता",
   },

@@ -1452,6 +1452,7 @@ function UserMenu({ profile, page, setPage, onLogout }) {
           <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
             <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
             <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
+            <button onClick={() => { setPage("support"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "support" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>✉️ {t("userMenu.support")}</button>
             <div style={{ borderTop: `1px solid ${C.border}` }} />
             <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 {t("userMenu.signOut")}</button>
           </div>
@@ -12672,7 +12673,7 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
 // ─── LEGAL DOCUMENT PAGES (internal inspection only) ───────
 // INTENTIONALLY DISCONNECTED (Phase 8 build-fix): the import of
 // PRIVACY_POLICY/TERMS_OF_SERVICE/REFUND_POLICY/FAIR_USE_POLICY/COOKIE_POLICY,
-// the "support"/"legal-*" validPages entries, and the render block for these
+// the 6 "legal-*" validPages entries, and the render block for these
 // components have all been removed elsewhere in this file because
 // src/legal/documents.js is deliberately kept untracked (the Phase 7 legal
 // package is still unapproved) -- committing this file without also
@@ -12685,8 +12686,8 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
 // English-only by explicit instruction: these documents are not localized
 // and must not be added to src/i18n/locales/*.js until legally approved and
 // ready for translation. Not linked from primary navigation, footer,
-// signup, or checkout -- reachable only via direct route/hash (and the
-// clearly-labeled links on SupportPage below) for internal review.
+// signup, checkout, or (as of Phase 9) SupportPage -- reachable only via
+// direct route/hash for internal review.
 //
 // Content lives in src/legal/documents.js as the verbatim approved English
 // drafts. renderLegalContent below is a small, deliberately simple
@@ -12753,38 +12754,25 @@ function LegalDocumentPage({ title, content }) {
 }
 
 // ─── SUPPORT PAGE ───────────────────────────────────────────
-function SupportPage({ onNavigate }) {
-  const legalLinks = [
-    { id: "legal-privacy", label: "Privacy Policy" },
-    { id: "legal-terms", label: "Terms of Service" },
-    { id: "legal-refund", label: "Refund & Cancellation Policy" },
-    { id: "legal-fairuse", label: "Fair Use / Acceptable Use Policy" },
-    { id: "legal-cookies", label: "Cookie Policy" },
-  ];
+// Phase 9: reconnected as a standalone contact page, deliberately independent
+// of the still-unapproved legal package -- see the "LEGAL DOCUMENT PAGES"
+// comment above. The legal-drafts card that used to live here was removed
+// (not just hidden) so this page carries zero dependency on src/legal/.
+function SupportPage() {
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 6 }}>Contact / Support</h1>
       <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>Reach us directly by email — we don't yet have a ticketing system or support portal, so email is the fastest way to get help.</p>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Card>
         <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>Email Us</div>
-        <div style={{ fontSize: 15, color: C.purple, fontWeight: 700, marginBottom: 14 }}>info@sellatrend.com</div>
+        <a href="mailto:info@sellatrend.com" style={{ fontSize: 15, color: C.purple, fontWeight: 700, marginBottom: 14, display: "inline-block", textDecoration: "none" }}>info@sellatrend.com</a>
         <div style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>When reporting a problem, please include:</div>
         <ul style={{ margin: 0, paddingLeft: 20, color: C.textMid, fontSize: 13, lineHeight: 1.8 }}>
           <li>The email address associated with your account</li>
           <li>A description of the problem</li>
           <li>The feature or area of CareerPersona AI you were using, if relevant</li>
         </ul>
-      </Card>
-
-      <Card>
-        <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4 }}>Draft Legal Documents (Internal Review Only)</div>
-        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>These are early drafts for internal inspection and legal review. They are not published, finalized, or legally approved.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {legalLinks.map(l => (
-            <span key={l.id} onClick={() => onNavigate?.(l.id)} style={{ color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>{l.label} (draft)</span>
-          ))}
-        </div>
       </Card>
     </div>
   );
@@ -12896,10 +12884,11 @@ export default function App() {
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
   const [billingState, setBillingState] = useState(null);
-  // "support" and the "legal-*" routes intentionally removed (Phase 8
-  // build-fix) alongside the render block and import above/below -- see the
-  // "LEGAL DOCUMENT PAGES" comment near LegalDocumentPage/SupportPage.
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel"]);
+  // The "legal-*" routes remain intentionally removed (Phase 8 build-fix,
+  // legal package still unapproved) -- see the "LEGAL DOCUMENT PAGES" comment
+  // near LegalDocumentPage/SupportPage. "support" was reconnected separately
+  // (Phase 9) once confirmed independent of that frozen legal content.
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -13402,10 +13391,11 @@ export default function App() {
         {page === "jobintel" && <JobIntelligencePage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} billingState={billingState} />}
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
-        {/* Support + legal document page render block intentionally removed
-            (Phase 8 build-fix) -- see the "LEGAL DOCUMENT PAGES" comment
-            above LegalDocumentPage/SupportPage for why, and what restoring
-            this requires. */}
+        {page === "support" && <SupportPage />}
+        {/* Legal document page render block remains intentionally removed
+            (Phase 8 build-fix, legal package still unapproved) -- see the
+            "LEGAL DOCUMENT PAGES" comment above LegalDocumentPage/SupportPage
+            for why, and what restoring this requires. */}
       </main>
     </div>
     </I18nContext.Provider>

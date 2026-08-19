@@ -17,6 +17,7 @@
   userMenu: {
     profile: "Profiel",
     settings: "Instellingen",
+    support: "Contact / Ondersteuning",
     signOut: "Afmelden",
     defaultName: "Gebruiker",
   },

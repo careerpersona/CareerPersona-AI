@@ -17,6 +17,7 @@
   userMenu: {
     profile: "الملف الشخصي",
     settings: "الإعدادات",
+    support: "التواصل / الدعم",
     signOut: "تسجيل الخروج",
     defaultName: "المستخدم",
   },

@@ -17,6 +17,7 @@
   userMenu: {
     profile: "プロフィール",
     settings: "設定",
+    support: "お問い合わせ / サポート",
     signOut: "ログアウト",
     defaultName: "ユーザー",
   },

@@ -17,6 +17,7 @@
   userMenu: {
     profile: "프로필",
     settings: "설정",
+    support: "문의 / 지원",
     signOut: "로그아웃",
     defaultName: "사용자",
   },
