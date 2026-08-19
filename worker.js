@@ -930,6 +930,20 @@ async function handleCancelSubscription(request, env) {
   const rows = await supabaseGet("profiles", { id: `eq.${userId}`, select: "stripe_subscription_id" }, env);
   const subId = rows?.[0]?.stripe_subscription_id;
   if (!subId) return corsResponse(request, { error: "no_active_subscription" }, 400);
+
+  // A pending Premium -> Pro downgrade (handleChangePlan) attaches a Subscription
+  // Schedule to this subscription. Stripe's own docs warn that modifying a
+  // schedule-managed subscription directly via the plain Subscriptions API "can
+  // produce unexpected behavior" -- so release the schedule first (its documented
+  // detach operation) before ever touching cancel_at_period_end. Releasing leaves
+  // the subscription in place on its current (Premium) price/phase and simply
+  // drops the pending downgrade -- cancellation is a later, stronger intent that
+  // correctly supersedes an earlier scheduled downgrade.
+  const stripeSub = await stripeRequest("GET", `/subscriptions/${subId}`, null, env);
+  if (stripeSub.schedule) {
+    await stripeRequest("POST", `/subscription_schedules/${stripeSub.schedule}/release`, null, env);
+  }
+
   await stripeRequest("POST", `/subscriptions/${subId}`, { cancel_at_period_end: "true" }, env);
   await supabasePatch("profiles", { id: `eq.${userId}` }, { cancel_at_period_end: true }, env);
   await invalidateSubscription(userId, env);
@@ -1270,9 +1284,23 @@ async function processStripeEvent(event, env) {
       break;
     }
     case "customer.subscription.updated": {
-      const updatedPeriod = getSubscriptionPeriod(obj);
+      // `obj` (event.data.object) is a snapshot from the moment this specific
+      // event was generated. Stripe explicitly does not guarantee webhook
+      // delivery order (see "Event ordering" in Stripe's webhook docs) -- when
+      // a single action performs multiple Stripe mutations in sequence (e.g.
+      // handleCancelSubscription releasing a Subscription Schedule, then
+      // setting cancel_at_period_end), each mutation fires its own
+      // customer.subscription.updated event, and an older event's stale
+      // snapshot can be processed after a newer one already landed, clobbering
+      // correct state. Always re-fetch the CURRENT subscription instead of
+      // trusting the embedded snapshot -- the same pattern invoice.paid and
+      // invoice.payment_failed already use above -- so processing is
+      // idempotent and immune to delivery order regardless of which event
+      // triggered it.
+      const currentSub = await stripeRequest("GET", `/subscriptions/${obj.id}`, null, env);
+      const updatedPeriod = getSubscriptionPeriod(currentSub);
       const patch = {
-        cancel_at_period_end: obj.cancel_at_period_end,
+        cancel_at_period_end: currentSub.cancel_at_period_end,
         current_period_start: new Date(updatedPeriod.start * 1000).toISOString(),
         current_period_end: new Date(updatedPeriod.end * 1000).toISOString(),
       };
@@ -1291,15 +1319,15 @@ async function processStripeEvent(event, env) {
       const currentStatus = profileRows?.[0]?.subscription_status;
       if (currentStatus === "pro_active" || currentStatus === "premium_active") {
         const config = await getConfig(env);
-        const tier = determineTierFromStripeSubscription(obj, config);
+        const tier = determineTierFromStripeSubscription(currentSub, config);
         patch.subscription_status = tier === "premium" ? "premium_active" : "pro_active";
       }
       await supabasePatch("profiles", { id: `eq.${userId}` }, patch, env);
       supabasePatch("subscriptions", { stripe_subscription_id: `eq.${obj.id}` }, {
-        cancel_at_period_end: obj.cancel_at_period_end,
+        cancel_at_period_end: currentSub.cancel_at_period_end,
         current_period_start: new Date(updatedPeriod.start * 1000).toISOString(),
         current_period_end: new Date(updatedPeriod.end * 1000).toISOString(),
-        status: obj.status,
+        status: currentSub.status,
       }, env).catch(() => {});
       break;
     }
