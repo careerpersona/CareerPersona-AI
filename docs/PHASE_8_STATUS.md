@@ -74,7 +74,7 @@ Commit `34934d9` disconnected (did not delete) the ~108-line Phase 7 legal-page 
 These were flagged during Phase 8 work but are explicitly out of scope for it and have not been actioned:
 
 - Sentry / error-monitoring integration — not yet implemented anywhere in the app.
-- Subscription-status race condition — an investigation, not yet started.
+- Subscription-status race condition — resolved by commit `e5ad510` (Phase 9): `handleCancelSubscription` now releases an attached Subscription Schedule before setting `cancel_at_period_end`, and the `customer.subscription.updated` webhook handler re-fetches the subscription fresh instead of trusting a potentially stale embedded snapshot.
 - Score Benchmarking fabricated-statistics issue — a known content-accuracy concern, not yet started.
 - LinkedIn free-tier labeling issue — a known UI-labeling concern, not yet started.
 - Unused `auth.continueWithGoogle` locale string — confirmed still present in `src/i18n/locales/en.js` (and presumably the other 13 locale files) as dead data now that C1 removed its only call site; harmless (it's just an unreferenced string value, not a security or functional issue), but worth a future cleanup pass across all locale files together rather than one at a time.

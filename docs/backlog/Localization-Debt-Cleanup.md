@@ -12,14 +12,14 @@ Per architect instruction, **not fixed now** — this document exists to record 
 
 ## Backlog Items
 
-### 1. Pricing / Checkout flow
+### 1. Pricing / Checkout flow — RESOLVED
 
 **Priority: High** — these are transactional, payment-confirmation messages; a non-English user completing a purchase currently sees raw English for success/failure/verifying states, which is the single most consequential gap in this list (directly touches the billing conversion flow).
 
 - Missing keys: `pricing.checkoutFailed`, `pricing.checkoutSuccess`, `pricing.checkoutVerifying`
 - Affected locales: all 13 (ar, de, es, fr, hi, it, ja, ko, nl, pt, ru, tr, zh)
 - Where discovered: Localization Validator
-- Status: Deferred
+- Status: **Resolved by commit `f702fca`** — all 3 keys translated into all 13 locales, confirmed via the validator (0 missing).
 
 ### 2. Settings / Subscription management
 
