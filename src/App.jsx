@@ -116,7 +116,7 @@ const cleanAuthCallbackUrl = () => {
   }
 };
 
-const useAuth = () => {
+const useAuth = (setBillingState) => {
   // Seed recoveryMode from the hash captured at module load time — before
   // createClient() processes it, before React StrictMode double-mounts effects,
   // and before any onAuthStateChange timing races can occur.
@@ -156,7 +156,18 @@ const useAuth = () => {
     const syncFromSession = async (session) => {
       if (!session?.user) return;
       if (session.access_token) {
-        // 1. Fetch canonical billing state (Worker is single source of truth)
+        // 1. Fetch canonical billing state (Worker is single source of truth).
+        // setBillingState is App()'s own setter, passed in as a parameter
+        // (see useAuth(setBillingState) at the call site) rather than
+        // duplicating refreshBillingState()'s full fetch -- refreshBillingState
+        // isn't defined yet at the point useAuth() runs (it's declared later
+        // in App()'s body), and it also re-fetches/re-sets profile, which
+        // would be redundant with step 2 below. Populating billingState here,
+        // before login() below, means Dashboard/Resume/Job Search/etc. no
+        // longer render one pass with billingState still null (defaulting to
+        // "FREE") the moment `user` becomes truthy -- the safety-net
+        // useEffect(() => { if (user?.id) refreshBillingState(); }, [user?.id])
+        // in App() still runs afterward as a fallback, unchanged.
         try {
           const stateRes = await fetch(`${WORKER_URL}/api/billing/state`, {
             headers: { "Authorization": `Bearer ${session.access_token}` },
@@ -11030,6 +11041,22 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
   // path, not offered here).
   const isAlreadyPro = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
   const isAlreadyPremium = ["PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
+  // Phase 9 billing-correctness fix: an actively-billing paid subscription
+  // (Stripe status genuinely "active", not past_due) -- the exact condition
+  // handleChangePlan itself requires (worker.js) for a prorated upgrade
+  // instead of creating a second, independent Stripe subscription. ADMIN is
+  // excluded -- an admin-entitlement account has no real Stripe subscription
+  // to change-plan against, though this is moot in practice since ADMIN is
+  // already in both isAlreadyPro and isAlreadyPremium above, so its cards are
+  // already disabled regardless.
+  const hasActivePaidSub = ["PRO_ACTIVE", "PRO_CANCELING", "PREMIUM_ACTIVE", "PREMIUM_CANCELING"].includes(bs);
+  // A Pro subscriber whose payment is currently failing must not be allowed
+  // to start a second, independent Premium checkout -- Stripe would happily
+  // create one, leaving them billed on two subscriptions at once while only
+  // one of them is even successfully collecting payment. (A past-due Premium
+  // user's own Premium card is already covered by isAlreadyPremium above, so
+  // this only needs to guard the Premium card for a past-due *Pro* user.)
+  const premiumBlockedPastDue = bs === "PRO_PAST_DUE";
 
   // Checkout return: detect session_id in URL hash after Stripe redirect
   useEffect(() => {
@@ -11084,10 +11111,42 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
     } finally { setCheckoutLoadingPlan(null); }
   };
 
+  // Phase 9 billing-correctness fix: for a user who already has an
+  // actively-billing subscription (hasActivePaidSub), upgrading must go
+  // through the existing, already-correct /api/billing/change-plan endpoint
+  // (immediate prorated upgrade) instead of handleCheckout above, which would
+  // create a brand-new, independent Stripe subscription alongside the
+  // existing one. No Stripe redirect here -- change-plan is a direct API
+  // call, so success/error are handled inline, reusing the exact same
+  // success banner (checkoutSuccess/successPlanName) as the checkout-return
+  // flow above and the same per-card error slot (checkoutError/
+  // checkoutErrorPlan) as handleCheckout.
+  const handleChangePlan = async (plan) => {
+    setCheckoutLoadingPlan(plan); setCheckoutError(""); setCheckoutErrorPlan(null);
+    try {
+      await workerBillingPost("/api/billing/change-plan", { plan });
+      if (refreshBillingState) await refreshBillingState();
+      setSuccessPlanName(plan === "premium" ? t("pricing.premiumName") : t("pricing.proName"));
+      setCheckoutSuccess(true);
+    } catch (e) {
+      setCheckoutErrorPlan(plan);
+      setCheckoutError(
+        e.workerError === "stripe_not_configured" ? t("pricing.connectStripe").replace("{name}", plan === "premium" ? "Premium" : "Pro")
+        : e.workerError === "premium_price_not_configured" ? t("pricing.premiumComingSoon")
+        : e.workerError === "stripe_price_not_configured" ? t("pricing.connectStripe").replace("{name}", "Pro")
+        : e.workerError === "subscription_not_active" ? t("settings.pastDue")
+        : e.workerError === "already_on_plan" ? t("pricing.currentPlan")
+        : e.workerError === "no_active_subscription" ? t("pricing.checkoutFailed")
+        : e.workerError === "invalid_plan" ? t("pricing.checkoutFailed")
+        : e.message
+      );
+    } finally { setCheckoutLoadingPlan(null); }
+  };
+
   const plans = [
-    { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true, checkoutPlan: null, alreadyHave: false },
-    { id: "pro", name: t("pricing.proName"), price: "$29.99", sub: t("pricing.proSub"), color: C.purple, popular: true, includesLabel: t("pricing.includesFree"), features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7")], cta: t("pricing.proCta"), disabled: false, checkoutPlan: "pro", alreadyHave: isAlreadyPro },
-    { id: "premium", name: t("pricing.premiumName"), price: "$39.99", sub: t("pricing.premiumSub"), color: C.purple, includesLabel: t("pricing.includesPro"), features: [t("pricing.premiumFeature1"), t("pricing.premiumFeature2"), t("pricing.premiumFeature3"), t("pricing.premiumFeature4"), t("pricing.premiumFeature5")], cta: t("pricing.premiumCta"), disabled: false, checkoutPlan: "premium", alreadyHave: isAlreadyPremium },
+    { id: "free", name: t("pricing.freeName"), price: "$0", sub: t("pricing.freeSub"), color: C.textMuted, features: [t("pricing.freeFeature1"), t("pricing.freeFeature2"), t("pricing.freeFeature3"), t("pricing.freeFeature4"), t("pricing.freeFeature5")], cta: t("pricing.freeCta"), disabled: true, checkoutPlan: null, alreadyHave: false, useChangePlan: false, blockedPastDue: false },
+    { id: "pro", name: t("pricing.proName"), price: "$29.99", sub: t("pricing.proSub"), color: C.purple, popular: true, includesLabel: t("pricing.includesFree"), features: [t("pricing.proFeature1"), t("pricing.proFeature2"), t("pricing.proFeature3"), t("pricing.proFeature4"), t("pricing.proFeature5"), t("pricing.proFeature6"), t("pricing.proFeature7")], cta: t("pricing.proCta"), disabled: false, checkoutPlan: "pro", alreadyHave: isAlreadyPro, useChangePlan: false, blockedPastDue: false },
+    { id: "premium", name: t("pricing.premiumName"), price: "$39.99", sub: t("pricing.premiumSub"), color: C.purple, includesLabel: t("pricing.includesPro"), features: [t("pricing.premiumFeature1"), t("pricing.premiumFeature2"), t("pricing.premiumFeature3"), t("pricing.premiumFeature4"), t("pricing.premiumFeature5")], cta: t("pricing.premiumCta"), disabled: false, checkoutPlan: "premium", alreadyHave: isAlreadyPremium, useChangePlan: hasActivePaidSub && !isAlreadyPremium, blockedPastDue: premiumBlockedPastDue },
   ];
 
   return (
@@ -11132,11 +11191,17 @@ function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
             <div style={{ marginTop: 20 }}>
               {checkoutErrorPlan === plan.checkoutPlan && checkoutError && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{checkoutError}</div>}
+              {plan.blockedPastDue && (
+                <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>
+                  {t("settings.pastDue")}{" "}
+                  <span onClick={() => setPage("settings")} style={{ color: C.purple, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>{t("settings.manageSub")}</span>
+                </div>
+              )}
               <Btn
                 variant={plan.id === "free" ? "secondary" : "primary"}
-                style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || plan.alreadyHave) ? 0.5 : 1 }}
-                disabled={plan.disabled || plan.alreadyHave || checkoutLoadingPlan !== null}
-                onClick={plan.checkoutPlan && !plan.alreadyHave ? () => handleCheckout(plan.checkoutPlan) : undefined}
+                style={{ width: "100%", justifyContent: "center", padding: "13px", opacity: (plan.disabled || plan.alreadyHave || plan.blockedPastDue) ? 0.5 : 1 }}
+                disabled={plan.disabled || plan.alreadyHave || plan.blockedPastDue || checkoutLoadingPlan !== null}
+                onClick={plan.checkoutPlan && !plan.alreadyHave && !plan.blockedPastDue ? () => (plan.useChangePlan ? handleChangePlan(plan.checkoutPlan) : handleCheckout(plan.checkoutPlan)) : undefined}
               >
                 {plan.alreadyHave ? t("pricing.currentPlan") : (checkoutLoadingPlan === plan.checkoutPlan ? "…" : plan.cta)}
               </Btn>
@@ -12879,11 +12944,14 @@ function OnboardingTransition({ message, onDone }) {
 
 // ─── MAIN APP ──────────────────────────────────────────────
 export default function App() {
-  const { user, logout, recoveryMode, clearRecovery, authResolving, authLinkErrorCode } = useAuth();
+  // Declared before useAuth() specifically so its real setter can be passed
+  // in and used inside useAuth's own session-sync effect -- see the comment
+  // on setBillingState's use inside useAuth (App.jsx, syncFromSession).
+  const [billingState, setBillingState] = useState(null);
+  const { user, logout, recoveryMode, clearRecovery, authResolving, authLinkErrorCode } = useAuth(setBillingState);
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  const [billingState, setBillingState] = useState(null);
   // The "legal-*" routes remain intentionally removed (Phase 8 build-fix,
   // legal package still unapproved) -- see the "LEGAL DOCUMENT PAGES" comment
   // near LegalDocumentPage/SupportPage. "support" was reconnected separately
