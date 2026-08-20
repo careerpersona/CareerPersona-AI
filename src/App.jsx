@@ -6600,7 +6600,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
         <div className="history-analytics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
 
           {/* Left column: Analysis History */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
             {analysisHistory?.length === 0 && (
               <Card style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
@@ -6635,7 +6635,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                           <div style={{ width: 9, height: 9, borderRadius: "50%", background: hc, marginTop: 10, flexShrink: 0 }} />
                           {!isLast && <div style={{ flex: 1, width: 2, background: `${hc}25`, marginTop: 2 }} />}
                         </div>
-                        <div style={{ flex: 1, padding: "6px 6px 6px 5px" }}>
+                        <div style={{ flex: 1, minWidth: 0, padding: "6px 6px 6px 5px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.resumeName || t("resume.resumeFallbackName")}</div>
@@ -6663,7 +6663,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
           </div>
 
           {/* Right column: Performance Analytics */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
             {analysisHistory?.length > 0 && (() => {
               const total = analysisHistory.length;
               const improved = analysisHistory.filter(h => h.analysisType === "Resume Improvement").length;
@@ -13317,7 +13317,15 @@ export default function App() {
 @media (max-width: 900px) {
   .hub-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .hub-toolkit-grid { grid-template-columns: repeat(2, 1fr) !important; }
-  .history-analytics-grid { grid-template-columns: 1fr !important; }
+  /* minmax(0, 1fr), not bare 1fr (== minmax(auto, 1fr)) -- a plain 1fr track's
+     minimum is its content's min-content width, so an unbreakable child (e.g.
+     a long resume filename inside the history rows below, which relies on its
+     own overflow:hidden/text-overflow:ellipsis/white-space:nowrap to truncate)
+     can still force the whole track wider than its container, defeating that
+     ellipsis and overflowing the viewport. minmax(0, 1fr) lets the track
+     actually shrink to the container's width so the descendant's own
+     truncation takes effect instead. */
+  .history-analytics-grid { grid-template-columns: minmax(0, 1fr) !important; }
 }
 .cp-action-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; justify-content: center; }
 .two-col > *, .three-col > * { min-width: 0; }
