@@ -13156,7 +13156,14 @@ export default function App() {
   const isPaidPlan = ["pro_active", "pro_past_due", "pro_cancelled", "premium_active", "admin"].includes(subStatus);
   // Application Outcome Intelligence is "Gate: Premium Only" per its locked blueprint --
   // distinct from isPaidPlan, which also includes the Pro tier.
-  const isPremium = ["premium_active", "admin"].includes(subStatus);
+  // Was: ["premium_active", "admin"].includes(profile?.subscription_status) -- a second,
+  // independent tier computation reading the raw (client-fetched, can lag behind a
+  // just-invalidated Worker read) profiles.subscription_status column directly, bypassing
+  // billingState entirely and missing premium_canceling -- so a Premium subscriber who
+  // cancels (still entitled through period end, same as everywhere else in this app) lost
+  // Outcome/LinkedIn/Referral Intelligence immediately instead of at period end. Reuses the
+  // same canonical billingState-derived pattern already proven correct in SettingsPage.
+  const isPremium = billingState?.billingState === "PREMIUM_ACTIVE" || billingState?.billingState === "PREMIUM_CANCELING" || billingState?.billingState === "ADMIN";
   const { notifications, refresh: refreshNotifications, markAllRead } = useNotifications(profile?.id);
   const unreadCount = notifications.filter(n => !n.read).length;
 
