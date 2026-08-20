@@ -6060,13 +6060,26 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
           {results && (
             <div id="resume-analysis-section" style={{ marginBottom: 16 }}>
               <Card style={{ marginBottom: 12 }}>
+                {/* resume-action-bar-btns: the two buttons below don't reliably wrap onto
+                    separate lines via flexWrap alone at narrow widths (the row's own
+                    scrollWidth still exceeded its clientWidth in mobile testing even with
+                    flex-wrap set) -- explicit column-stacking below 480px, matching this
+                    file's existing convention of CSS-class + media-query for responsive
+                    layout rather than JS viewport checks, guarantees no horizontal overflow
+                    regardless of label length or future translation length. */}
+                <style>{`
+                  @media (max-width: 480px) {
+                    .resume-action-bar-btns { flex-direction: column; align-items: stretch !important; width: 100%; }
+                    .resume-action-bar-btns button { width: 100%; }
+                  }
+                `}</style>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{t("resume.analysisComplete")}</div>
                     {results.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{results.jobTitle}{validCompany(results.company) ? t("resume.atSeparator") + results.company : ""}</div>}
                     {editingResumeName && <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 2 }}>{t("resume.editingLabel")} {editingResumeName}</div>}
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                  <div className="resume-action-bar-btns" style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <Btn onClick={handleSaveToLibrary} disabled={improving || savingToLibrary || !profile?.id} loading={savingToLibrary} style={{ fontSize: 13 }}>
                       {librarySaved ? t("resume.savedToLibrary") : isOptimized ? t("resume.saveOptimizedResume") : t("resume.saveToLibrary")}
                     </Btn>
