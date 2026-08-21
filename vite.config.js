@@ -48,7 +48,15 @@ export default defineConfig({
     // devtools never auto-fetch them from the public bundle. Combined with
     // filesToDeleteAfterUpload above, the maps never end up served at all
     // once the Sentry plugin has uploaded them.
-    sourcemap: 'hidden',
+    //
+    // Gated on the same sentryAuthToken check as the plugin itself, not
+    // left unconditional: a build without the token skips the plugin
+    // entirely, so filesToDeleteAfterUpload never runs -- generating maps
+    // in that case would leave real, undeleted source maps sitting in the
+    // publicly-served dist/ output with no upload to justify having
+    // created them. false here means no maps exist at all when there's no
+    // token to upload them, so this can never fail open.
+    sourcemap: sentryAuthToken ? 'hidden' : false,
   },
   define: {
     __SENTRY_RELEASE__: JSON.stringify(gitSha),
