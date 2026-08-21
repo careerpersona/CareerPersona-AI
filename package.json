@@ -17,6 +17,7 @@
     "verify:i18n": "node scripts/verify/verify-i18n.mjs"
   },
   "dependencies": {
+    "@sentry/react": "^10.70.0",
     "@supabase/supabase-js": "^2.108.2",
     "docx": "^9.7.1",
     "jspdf": "^4.2.1",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@sentry/vite-plugin": "^5.4.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

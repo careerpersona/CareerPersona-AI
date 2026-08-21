@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { Sentry } from "./sentry.js";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { exportUserData, downloadJSON } from "./data/accountExport";
@@ -12980,6 +12981,13 @@ export default function App() {
   };
 
   const [page, setPageRaw] = useState(getInitialPage);
+  // Sentry error monitoring: this app is a client-routed SPA where in-app
+  // navigation doesn't change the URL, so Sentry's own automatic
+  // event.request.url capture can't tell which page an error happened on.
+  // Tagging it explicitly here (the one place `page` already changes) means
+  // every subsequent event -- caught by the ErrorBoundary in main.jsx or any
+  // unhandled error/rejection -- carries accurate page context.
+  useEffect(() => { Sentry.setTag("page", page); }, [page]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Separate from mobileMenuOpen on purpose -- desktop and mobile nav must be
   // independently openable/closable and never share state, per the desktop
