@@ -14,7 +14,12 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
+      // __SENTRY_RELEASE__ isn't a real global -- it's a build-time string
+      // replaced by Vite's `define` (vite.config.js), read only in
+      // src/sentry.js. Declaring it here is the standard ESLint pattern for
+      // a define-injected identifier; it doesn't exist at runtime outside
+      // the built bundle, so it's not part of globals.browser.
+      globals: { ...globals.browser, __SENTRY_RELEASE__: "readonly" },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
