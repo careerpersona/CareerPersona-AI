@@ -62,6 +62,11 @@ async function newCtx(browser, uid, email, { subStatus, contacts = [], watchlist
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
   await context.route(`**/${SUPABASE_HOST}/rest/v1/profiles*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
+  // hasProfileDetails (App.jsx) gates first-login routing on a profile_details
+  // row existing -- without this, the app shows the First-Launch onboarding
+  // screen instead of the requested page (added 2026-08-10, after this script
+  // was written). Pattern matches verify-smart-apply-auto-prep-phase4-ui.cjs.
+  await context.route(`**/${SUPABASE_HOST}/rest/v1/profile_details*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/networking_contacts*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contacts) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/company_watchlist*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(watchlist) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/saved_jobs*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedJobs) }));

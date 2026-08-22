@@ -42,6 +42,11 @@ const check = (label, pass) => { results.push({ label, pass }); console.log(`${p
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
   await context.route(`**/${SUPABASE_HOST}/rest/v1/profiles*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
+  // hasProfileDetails (App.jsx) gates first-login routing on a profile_details
+  // row existing -- without this, the app shows the First-Launch onboarding
+  // screen instead of the requested page (added 2026-08-10, after this script
+  // was written). Pattern matches verify-smart-apply-auto-prep-phase4-ui.cjs.
+  await context.route(`**/${SUPABASE_HOST}/rest/v1/profile_details*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/networking_contacts*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([SAVED_CONTACT]) }));
   await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ billingState: 'PREMIUM_ACTIVE', planDisplayName: 'Premium', quotas: { ai_request: { unlimited: true } } }) }));
 
