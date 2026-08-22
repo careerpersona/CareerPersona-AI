@@ -1125,7 +1125,6 @@ async function downloadPDF(content, filename) {
       doc.line(TL_X, entryStartY, TL_X, entryEndY);
       doc.setFillColor(...ACCENT);
       doc.circle(TL_X, entryStartY, 1.8, 'F');
-      entryStartY = null;
     }
   }
 
@@ -6847,7 +6846,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.categoryBreakdown")}</div>
                     {[
-                      { label: t("resume.keywordCoverageLabel"), val: keywordCoverage },
+                      { label: t("resume.benchmarkKeywordCoverageLabel"), val: keywordCoverage },
                       { label: t("resume.formatting"), val: formattingScore },
                       { label: t("resume.experienceLabel"), val: experienceScore },
                       { label: t("resume.skills"), val: skillsScore },
@@ -7049,7 +7048,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
                     {[
                       { label: t("resume.profileCompleteLabel"), val: completenessScore, color: hubHealthColor(completenessScore) },
-                      { label: t("resume.keywordCoverageLabel"), val: keywordCoverageScore, color: hubHealthColor(keywordCoverageScore) },
+                      { label: t("resume.linkedinKeywordCoverageLabel"), val: keywordCoverageScore, color: hubHealthColor(keywordCoverageScore) },
                     ].map(({ label, val, color }) => (
                       <div key={label} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 8px", textAlign: "center" }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color }}>{val ?? "—"}</div>
@@ -7624,7 +7623,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     // TEMPORARY FORENSIC INSTRUMENTATION — remove after diagnosis, no business logic changed.
     let _stage = "start";
     let _raw = null;
-    let _cleanRaw = null;
+    let _cleanRaw;
     let _braceStart = null, _braceEnd = null;
     let _integrity = null;
     try {
@@ -7693,7 +7692,6 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       console.error(`[FORENSIC] validation_result=${_integrity ? JSON.stringify(_integrity) : "N/A — not reached"}`);
       console.error(`[SmartApply] ❌ MANUAL failed for "${job.title}":`, e?.code, e?.message, e);
       if (queued) {
-        _stage = "before_markFailed";
         console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — Before markFailed()`);
         await markFailed(queued.id, queued.retry_count);
         console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — markFailed executed. Final status: failed`);
@@ -8182,6 +8180,23 @@ function VoiceInputBtn({ onTranscript, currentText, language }) {
 }
 
 // ─── INTERVIEW PAGE ────────────────────────────────────────
+// Reusable STAR guidance card -- module scope (not defined inside InterviewPage)
+// so React treats it as a stable component type across renders instead of
+// remounting it fresh every time InterviewPage re-renders.
+function StarCard() {
+  const { t } = useI18n();
+  return (
+    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+      <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>{t("interview.starTitle")}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
+        {[[t("interview.starS"),t("interview.starSDesc")],[t("interview.starT"),t("interview.starTDesc")],[t("interview.starA"),t("interview.starADesc")],[t("interview.starR"),t("interview.starRDesc")]].map(([h, d]) => (
+          <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InterviewPage({ profile, applications, savedJobs, billingState, setPage }) {
   const { t, language } = useI18n();
   // Same billingState -> canUseAI derivation already used by Dashboard/Resume/Job
@@ -8471,18 +8486,6 @@ Return ONLY this JSON (no markdown):
     const txt = (q.question || "").toLowerCase();
     return /tell me about a time|describe a situation|give me an example|a time when|how did you handle|walk me through a/.test(txt);
   };
-
-  // Reusable STAR guidance card
-  const StarCard = () => (
-    <div style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-      <div style={{ fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 10 }}>{t("interview.starTitle")}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }} className="two-col">
-        {[[t("interview.starS"),t("interview.starSDesc")],[t("interview.starT"),t("interview.starTDesc")],[t("interview.starA"),t("interview.starADesc")],[t("interview.starR"),t("interview.starRDesc")]].map(([h, d]) => (
-          <div key={h} style={{ fontSize: 13, color: C.text }}><strong style={{ color: C.purple }}>{h}</strong><br/><span style={{ color: C.textMid }}>{d}</span></div>
-        ))}
-      </div>
-    </div>
-  );
 
   // ── RENDER ──
   return (
