@@ -1,6 +1,6 @@
 # Developer Toolkit Architecture
 
-**Status:** Proposed — awaiting approval
+**Status:** Approved — all 5 tools implemented (Regression Runner and Localization Validator 2026-08-02; Architecture Validator, Release Candidate Validator, and ADR Generator 2026-08-22). See [`tools/README.md`](../../tools/README.md) for usage.
 **Date:** 2026-08-02
 **Scope:** Internal developer tooling only. Not a product feature. No user-facing code.
 
@@ -200,7 +200,8 @@ The first registered rule is transcribed directly from `ADR-Referral-Intelligenc
 5. **Release Candidate Validator** — needs 2, 3, and 4 already working, since it composes all three plus build/lint.
 6. **ADR Generator** — needs 5's report shape finalized, since it consumes the RC Validator's output directly as its Evidence source.
 
-## Open questions for approval
+## Open questions — resolved 2026-08-22
 
-- **Retroactive registration:** should Referral Intelligence's existing 3 suites + 1 ownership rule be registered into the new config files as part of building tools 1–3 (so the toolkit's first real run reproduces this session's actual Phase 9 results as a correctness check), or left unregistered until the next feature?
-- **`tools/reports/` retention:** gitignored and purely local, or should the RC Validator's consolidated report for each shipped feature be committed alongside its ADR as permanent evidence?
+- **Retroactive registration:** resolved yes. `ownership-rules.json` registers Referral Intelligence's one ownership rule (transcribed verbatim from this doc's own example) and `rc-checklist.json` registers a `referral-intelligence` section — running the Architecture Validator against the live repo reproduced a result consistent with Phase 9's audit approach (one rule, hard-fail/advisory tiers), and additionally surfaced one genuine new hard-fail hit introduced since Phase 9 by later feature work (`src/lib/proactiveJobAlerts/discoveryEngine.js` reimplements the ranking comparator inline instead of calling `rankByScore()`) — reported as a real finding, not fixed as part of this tooling task (out of scope: no product code was touched).
+- **`tools/reports/` retention:** resolved: stays gitignored, purely local/reproducible — no change from the original design. A feature's RC report can still be attached to its ADR at sign-off time via `adr-generator --rc-report=<path>` without the intermediate JSON itself needing to be committed.
+- **New ambiguities found during implementation** (not anticipated by this doc, resolved with the most conservative, non-inventing option — see `tools/README.md`'s "Known limitations" for detail): the `--feature` scoping token for the Architecture Validator required adding an optional `feature` field to each rule (the doc's own example rule didn't have one); the RC Validator's "scoped eslint against feature's changed files" and "keys scoped to `--feature`" for the Localization Validator both assumed a changed-file/per-feature-key tracking mechanism that doesn't exist anywhere in this repo, so both run at their existing whole-repo scope instead; the "generalized responsive-overflow checker" was extracted as a shared Playwright helper (`tools/shared/responsiveCheck.js`) rather than wired into the RC Validator as its own browser-launching sub-check, since that would have required inventing a new per-feature URL/mock-session config format.

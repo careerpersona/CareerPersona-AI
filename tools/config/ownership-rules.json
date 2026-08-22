@@ -1,0 +1,15 @@
+[
+  {
+    "id": "referral-scoring-single-owner",
+    "feature": "referral-intelligence",
+    "description": "Referral matching, scoring, tiering, and ranking must be owned by scoringEngine.js (ADR-Referral-Intelligence.md, Decision #2 and #6).",
+    "ownerFile": "src/lib/referralIntelligence/scoringEngine.js",
+    "scope": "src/",
+    "hardFailPatterns": [
+      { "pattern": "b\\.score - a\\.score", "description": "duplicated ranking comparator" }
+    ],
+    "advisoryPatterns": [
+      { "pattern": "c\\.company.*toLowerCase\\(\\).*===.*toLowerCase", "description": "possible duplicated company-matching -- verify manually" }
+    ]
+  }
+]

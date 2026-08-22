@@ -11,7 +11,11 @@ export class ConfigError extends Error {}
 // Throws ConfigError (not a plain Error) so callers can distinguish "bad config"
 // (TOOL_ERROR) from any other failure mode.
 export function loadConfig(relativePath) {
-  const fullPath = path.join(REPO_ROOT, relativePath);
+  // path.resolve (not path.join): an absolute relativePath is used as-is,
+  // which lets tools accept an optional --config-path override (e.g. for
+  // fixture-based testing) while every existing relative-path call site
+  // behaves identically to before.
+  const fullPath = path.resolve(REPO_ROOT, relativePath);
   let raw;
   try {
     raw = readFileSync(fullPath, "utf8");

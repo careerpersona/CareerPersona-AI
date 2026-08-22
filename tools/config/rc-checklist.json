@@ -1,0 +1,9 @@
+{
+  "referral-intelligence": {
+    "build": true,
+    "lint": true,
+    "architectureValidator": true,
+    "localization": true,
+    "regression": true
+  }
+}
