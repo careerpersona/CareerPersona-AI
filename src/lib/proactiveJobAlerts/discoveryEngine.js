@@ -21,7 +21,7 @@
 // migration file's own header note for the full reasoning).
 
 import { computeCompatibility, evaluateEligibility } from "../compatibility/index.js";
-import { matchContactsToCompany, computeRelationshipStrength } from "../referralIntelligence/scoringEngine.js";
+import { matchContactsToCompany, computeRelationshipStrength, rankByScore } from "../referralIntelligence/scoringEngine.js";
 
 // ── Source Aggregation ───────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ function findOutcomePatternSignal({ job, outcomePatterns }) {
 export function computeSignalEnrichment({ job, contacts, watchlist, outcomePatterns }) {
   const networkMatches = matchContactsToCompany(job.company, contacts || []);
   const bestContact = networkMatches.length
-    ? [...networkMatches].map(c => ({ contact: c, ...computeRelationshipStrength(c) })).sort((a, b) => b.score - a.score)[0]
+    ? rankByScore(networkMatches.map(c => ({ contact: c, ...computeRelationshipStrength(c) })))[0]
     : null;
   const watchlistEntry = (watchlist || []).find(w => normalizeCompany(w.company_name) === normalizeCompany(job.company)) || null;
   const outcomePatternSignal = findOutcomePatternSignal({ job, outcomePatterns });
