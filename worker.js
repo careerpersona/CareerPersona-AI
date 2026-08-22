@@ -117,7 +117,7 @@ async function getJWKS(env) {
   try {
     const cached = await env.SUBSCRIPTION_CACHE.get(JWKS_KV_KEY, "json");
     if (cached) return cached;
-  } catch (_) {}
+  } catch (_) { /* KV unavailable — fall through */ }
 
   const r = await fetch(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`);
   if (!r.ok) throw new Error("jwks_fetch_failed");
@@ -127,7 +127,7 @@ async function getJWKS(env) {
     await env.SUBSCRIPTION_CACHE.put(JWKS_KV_KEY, JSON.stringify(jwks), {
       expirationTtl: JWKS_TTL,
     });
-  } catch (_) {}
+  } catch (_) { /* non-fatal */ }
 
   return jwks;
 }
