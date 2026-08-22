@@ -71,11 +71,21 @@ async function newCtx(browser, viewport) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
   await context.route(`**/${SUPABASE_HOST}/rest/v1/profiles*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
+  // hasProfileDetails (App.jsx) gates first-login routing on a profile_details
+  // row existing -- without this, the app shows the First-Launch onboarding
+  // screen instead of the requested page (added 2026-08-10, after this script
+  // was written). Pattern matches verify-smart-apply-auto-prep-phase4-ui.cjs.
+  await context.route(`**/${SUPABASE_HOST}/rest/v1/profile_details*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([profile]) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/networking_contacts*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contacts) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/company_watchlist*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(watchlist) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/saved_jobs*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedJobs) }));
   await context.route(`**/${SUPABASE_HOST}/rest/v1/applications*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(applications) }));
-  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: 'PREMIUM', plan: 'Premium', quotas: { ai_request: { unlimited: true } } }) }));
+  // Stale field shape ({state, plan}) predates the current billing response
+  // shape ({billingState, planDisplayName}) that App.jsx's isPremium check
+  // reads (same billingState/planDisplayName pattern already used correctly
+  // in verify-referral-intelligence-rc.cjs) -- without this, isPremium reads
+  // false and the Intelligence tab shows the upgrade gate instead of Snapshot.
+  await context.route(/proxy\.dawn-voice-2790\.workers\.dev\/api\/billing/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ billingState: 'PREMIUM_ACTIVE', planDisplayName: 'Premium', quotas: { ai_request: { unlimited: true } } }) }));
 
   const page = await context.newPage();
   const pageErrors = [];
@@ -156,6 +166,11 @@ const VIEWPORTS = [
       const npProfile = { id: npUid, email: 'resp-np@test.dev', full_name: 'Test User', job_title: 'Engineer', subscription_status: 'no_subscription', country: 'US' };
       await npContext.route(`**/${SUPABASE_HOST}/rest/**`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
       await npContext.route(`**/${SUPABASE_HOST}/rest/v1/profiles*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([npProfile]) }));
+      // hasProfileDetails (App.jsx) gates first-login routing on a profile_details
+      // row existing -- without this, the app shows the First-Launch onboarding
+      // screen instead of the requested page (added 2026-08-10, after this script
+      // was written). Pattern matches verify-smart-apply-auto-prep-phase4-ui.cjs.
+      await npContext.route(`**/${SUPABASE_HOST}/rest/v1/profile_details*`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([npProfile]) }));
       await npContext.route(`**/${SUPABASE_HOST}/auth/**`, (route) => {
         const url = route.request().url();
         if (url.includes('/token') || url.includes('/session')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(npSession) });
