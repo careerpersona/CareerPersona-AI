@@ -7383,7 +7383,18 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
   const [hideDupes, setHideDupes] = useSessionState("cp_jobs_hide_dupes", false);
   const [recentSearches, setRecentSearches] = useStorage("cp_recent_searches", []);
   const [lastVisit, setLastVisit] = useStorage("cp_jobs_last_visit", null);
-  const prevVisitRef = useRef(lastVisit);
+  // Frozen snapshot of lastVisit as of this page's first render -- read during
+  // render by isNewJob() below, so it must be state (safe to read during
+  // render), not a ref (React's react-hooks/refs rule flags refs read during
+  // render since a ref's value isn't guaranteed consistent across multiple
+  // render passes of the same commit). A lazy useState initializer captures
+  // the value exactly once, identically to useRef's initial-arg semantics --
+  // deliberately NOT re-deriving from the live `lastVisit` state below, since
+  // the mount effect a few lines down immediately bumps `lastVisit` to "now"
+  // (to record this visit for the *next* session); if isNewJob compared
+  // against that live value instead of this frozen one, every "new since
+  // last visit" badge would vanish the instant this page finished loading.
+  const [prevVisit] = useState(() => lastVisit);
   const isSmartApplied = (job) => queue.some(q => q.job_id === job.id && (q.status === "queued" || q.status === "ready" || q.status === "needs_review"));
   // Job Tracker (watchlist), fully independent of applications/smart_apply_queue —
   // see the Explicit Non-Behavior Checklist in the Job Tracker blueprints.
@@ -7462,7 +7473,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
     return result;
   }, [jobs, hideDupes, sortBy, compatibilityByJobId, dupeSet, applications]);
 
-  const isNewJob = (job) => !!(prevVisitRef.current && job.datePosted && new Date(job.datePosted) > new Date(prevVisitRef.current));
+  const isNewJob = (job) => !!(prevVisit && job.datePosted && new Date(job.datePosted) > new Date(prevVisit));
 
   // Auto-activate the default saved resume the first time resumes arrive, but only if
   // no resume is active yet anywhere in the app (activeResumeId is the shared source of
