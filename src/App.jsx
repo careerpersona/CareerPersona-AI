@@ -4916,9 +4916,18 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [deepInsightsError, setDeepInsightsError] = useState("");
   // Active tool panel — all 7 toolkit tools open panels
   const [activeToolPanel, setActiveToolPanel] = useState(null);
-  // Inline helper text shown inside the specific card that was clicked without required data
-  const [toolGuidanceMsg, setToolGuidanceMsg] = useState("");
-  const [toolGuidancePanelId, setToolGuidancePanelId] = useState("");
+  // Inline helper text shown inside the specific card that was clicked without required data.
+  // Only the blocked tool's id is state -- the message itself is derived below from that
+  // plus the live resume/jobDesc values, so it never needs an effect to clear itself once
+  // the prerequisite arrives; it's simply not true anymore on the next render.
+  const [blockedPanelId, setBlockedPanelId] = useState("");
+  const toolGuidanceMsg = blockedPanelId
+    ? (!resume.trim()
+        ? t("resume.selectResumeFirst")
+        : blockedPanelId === "jobfit" && !jobDesc.trim()
+          ? t("resume.addJobDescFirst")
+          : "")
+    : "";
   // Coming-soon card notice
   const [comingSoonNotice, setComingSoonNotice] = useState("");
   // Cover letter edit mode
@@ -5046,10 +5055,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
       runLinkedinOpt();
     }
   }, [activeToolPanel, linkedinAnalysesHook.loading, linkedinOptData, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Clear toolkit helper text once the user provides the required data
-  useEffect(() => { if (toolGuidanceMsg && resume.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [resume]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (toolGuidanceMsg && resume.trim() && jobDesc.trim()) { setToolGuidanceMsg(""); setToolGuidancePanelId(""); } }, [jobDesc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -6737,23 +6742,23 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
             { icon: "📊", title: t("resume.benchmarkToolTitle"), desc: t("resume.benchmarkToolDesc"),
               active: true, panelId: "benchmark",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("benchmark"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
-                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "benchmark" ? null : "benchmark"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                if (!resume.trim()) { setBlockedPanelId("benchmark"); return; }
+                setBlockedPanelId(""); setActiveToolPanel(p => p === "benchmark" ? null : "benchmark"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
               getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : benchmarkData ? { text: benchmarkData.percentileLabel || benchmarkData.overallRanking, color: C.purple } : resume.trim() ? { text: t("resume.readyToBenchmark"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🔍", title: t("resume.jobFitToolTitle"), desc: t("resume.jobFitToolDesc"),
               active: true, panelId: "jobfit",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
-                if (!jobDesc.trim()) { setToolGuidancePanelId("jobfit"); setToolGuidanceMsg(t("resume.addJobDescFirst")); return; }
-                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "jobfit" ? null : "jobfit"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                if (!resume.trim()) { setBlockedPanelId("jobfit"); return; }
+                if (!jobDesc.trim()) { setBlockedPanelId("jobfit"); return; }
+                setBlockedPanelId(""); setActiveToolPanel(p => p === "jobfit" ? null : "jobfit"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
               getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : jobFitData ? { text: `${jobFitData.overallMatch}% match — ${jobFitData.applicationReadiness}`, color: jobFitData.overallMatch >= 75 ? C.green : jobFitData.overallMatch >= 50 ? "#d97706" : C.red } : (resume.trim() && jobDesc.trim()) ? { text: t("resume.readyToAnalyze"), color: C.textMuted } : { text: t("resume.addResumeAndJob"), color: C.textMuted } },
             { icon: "📝", title: t("resume.linkedinToolTitle"), desc: t("resume.linkedinToolDesc"),
               active: true, panelId: "linkedin-opt",
               action: () => {
-                if (!resume.trim()) { setToolGuidancePanelId("linkedin-opt"); setToolGuidanceMsg(t("resume.selectResumeFirst")); return; }
-                setToolGuidanceMsg(""); setToolGuidancePanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                if (!resume.trim()) { setBlockedPanelId("linkedin-opt"); return; }
+                setBlockedPanelId(""); setActiveToolPanel(p => p === "linkedin-opt" ? null : "linkedin-opt"); setTimeout(() => document.getElementById("resume-toolkit-panels")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
               },
               getStatus: () => !canUseAI ? { text: t("resume.proOnlyStatus"), color: C.purple } : linkedinOptData ? { text: t("resume.linkedinOptimizedStatus").replace("{score}", linkedinOptData.completenessScore ?? "—"), color: C.green } : resume.trim() ? { text: t("resume.readyToOptimize"), color: C.textMuted } : { text: t("resume.addResumeFirst"), color: C.textMuted } },
             { icon: "🎤", title: t("resume.voiceToolTitle"), desc: t("resume.voiceToolDesc"),
@@ -6776,7 +6781,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 <div style={{ fontSize: 11, color: "#475569", fontWeight: 400, lineHeight: 1.4, marginBottom: status ? 6 : 0 }}>{desc}</div>
                 {status && <div style={{ fontSize: 10, fontWeight: 600, color: status.color, marginTop: 4 }}>{status.text}</div>}
                 {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 6 }}>{t("resume.comingSoon")}</div>}
-                {toolGuidancePanelId === panelId && toolGuidanceMsg && (
+                {blockedPanelId === panelId && toolGuidanceMsg && (
                   <div style={{ fontSize: 10, color: "#334155", fontWeight: 500, marginTop: 5, lineHeight: 1.35 }}>{toolGuidanceMsg}</div>
                 )}
               </div>
