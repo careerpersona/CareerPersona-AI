@@ -1791,8 +1791,7 @@ function SectionCircleIcon({ type, size = 28 }) {
 }
 
 function ResumeDoc({ content, profile }) {
-  const [parsed, setParsed] = useState(() => parseResumeDoc(content));
-  useEffect(() => { setParsed(parseResumeDoc(content)); }, [content]);
+  const parsed = useMemo(() => parseResumeDoc(content), [content]);
 
   const titleLines  = parsed.headerLines.filter(h => h.type === 'title');
   const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
