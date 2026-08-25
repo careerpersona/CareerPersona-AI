@@ -5007,6 +5007,61 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     }
   }, [resumes, resumesLoading, manualReset, activeResumeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const resumeHealthFrom = (score) => {
+    if (score == null) return null;
+    if (score >= 90) return 'Excellent';
+    if (score >= 80) return 'Very Good';
+    if (score >= 70) return 'Good';
+    if (score >= 60) return 'Needs Improvement';
+    return 'Poor';
+  };
+
+  const validCompany = (name) => {
+    if (!name) return null;
+    const lower = name.toLowerCase().trim();
+    return ['not specified', 'unknown', 'n/a', 'none', 'unspecified', 'not available', 'not stated', 'na'].includes(lower) ? null : name;
+  };
+
+  const analyze = async () => {
+    if (!canUseAI) return;
+    if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
+    setManualReset(false);
+    setError(""); setLoading(true); setResults(null); setLoadStep(0);
+    const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 4)), 1800);
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
+{"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
+RESUME:${resume}
+JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
+      const parsed = JSON.parse(raw);
+      setResults(parsed); setTab("resume");
+      insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: "Your resume has been analyzed. View your ATS score and improvement tips." });
+      // Animate score bars from 0 to final (PBar has CSS transition: width 1s ease)
+      setAnimatedBreakdown({ keywordMatch: 0, formatting: 0, relevance: 0 });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setAnimatedBreakdown(parsed.scoreBreakdown);
+        setTimeout(() => setAnimatedBreakdown(null), 1100);
+      }));
+      setMasterMissingKws(parsed.keywordsMissing || []);
+      setIsOptimized(false);
+      setSelectedKeywords(parsed.keywordsMissing || []); // AI pre-selects all missing keywords
+      setTailoredApplied(false);
+      setResultsInsights(null);
+      setLibrarySaved(false); setLibrarySaveError("");
+      setInsightsLoading(true);
+      const capturedResume = resume;
+      const capturedJobDesc = jobDesc;
+      askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
+{"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
+RESUME:${capturedResume}
+JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insightRaw => {
+        try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
+      }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
+    } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
+    finally { clearInterval(iv); setLoading(false); }
+  };
+
   // Tool 2: after AI Builder generates a resume, auto-trigger analysis if a job description is present.
   // Runs after the resume state has been committed to React so analyze() reads the correct value.
   useEffect(() => {
@@ -5016,12 +5071,55 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     }
   }, [resume, pendingAutoAnalyze]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Tool 3: Deep Resume Insights ─────────────────────────────────────────────
+  const runDeepInsights = async () => {
+    if (!canUseAI) return;
+    if (!resume.trim()) return;
+    setDeepInsightsLoading(true); setDeepInsightsError("");
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert resume quality analyst. Perform deep analysis of this resume. Return ONLY a JSON object, no markdown, no explanation:
+{"grammarScore":<0-100>,"readabilityScore":<0-100>,"formattingScore":<0-100>,"keywordDensity":<0-100>,"actionVerbScore":<0-100>,"overallQualityScore":<0-100>,"issues":[{"category":"<Grammar/Formatting/Readability/ATS/Action Verbs/Structure>","problem":"<specific problem found>","reason":"<why this hurts resume quality and recruiter appeal — do NOT promise ATS score gains>","fix":"<specific actionable fix>","severity":"<high/medium/low>"}],"weakBullets":[{"original":"<weak bullet from resume>","improved":"<stronger rewritten version>"}],"weakActionVerbs":[{"original":"<weak verb>","stronger":"<powerful action verb>"}],"missingSections":["<missing section name>"],"resumeLengthStatus":"<Optimal/Too Short/Too Long>","contactInfoStatus":"<Complete/Incomplete>","sectionOrderIssue":"<description or null>"}
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, "resume_analysis");
+      const parsed = JSON.parse(raw);
+      setDeepInsights(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError(t("resume.deepInsightsError")); }
+    finally { setDeepInsightsLoading(false); }
+  };
+
   // Tool 3: auto-run Deep Analysis when user opens the Insights tab (once per session until reset).
   useEffect(() => {
     if (canUseAI && tab === "insights" && results && !deepInsights && !deepInsightsLoading && resume.trim()) {
       runDeepInsights();
     }
   }, [tab, results, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Tool 4: Cover Letter Multiple Versions ───────────────────────────────────
+  // resumeOverride: explicit text for background regeneration after resume edits.
+  // Background calls suppress UI errors so nothing appears on the Cover tab unexpectedly.
+  const generateCoverVersions = async (resumeOverride = null) => {
+    if (!canUseAI) return;
+    const resumeContent = resumeOverride ?? resume;
+    const isBackground = resumeOverride !== null;
+    if (!resumeContent.trim()) return;
+    setCoverVersionsLoading(true);
+    if (!isBackground) setCoverVersionsError("");
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a professional cover letter writer. Generate 4 distinct cover letter versions. Return ONLY a JSON object, no markdown, no explanation:
+{"professional":"<formal 3-paragraph professional cover letter>","friendly":"<warm conversational 3-paragraph cover letter, same substance different tone>","executive":"<confident executive-level cover letter emphasizing strategic leadership value>","ats":"<ATS-optimized cover letter that naturally incorporates all job keywords, structured for ATS parsing>"}
+RESUME:${resumeContent}
+JOB DESCRIPTION:${jobDesc || "General professional role"}
+BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, isBackground ? "resume_analysis_followup" : "resume_analysis");
+      const parsed = JSON.parse(raw);
+      setCoverVersions(parsed);
+    } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError(t("resume.coverVersionsError")); }
+    finally { setCoverVersionsLoading(false); }
+  };
 
   // Tool 4: auto-generate cover letter versions when user opens the Cover tab (once per session until reset).
   // Also fires when coverVersionsLoading transitions to false so a finished background call
@@ -5031,6 +5129,53 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
       generateCoverVersions();
     }
   }, [tab, coverVersionsLoading, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runBenchmark = async () => {
+    if (!canUseAI) return;
+    if (!resume.trim()) return;
+    setBenchmarkLoading(true); setBenchmarkError(""); setBenchmarkData(null);
+    try {
+      const ctx = userContext.getContextString({ identity: true, applications: true });
+      const currentScore = results?.atsScore ?? null;
+      // Evidence-based by design: this app has no real industry-average, candidate-percentile,
+      // or market-comparison dataset anywhere -- there is nothing to compare this resume
+      // against. The prompt therefore asks only for an assessment of THIS resume's own
+      // content (quality/completeness of what's actually written), never a claim about
+      // other candidates or the market. Do not reintroduce industryAverage/topCandidateAverage/
+      // percentile/percentileLabel-style fields -- there is no data source to back them.
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and resume quality analyst. Assess ONLY the resume text provided below. Do not invent, estimate, or imply any statistic about other candidates, industry averages, percentiles, or market data -- none of that data is available to you, so any such number would be fabricated. Return ONLY a JSON object, no markdown, no explanation:
+{"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"keywordCoverage":<0-100, how well this resume's own content covers relevant keywords for its apparent target role>,"formattingScore":<0-100, formatting quality of this resume's content>,"experienceScore":<0-100, strength and specificity of the experience section content>,"skillsScore":<0-100, strength and relevance of the skills section content>,"educationScore":<0-100, completeness of the education section>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent -- a self-contained quality assessment of THIS resume's own content, not a comparison to other candidates or a market position>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
+RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, "resume_analysis");
+      const parsed = JSON.parse(raw);
+      setBenchmarkData(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[Benchmark]", e); setBenchmarkError(t("resume.benchmarkError")); }
+    finally { setBenchmarkLoading(false); }
+  };
+
+  // ── Tool 7: Job Fit Analyzer ─────────────────────────────────────────────────
+  const runJobFit = async () => {
+    if (!canUseAI) return;
+    if (!resume.trim() || !jobDesc.trim()) return;
+    setJobFitLoading(true); setJobFitError(""); setJobFitData(null);
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert recruiter and career coach. Analyze how well this resume matches the job description. Return ONLY a JSON object, no markdown, no explanation:
+{"overallMatch":<0-100>,"matchLabel":"<Strong Match/Good Match/Moderate Match/Weak Match>","requiredSkillsMatch":[{"skill":"<skill>","found":<true or false>,"evidence":"<brief quote from resume or null>"}],"preferredSkillsMatch":[{"skill":"<skill>","found":<true or false>}],"missingSkills":["<skill>","<skill>","<skill>"],"keywordMatchScore":<0-100>,"experienceMatch":{"score":<0-100>,"status":"<Over-qualified/Well-matched/Under-qualified>","detail":"<one sentence>"},"educationMatch":{"score":<0-100>,"status":"<Exceeds/Meets/Below requirement>","detail":"<one sentence>"},"seniorityMatch":{"score":<0-100>,"status":"<Well-matched/Junior for role/Senior for role>","detail":"<one sentence>"},"applicationReadiness":"<Ready to Apply/Almost Ready/Needs Work>","topRecommendations":["<action 1>","<action 2>","<action 3>"],"coverLetterTip":"<one specific cover letter tip for this role>"}
+RESUME:${resume}
+JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
+      const parsed = JSON.parse(raw);
+      setJobFitData(parsed);
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[JobFit]", e); setJobFitError(t("resume.jobFitError")); }
+    finally { setJobFitLoading(false); }
+  };
 
   // Auto-run panels when they open for the first time
   useEffect(() => {
@@ -5042,6 +5187,41 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
       runJobFit();
     }
   }, [activeToolPanel, canUseAI]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Tool 8: LinkedIn Intelligence ────────────────────────────────────────────
+  // Deterministic scoring (zero AI cost) + content generation (Pro and above,
+  // corrected 2026-08-08 -- was previously commented "Free, all tiers") +
+  // interpretive analysis (Premium, when available) computed and persisted in
+  // one orchestrated call -- see runLinkedinIntelligenceAnalysis in
+  // src/data/linkedinIntelligence.js. Gated the same way as every other Resume
+  // AI action on this page: guarded by canUseAI below, before any AI call.
+  // Ownership boundary: this component never computes a score or writes a
+  // deterministic/generated-content field itself -- it only supplies inputs and
+  // renders the persisted result.
+  const runLinkedinOpt = async () => {
+    if (!canUseAI) return;
+    if (!resume.trim()) return;
+    setLinkedinOptLoading(true); setLinkedinOptError("");
+    try {
+      const ctx = userContext.getContextString({ identity: true });
+      const saved = await runLinkedinIntelligenceAnalysis({
+        resumeText: resume,
+        linkedinProfileText: linkedinProfile,
+        jobDesc,
+        targetRole: profile?.job_title || "",
+        resumeId: activeResumeId || null,
+        isPremium,
+        saveAnalysis: linkedinAnalysesHook.saveAnalysis,
+        userContext: ctx,
+      });
+      if (!saved) throw new Error("linkedin_intelligence_no_content");
+      if (profile?.id && saveHistoryToDb) {
+        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
+        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
+      }
+    } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError(t("resume.linkedinOptError")); }
+    finally { setLinkedinOptLoading(false); }
+  };
 
   // LinkedIn Intelligence auto-fire is a separate effect (not the shared one
   // above) because linkedinOptData now comes from an async Supabase fetch
@@ -5170,21 +5350,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
     }
   };
 
-  const resumeHealthFrom = (score) => {
-    if (score == null) return null;
-    if (score >= 90) return 'Excellent';
-    if (score >= 80) return 'Very Good';
-    if (score >= 70) return 'Good';
-    if (score >= 60) return 'Needs Improvement';
-    return 'Poor';
-  };
-
-  const validCompany = (name) => {
-    if (!name) return null;
-    const lower = name.toLowerCase().trim();
-    return ['not specified', 'unknown', 'n/a', 'none', 'unspecified', 'not available', 'not stated', 'na'].includes(lower) ? null : name;
-  };
-
   // explicitResumeId: pass the freshly-saved resumeId from handleSaveToLibrary because
   // onResumeLoad(id) is async — the closure still sees the old value.
   const saveHistoryEntry = (parsed, analysisType = 'Initial Analysis', resumeStatus = 'Draft', explicitResumeId = null) => {
@@ -5221,46 +5386,6 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
         console.warn('[ResumeHistory]', e.message);
       }
     }
-  };
-
-  const analyze = async () => {
-    if (!canUseAI) return;
-    if (!resume.trim() || !jobDesc.trim()) { setError(t("resume.bothRequired")); return; }
-    setManualReset(false);
-    setError(""); setLoading(true); setResults(null); setLoadStep(0);
-    const iv = setInterval(() => setLoadStep(s => Math.min(s + 1, 4)), 1800);
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS resume coach. Analyze the resume against the job description and return ONLY a JSON object, no markdown, no explanation:
-{"atsScore":<0-100>,"potentialAtsScore":<estimated score after improvements 0-100>,"scoreBreakdown":{"keywordMatch":<0-100>,"formatting":<0-100>,"relevance":<0-100>},"keywordsFound":["<k1>","<k2>","<k3>","<k4>","<k5>","<k6>"],"keywordsMissing":["<m1>","<m2>","<m3>","<m4>","<m5>","<m6>"],"tailoredResume":"<full optimized resume maintaining original structure>","suggestions":["<specific tip 1>","<specific tip 2>","<specific tip 3>","<specific tip 4>","<specific tip 5>"],"coverLetter":"<professional 3 paragraph cover letter>","jobTitle":"<extracted job title>","company":"<company name>"}
-RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setResults(parsed); setTab("resume");
-      insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: "Your resume has been analyzed. View your ATS score and improvement tips." });
-      // Animate score bars from 0 to final (PBar has CSS transition: width 1s ease)
-      setAnimatedBreakdown({ keywordMatch: 0, formatting: 0, relevance: 0 });
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        setAnimatedBreakdown(parsed.scoreBreakdown);
-        setTimeout(() => setAnimatedBreakdown(null), 1100);
-      }));
-      setMasterMissingKws(parsed.keywordsMissing || []);
-      setIsOptimized(false);
-      setSelectedKeywords(parsed.keywordsMissing || []); // AI pre-selects all missing keywords
-      setTailoredApplied(false);
-      setResultsInsights(null);
-      setLibrarySaved(false); setLibrarySaveError("");
-      setInsightsLoading(true);
-      const capturedResume = resume;
-      const capturedJobDesc = jobDesc;
-      askClaude(`You are a senior career coach. Analyze this resume against the job description and return ONLY a JSON object, no markdown, no explanation:
-{"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
-RESUME:${capturedResume}
-JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insightRaw => {
-        try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
-      }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
-    } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
-    finally { clearInterval(iv); setLoading(false); }
   };
 
   const handleSaveResume = async () => {
@@ -5383,89 +5508,6 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
     }
   };
 
-  // ── Tool 6: Score Benchmarking ──────────────────────────────────────────────
-  const runBenchmark = async () => {
-    if (!canUseAI) return;
-    if (!resume.trim()) return;
-    setBenchmarkLoading(true); setBenchmarkError(""); setBenchmarkData(null);
-    try {
-      const ctx = userContext.getContextString({ identity: true, applications: true });
-      const currentScore = results?.atsScore ?? null;
-      // Evidence-based by design: this app has no real industry-average, candidate-percentile,
-      // or market-comparison dataset anywhere -- there is nothing to compare this resume
-      // against. The prompt therefore asks only for an assessment of THIS resume's own
-      // content (quality/completeness of what's actually written), never a claim about
-      // other candidates or the market. Do not reintroduce industryAverage/topCandidateAverage/
-      // percentile/percentileLabel-style fields -- there is no data source to back them.
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert ATS and resume quality analyst. Assess ONLY the resume text provided below. Do not invent, estimate, or imply any statistic about other candidates, industry averages, percentiles, or market data -- none of that data is available to you, so any such number would be fabricated. Return ONLY a JSON object, no markdown, no explanation:
-{"atsScore":${currentScore !== null ? currentScore : "<calculate 0-100>"},"keywordCoverage":<0-100, how well this resume's own content covers relevant keywords for its apparent target role>,"formattingScore":<0-100, formatting quality of this resume's content>,"experienceScore":<0-100, strength and specificity of the experience section content>,"skillsScore":<0-100, strength and relevance of the skills section content>,"educationScore":<0-100, completeness of the education section>,"overallRanking":"<Below Average/Average/Above Average/Strong/Excellent -- a self-contained quality assessment of THIS resume's own content, not a comparison to other candidates or a market position>","recommendations":["<specific improvement 1>","<specific improvement 2>","<specific improvement 3>"]}
-RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2000, "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setBenchmarkData(parsed);
-      if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: parsed.atsScore ?? results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Score Benchmarking', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Benchmarked', resumeHealth: resumeHealthFrom(parsed.atsScore ?? results?.atsScore) };
-        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
-      }
-    } catch (e) { console.error("[Benchmark]", e); setBenchmarkError(t("resume.benchmarkError")); }
-    finally { setBenchmarkLoading(false); }
-  };
-
-  // ── Tool 7: Job Fit Analyzer ─────────────────────────────────────────────────
-  const runJobFit = async () => {
-    if (!canUseAI) return;
-    if (!resume.trim() || !jobDesc.trim()) return;
-    setJobFitLoading(true); setJobFitError(""); setJobFitData(null);
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert recruiter and career coach. Analyze how well this resume matches the job description. Return ONLY a JSON object, no markdown, no explanation:
-{"overallMatch":<0-100>,"matchLabel":"<Strong Match/Good Match/Moderate Match/Weak Match>","requiredSkillsMatch":[{"skill":"<skill>","found":<true or false>,"evidence":"<brief quote from resume or null>"}],"preferredSkillsMatch":[{"skill":"<skill>","found":<true or false>}],"missingSkills":["<skill>","<skill>","<skill>"],"keywordMatchScore":<0-100>,"experienceMatch":{"score":<0-100>,"status":"<Over-qualified/Well-matched/Under-qualified>","detail":"<one sentence>"},"educationMatch":{"score":<0-100>,"status":"<Exceeds/Meets/Below requirement>","detail":"<one sentence>"},"seniorityMatch":{"score":<0-100>,"status":"<Well-matched/Junior for role/Senior for role>","detail":"<one sentence>"},"applicationReadiness":"<Ready to Apply/Almost Ready/Needs Work>","topRecommendations":["<action 1>","<action 2>","<action 3>"],"coverLetterTip":"<one specific cover letter tip for this role>"}
-RESUME:${resume}
-JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setJobFitData(parsed);
-      if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Job Fit Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
-      }
-    } catch (e) { console.error("[JobFit]", e); setJobFitError(t("resume.jobFitError")); }
-    finally { setJobFitLoading(false); }
-  };
-
-  // ── Tool 8: LinkedIn Intelligence ────────────────────────────────────────────
-  // Deterministic scoring (zero AI cost) + content generation (Pro and above,
-  // corrected 2026-08-08 -- was previously commented "Free, all tiers") +
-  // interpretive analysis (Premium, when available) computed and persisted in
-  // one orchestrated call -- see runLinkedinIntelligenceAnalysis in
-  // src/data/linkedinIntelligence.js. Gated the same way as every other Resume
-  // AI action on this page: guarded by canUseAI below, before any AI call.
-  // Ownership boundary: this component never computes a score or writes a
-  // deterministic/generated-content field itself -- it only supplies inputs and
-  // renders the persisted result.
-  const runLinkedinOpt = async () => {
-    if (!canUseAI) return;
-    if (!resume.trim()) return;
-    setLinkedinOptLoading(true); setLinkedinOptError("");
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const saved = await runLinkedinIntelligenceAnalysis({
-        resumeText: resume,
-        linkedinProfileText: linkedinProfile,
-        jobDesc,
-        targetRole: profile?.job_title || "",
-        resumeId: activeResumeId || null,
-        isPremium,
-        saveAnalysis: linkedinAnalysesHook.saveAnalysis,
-        userContext: ctx,
-      });
-      if (!saved) throw new Error("linkedin_intelligence_no_content");
-      if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: null, jobTitle: results?.jobTitle || '', company: '', analysisType: 'LinkedIn Optimization', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'LinkedIn Optimized', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
-      }
-    } catch (e) { console.error("[LinkedInOpt]", e); setLinkedinOptError(t("resume.linkedinOptError")); }
-    finally { setLinkedinOptLoading(false); }
-  };
-
   // Profile Evolution Tracking (Premium) -- on-demand, separate trigger, never
   // persisted (see runProfileEvolutionAnalysis's own comment for why).
   const runLinkedinEvolution = async () => {
@@ -5476,49 +5518,6 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
       setLinkedinEvolution(result);
     } catch (e) { console.error("[LinkedInEvolution]", e); }
     finally { setLinkedinEvolutionLoading(false); }
-  };
-
-  // ── Tool 4: Cover Letter Multiple Versions ───────────────────────────────────
-  // resumeOverride: explicit text for background regeneration after resume edits.
-  // Background calls suppress UI errors so nothing appears on the Cover tab unexpectedly.
-  const generateCoverVersions = async (resumeOverride = null) => {
-    if (!canUseAI) return;
-    const resumeContent = resumeOverride ?? resume;
-    const isBackground = resumeOverride !== null;
-    if (!resumeContent.trim()) return;
-    setCoverVersionsLoading(true);
-    if (!isBackground) setCoverVersionsError("");
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are a professional cover letter writer. Generate 4 distinct cover letter versions. Return ONLY a JSON object, no markdown, no explanation:
-{"professional":"<formal 3-paragraph professional cover letter>","friendly":"<warm conversational 3-paragraph cover letter, same substance different tone>","executive":"<confident executive-level cover letter emphasizing strategic leadership value>","ats":"<ATS-optimized cover letter that naturally incorporates all job keywords, structured for ATS parsing>"}
-RESUME:${resumeContent}
-JOB DESCRIPTION:${jobDesc || "General professional role"}
-BASE COVER LETTER:${results?.coverLetter || ""}`, 4000, isBackground ? "resume_analysis_followup" : "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setCoverVersions(parsed);
-    } catch (e) { console.error("[CoverVersions]", e); if (!isBackground) setCoverVersionsError(t("resume.coverVersionsError")); }
-    finally { setCoverVersionsLoading(false); }
-  };
-
-  // ── Tool 3: Deep Resume Insights ─────────────────────────────────────────────
-  const runDeepInsights = async () => {
-    if (!canUseAI) return;
-    if (!resume.trim()) return;
-    setDeepInsightsLoading(true); setDeepInsightsError("");
-    try {
-      const ctx = userContext.getContextString({ identity: true });
-      const raw = await askClaude(`${ctx ? ctx + "\n\n" : ""}You are an expert resume quality analyst. Perform deep analysis of this resume. Return ONLY a JSON object, no markdown, no explanation:
-{"grammarScore":<0-100>,"readabilityScore":<0-100>,"formattingScore":<0-100>,"keywordDensity":<0-100>,"actionVerbScore":<0-100>,"overallQualityScore":<0-100>,"issues":[{"category":"<Grammar/Formatting/Readability/ATS/Action Verbs/Structure>","problem":"<specific problem found>","reason":"<why this hurts resume quality and recruiter appeal — do NOT promise ATS score gains>","fix":"<specific actionable fix>","severity":"<high/medium/low>"}],"weakBullets":[{"original":"<weak bullet from resume>","improved":"<stronger rewritten version>"}],"weakActionVerbs":[{"original":"<weak verb>","stronger":"<powerful action verb>"}],"missingSections":["<missing section name>"],"resumeLengthStatus":"<Optimal/Too Short/Too Long>","contactInfoStatus":"<Complete/Incomplete>","sectionOrderIssue":"<description or null>"}
-RESUME:${resume}${jobDesc.trim() ? "\nJOB DESCRIPTION:" + jobDesc : ""}`, 2500, "resume_analysis");
-      const parsed = JSON.parse(raw);
-      setDeepInsights(parsed);
-      if (profile?.id && saveHistoryToDb) {
-        const entry = { resumeName: uploadedFile?.name || resumes.find(r => r.id === activeResumeId)?.name || 'Resume', atsScore: results?.atsScore ?? null, potentialAtsScore: results?.potentialAtsScore ?? null, jobTitle: results?.jobTitle || '', company: validCompany(results?.company) || '', analysisType: 'Deep Insights Analysis', analysisMode: resumeSource === 'ai' ? 'AI Resume Creator' : 'Uploaded Resume', resumeStatus: 'Analyzed', resumeHealth: resumeHealthFrom(results?.atsScore) };
-        saveHistoryToDb(entry, activeResumeId || null).catch(() => {});
-      }
-    } catch (e) { console.error("[DeepInsights]", e); setDeepInsightsError(t("resume.deepInsightsError")); }
-    finally { setDeepInsightsLoading(false); }
   };
 
   const applyWeakBulletFix = (original, improved) => {
