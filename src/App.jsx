@@ -3857,6 +3857,26 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
   const userContext = useUserContext({ profile, applications, savedJobs, interviewSession, salaryData, networkContacts });
   const appliedRef = useRef(undefined);
 
+  const generate = async () => {
+    setGenLoading(true);
+    setGenError(null);
+    console.log("[PlanPage] Starting generation for user", profile?.id);
+    try {
+      const ctx = userContext.getContextString();
+      const result = await buildPlanPayload(ctx, language);
+      console.log("[PlanPage] Generation succeeded");
+      setPlan(result);
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
+      logActivity("Daily plan regenerated");
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
+    } catch (e) {
+      console.error("[PlanPage] Generation failed:", e?.message || e);
+      setGenError(t("plan.genError"));
+    }
+    finally { setGenLoading(false); }
+  };
+
   useEffect(() => {
     if (planLoading || loadedFor !== profile?.id) return;
     if (appliedRef.current === profile?.id) return;
@@ -3884,26 +3904,6 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
     // 3. No today's plan anywhere — auto-generate
     if (profile?.id) generate();
   }, [savedPlan, planLoading, loadedFor, profile?.id]);
-
-  const generate = async () => {
-    setGenLoading(true);
-    setGenError(null);
-    console.log("[PlanPage] Starting generation for user", profile?.id);
-    try {
-      const ctx = userContext.getContextString();
-      const result = await buildPlanPayload(ctx, language);
-      console.log("[PlanPage] Generation succeeded");
-      setPlan(result);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
-      savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
-      logActivity("Daily plan regenerated");
-      insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
-    } catch (e) {
-      console.error("[PlanPage] Generation failed:", e?.message || e);
-      setGenError(t("plan.genError"));
-    }
-    finally { setGenLoading(false); }
-  };
 
   const toggleComplete = (id) => {
     if (!plan) return;
@@ -13047,15 +13047,6 @@ export default function App() {
   // null. Not persisted; purely a transient hand-off between two pages.
   const [onboardingTransition, setOnboardingTransition] = useState(null);
   const wasLoggedIn = useRef(!!profile);
-  useEffect(() => {
-    setProfile(user);
-    if (user && !wasLoggedIn.current) {
-      window.scrollTo(0, 0);
-      if (!user.hasProfileDetails) setShowFirstLaunch(true);
-      else setPage("dashboard");
-    }
-    wasLoggedIn.current = !!user;
-  }, [user]);
 
   // Navigate: update state + localStorage + browser history
   const setPage = useCallback((p) => {
@@ -13065,6 +13056,16 @@ export default function App() {
       window.history.pushState({ page: p }, "", "#" + p);
     }
   }, []);
+
+  useEffect(() => {
+    setProfile(user);
+    if (user && !wasLoggedIn.current) {
+      window.scrollTo(0, 0);
+      if (!user.hasProfileDetails) setShowFirstLaunch(true);
+      else setPage("dashboard");
+    }
+    wasLoggedIn.current = !!user;
+  }, [user]);
 
   // Scroll to top on every page change
   useEffect(() => {
