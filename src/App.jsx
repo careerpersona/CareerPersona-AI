@@ -357,8 +357,15 @@ function _devMockRoute(prompt) {
   }
 
   // ── Score Benchmarking ─────────────────────────────────────────────────────
-  if (p.includes("market benchmark") || p.includes("industryaverage")) {
-    return JSON.stringify({ atsScore: 72, industryAverage: 61, topCandidateAverage: 87, percentile: 68, percentileLabel: "Top 32%", keywordCoverage: 74, formattingScore: 88, experienceScore: 80, skillsScore: 76, educationScore: 85, overallRanking: "Above Average", industryLabel: "Software Engineering", recommendations: ["Add Docker/Kubernetes to reach the top 20% keyword coverage for this role", "Add a professional summary — 78% of top candidates include one", "Quantify more achievements — top candidates average 4.2 metrics per role"] });
+  // Matches on "keywordcoverage" -- a field name unique to this prompt's JSON
+  // schema (verified via full-file grep). The prompt itself is deliberately
+  // self-referential only (no industry-average/percentile/market-comparison
+  // fields or language -- see runBenchmark's own "Evidence-based by design"
+  // comment for why), so this mock's recommendations avoid comparative
+  // claims too ("top X%", "N% of candidates") to stay faithful to what the
+  // real prompt actually asks the model to return.
+  if (p.includes("keywordcoverage")) {
+    return JSON.stringify({ atsScore: 72, keywordCoverage: 74, formattingScore: 88, experienceScore: 80, skillsScore: 76, educationScore: 85, overallRanking: "Above Average", recommendations: ["Add Docker and Kubernetes to your skills section to strengthen keyword coverage for backend roles", "Add a 2-3 line professional summary at the top to immediately frame your experience", "Quantify more achievements with specific metrics (e.g. latency reduced, users served, team size led)"] });
   }
 
   // ── Job Fit Analyzer ───────────────────────────────────────────────────────
