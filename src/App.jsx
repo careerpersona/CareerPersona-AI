@@ -2881,6 +2881,53 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const { briefing: savedBriefing, loading: briefingHistoryLoading, loadedFor: briefingLoadedFor, save: saveBriefing } = useAiBriefing(profile?.id);
   const briefingAppliedForRef = useRef(undefined);
 
+  const networkContacts = networkContactsProp || [];
+
+  // AI Activity log
+  const { activity: aiActivity, logActivity } = useActivityLog(profile?.id);
+
+  // Unified user context — single source of truth for all AI modules.
+  const userContext = useUserContext({
+    profile,
+    applications,
+    savedJobs,
+    resumes: resumes ?? [],
+    smartApplyQueue: smartApplyQueue ?? [],
+    interviewSession,
+    salaryData,
+    networkContacts,
+    networkingSession,
+    briefing,
+    dailyPlan,
+    activityLog: aiActivity,
+    notifications: notifications ?? [],
+    chatHistory: chatMessages,
+    companyWatchlist: companyWatchlist ?? [],
+  });
+
+  // Generate AI Briefing
+  const generateBriefing = async () => {
+    if (!canUseAI) return;
+    setBriefingLoading(true);
+    setBriefingError(null);
+    console.log("[Briefing] Starting generation for user", profile?.id);
+    try {
+      const ctx = userContext.getContextString();
+      const result = await buildBriefingPayload(ctx, language);
+      if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
+      console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
+      setBriefing(result);
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
+      saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
+      logActivity("Daily briefing generated");
+      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
+    } catch (e) {
+      console.error("[Briefing] Generation failed:", e?.message || e);
+      setBriefingError(t("dashboard.briefingError"));
+    }
+    finally { setBriefingLoading(false); }
+  };
+
   // ── Load the most recent briefing once the Supabase fetch resolves ──
   useEffect(() => {
     if (briefingHistoryLoading || briefingLoadedFor !== profile?.id) return;
@@ -2897,6 +2944,29 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const prevActiveResumeIdRef = useRef(undefined);
   const careerFingerprintRef = useRef(null);
   const regenTimerRef = useRef(null);
+
+  // Generate Daily Plan
+  const generatePlan = async () => {
+    if (!canUseAI) return;
+    setPlanLoading(true);
+    setPlanError(null);
+    console.log("[ActionPlan] Starting generation for user", profile?.id);
+    try {
+      const ctx = userContext.getContextString();
+      const result = await buildPlanPayload(ctx, language);
+      if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
+      console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
+      setDailyPlan(result);
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
+      logActivity("Daily plan generated");
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
+    } catch (e) {
+      console.error("[ActionPlan] Generation failed:", e?.message || e);
+      setPlanError(t("dashboard.planError"));
+    }
+    finally { setPlanLoading(false); }
+  };
 
   // ── Load the most recent action plan once the Supabase fetch resolves ──
   useEffect(() => {
@@ -2941,7 +3011,6 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     }
   }, [savedJiAnalysis, jiAnalysisLoading, jiLoadedFor, profile?.id]);
 
-  const networkContacts = networkContactsProp || [];
   const apps = applications || [];
   const saved = savedJobs || [];
 
@@ -2992,74 +3061,6 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   const followUpNeeded = networkContacts.filter(c => c.status === "Waiting for Reply").length;
   const replied = networkContacts.filter(c => ["Replied", "Met", "Connected"].includes(c.status)).length;
   const outreachRate = networkContacts.length > 0 ? Math.round((replied / networkContacts.length) * 100) : 0;
-
-  // AI Activity log
-  const { activity: aiActivity, logActivity } = useActivityLog(profile?.id);
-
-  // Unified user context — single source of truth for all AI modules.
-  const userContext = useUserContext({
-    profile,
-    applications,
-    savedJobs,
-    resumes: resumes ?? [],
-    smartApplyQueue: smartApplyQueue ?? [],
-    interviewSession,
-    salaryData,
-    networkContacts,
-    networkingSession,
-    briefing,
-    dailyPlan,
-    activityLog: aiActivity,
-    notifications: notifications ?? [],
-    chatHistory: chatMessages,
-    companyWatchlist: companyWatchlist ?? [],
-  });
-
-  // Generate AI Briefing
-  const generateBriefing = async () => {
-    if (!canUseAI) return;
-    setBriefingLoading(true);
-    setBriefingError(null);
-    console.log("[Briefing] Starting generation for user", profile?.id);
-    try {
-      const ctx = userContext.getContextString();
-      const result = await buildBriefingPayload(ctx, language);
-      if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
-      console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
-      setBriefing(result);
-      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
-      saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
-      logActivity("Daily briefing generated");
-      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
-    } catch (e) {
-      console.error("[Briefing] Generation failed:", e?.message || e);
-      setBriefingError(t("dashboard.briefingError"));
-    }
-    finally { setBriefingLoading(false); }
-  };
-
-  // Generate Daily Plan
-  const generatePlan = async () => {
-    if (!canUseAI) return;
-    setPlanLoading(true);
-    setPlanError(null);
-    console.log("[ActionPlan] Starting generation for user", profile?.id);
-    try {
-      const ctx = userContext.getContextString();
-      const result = await buildPlanPayload(ctx, language);
-      if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
-      console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
-      setDailyPlan(result);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
-      savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
-      logActivity("Daily plan generated");
-      insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
-    } catch (e) {
-      console.error("[ActionPlan] Generation failed:", e?.message || e);
-      setPlanError(t("dashboard.planError"));
-    }
-    finally { setPlanLoading(false); }
-  };
 
   // Chat
   const sendChat = async (directMsg) => {
