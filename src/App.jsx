@@ -37,10 +37,10 @@ import { extractSkillKeywords, buildCompatibilityRecord, normalizeSkillSet } fro
 import { useCompanyWatchlist } from "./data/opportunityIntelligence";
 import { useJobWatchlist } from "./data/jobWatchlist";
 import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext";
-import { normalizeFullName, normalizeEmail, isEmailValid, isEmailPresent, isPhonePresent, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
+import { normalizeFullName, normalizeEmail, isEmailValid, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
 import { parseResumeDoc } from "./lib/resumeParsing";
 import { computeResumeCompleteness } from "./lib/resumeCompleteness";
-import { buildIdentityBlock, buildSmartApplyPrompt, SMART_APPLY_DOC_FIELDS, validateSmartApplyPackage, summarizeSmartApplyIntegrity } from "./lib/smartApply/generation";
+import { buildSmartApplyPrompt, validateSmartApplyPackage, summarizeSmartApplyIntegrity } from "./lib/smartApply/generation";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
 
@@ -64,13 +64,13 @@ const useStorage = (key, initial) => {
 
 export const useSessionState = (key, initial) => {
   const [val, setVal] = useState(() => { try { const d = sessionStorage.getItem(key); return d !== null ? JSON.parse(d) : initial; } catch { return initial; } });
-  const set = useCallback((v) => { setVal(prev => { const next = typeof v === "function" ? v(prev) : v; try { sessionStorage.setItem(key, JSON.stringify(next)); } catch {} return next; }); }, [key]);
+  const set = useCallback((v) => { setVal(prev => { const next = typeof v === "function" ? v(prev) : v; try { sessionStorage.setItem(key, JSON.stringify(next)); } catch { /* storage unavailable */ } return next; }); }, [key]);
   return [val, set];
 };
 
 // Unique ID generator — crypto.randomUUID with a safe fallback
 const uid = () => {
-  try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
+  try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch { /* fall through to fallback id */ }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
@@ -136,7 +136,7 @@ const useAuth = (setBillingState) => {
 
   const login = (u) => { setUser(u); localStorage.setItem("cp_user", JSON.stringify(u)); };
   const logout = async () => {
-    try { await supabase.auth.signOut(); } catch {}
+    try { await supabase.auth.signOut(); } catch { /* clear local state regardless */ }
     setUser(null);
     recoveryRef.current = false;
     setRecoveryMode(false);
@@ -178,7 +178,7 @@ const useAuth = (setBillingState) => {
             setBillingState(state);
             window.dispatchEvent(new CustomEvent("billing:updated", { detail: state }));
           }
-        } catch (_) {}
+        } catch { /* covered by the refreshBillingState safety net in App() */ }
       }
       // 2. Fetch profile (non-billing fields: name, email, language, etc.)
       const merged = await fetchProfile(session.user.id, session.user.email);
@@ -984,10 +984,10 @@ async function downloadPDF(content, filename) {
           doc.circle(TL_X, entryStartY, 1.8, 'F');
           entryStartY = null;
         }
-        try { doc.setLineDash([1.5, 1.5], 0); } catch (_) {}
+        try { doc.setLineDash([1.5, 1.5], 0); } catch { /* dash styling unsupported, draw solid line */ }
         doc.setDrawColor(...SEP); doc.setLineWidth(0.2);
         doc.line(mL, y + 1, pageW - mR, y + 1);
-        try { doc.setLineDash([], 0); } catch (_) {}
+        try { doc.setLineDash([], 0); } catch { /* dash styling unsupported */ }
         y += 5;
         continue;
       }
@@ -1139,7 +1139,7 @@ async function downloadPDF(content, filename) {
 }
 
 async function downloadDOCX(content, filename) {
-  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, TabStopType, ShadingType, Table, TableRow, TableCell, WidthType } = await import('docx');
+  const { Document, Paragraph, TextRun, Packer, AlignmentType, BorderStyle, ShadingType, Table, TableRow, TableCell, WidthType } = await import('docx');
   const parsed = parseResumeDoc(content);
   const paragraphs = [];
 
@@ -1361,7 +1361,6 @@ async function downloadDOCX(content, filename) {
       }
 
       if (item.type === 'bullet') {
-        const bulletIndent = isExpSec ? { left: 540 } : {};
         paragraphs.push(new Paragraph({
           children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
           bullet: { level: 0 },
@@ -2917,7 +2916,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       if (!result || Array.isArray(result) || result.v !== 2) throw new Error("buildBriefingPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[Briefing] Generation succeeded — fields:", Object.keys(result).join(", "));
       setBriefing(result);
-      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
       logActivity("Daily briefing generated");
       insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
@@ -2935,7 +2934,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     briefingAppliedForRef.current = profile?.id;
     if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2 && isToday(savedBriefing.generatedAt)) {
       setBriefing(savedBriefing);
-      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch { /* storage unavailable */ }
     } else if (canUseAI && profile?.id && !(briefing && !Array.isArray(briefing) && briefing.v === 2 && isToday(briefing.generatedAt))) generateBriefing();
   }, [savedBriefing, briefingHistoryLoading, briefingLoadedFor, profile?.id, canUseAI]);
 
@@ -2957,7 +2956,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       if (!result?.v || result.v !== 2 || !Array.isArray(result.categories)) throw new Error("buildPlanPayload returned invalid format: " + JSON.stringify(result)?.slice(0, 100));
       console.log("[ActionPlan] Generation succeeded — categories:", result.categories?.length);
       setDailyPlan(result);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
       logActivity("Daily plan generated");
       insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
@@ -2975,7 +2974,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     planAppliedForRef.current = profile?.id;
     if (savedPlan && savedPlan.v === 2 && Array.isArray(savedPlan.categories) && isToday(savedPlan.generatedAt)) {
       setDailyPlan(savedPlan);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch { /* storage unavailable */ }
     } else if (canUseAI && profile?.id && !(dailyPlan?.v === 2 && Array.isArray(dailyPlan?.categories) && isToday(dailyPlan.generatedAt))) generatePlan();
   }, [savedPlan, planHistoryLoading, planLoadedFor, profile?.id, canUseAI]);
 
@@ -2991,7 +2990,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     cpAppliedRef.current = profile?.id;
     if (savedCpAnalysis?.v === 1) {
       setCpAnalysis(savedCpAnalysis);
-      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedCpAnalysis)); } catch {}
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedCpAnalysis)); } catch { /* storage unavailable */ }
     }
   }, [savedCpAnalysis, cpAnalysisLoading, cpLoadedFor, profile?.id]);
 
@@ -3007,20 +3006,11 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     jiAppliedRef.current = profile?.id;
     if (savedJiAnalysis?.v === 1) {
       setJiAnalysis(savedJiAnalysis);
-      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedJiAnalysis)); } catch {}
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedJiAnalysis)); } catch { /* storage unavailable */ }
     }
   }, [savedJiAnalysis, jiAnalysisLoading, jiLoadedFor, profile?.id]);
 
-  const apps = applications || [];
   const saved = savedJobs || [];
-
-  // Computed stats
-  const totalApps = apps.length;
-  const interviews = apps.filter(a => ["Interview","Final Interview","Phone Screen"].includes(a.status)).length;
-  const offers = apps.filter(a => a.status === "Offer").length;
-  const profileFields = ["full_name","email_address","phone","location","job_title","years_experience","preferred_job_title","work_type"];
-  const profileComplete = profile ? Math.round((profileFields.filter(f => profile[f]).length / profileFields.length) * 100) : 0;
-  const questionsCount = interviewSession?.questions?.length || 0;
 
   // Smart Apply derived stats
   const saQueue = smartApplyQueue || [];
@@ -3040,18 +3030,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
 
   // Resume Intelligence derived stats
   const resumeCount = (resumes || []).length;
-  const appAtsScores = apps.filter(a => a.atsScore > 0).map(a => a.atsScore);
-  const bestAts = appAtsScores.length ? Math.max(...appAtsScores) : null;
   const bestResume = (resumes || []).filter(r => r.ats_score != null).sort((a, b) => new Date(b.last_analyzed_at) - new Date(a.last_analyzed_at))[0] ?? null;
 
-  // Job Intelligence derived stats
-  const responseRate = totalApps > 0 ? Math.round(((interviews + offers) / totalApps) * 100) : 0;
-
   // Interview Intelligence derived stats
-  const interviewAnswers = interviewSession?.answers || [];
-  const answeredCount = interviewAnswers.length;
-  const scoredAnswers = interviewAnswers.filter(a => a.feedback?.score);
-  const avgFeedbackScore = scoredAnswers.length ? Math.round(scoredAnswers.reduce((s, a) => s + a.feedback.score, 0) / scoredAnswers.length * 10) / 10 : null;
   const mockInterviewScore = interviewSession?.mockSummary?.avgScore ?? null;
   const mockAnswered = interviewSession?.mockSummary?.answered ?? 0;
   const mockTotal = interviewSession?.mockSummary?.total ?? 0;
@@ -3096,11 +3077,11 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
   }, [chatMessages]);
 
   const handleNewConversation = async () => {
-    try { await newChatConversation(); } catch {}
+    try { await newChatConversation(); } catch { /* local UI clears below regardless */ }
     setChatMessages([]);
   };
   const handleClearConversation = async () => {
-    try { await clearChatConversation(); } catch {}
+    try { await clearChatConversation(); } catch { /* local UI clears below regardless */ }
     setChatMessages([]);
   };
 
@@ -3109,8 +3090,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     if (prevActiveResumeIdRef.current === undefined) { prevActiveResumeIdRef.current = activeResumeId; return; }
     if (!activeResumeId || activeResumeId === prevActiveResumeIdRef.current) return;
     prevActiveResumeIdRef.current = activeResumeId;
-    try { sessionStorage.removeItem("cp_briefing_dash"); } catch {}
-    try { sessionStorage.removeItem("cp_plan_dash"); } catch {}
+    try { sessionStorage.removeItem("cp_briefing_dash"); } catch { /* storage unavailable */ }
+    try { sessionStorage.removeItem("cp_plan_dash"); } catch { /* storage unavailable */ }
     setBriefing(null);
     setDailyPlan(null);
     briefingAppliedForRef.current = undefined;
@@ -3161,7 +3142,6 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
     regenTimerRef.current = setTimeout(generateBriefing, 3000);
   }, [briefingReady, resumes, applications, smartApplyQueue, savedJobs, interviewSession, salaryData, networkContacts]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const priorityColor = { high: C.red, medium: C.yellow, low: C.green };
   const hlBriefing = (text) => {
     if (!text) return text;
     const parts = String(text).split(/(\$[\d,]+[kKmMbB]?(?:\s*[-–—]\s*\$[\d,]+[kKmMbB]?)?|\d+\+?(?:,\d{3})*(?:\.\d+)?%?(?:\s+(?:new\s+)?(?:jobs?|roles?|applications?|app(?:s)?|offers?|interviews?|matches?|positions?|opportunities?|companies?|years?|months?|days?|weeks?|hours?|contacts?|connections?|openings?|listings?|results?|candidates?|skills?|points?|times?|responses?|updates?|items?|tips?|insights?|actions?|tasks?|steps?))?)/gi);
@@ -3700,7 +3680,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
     appliedRef.current = profile?.id;
     if (savedBriefing && !Array.isArray(savedBriefing) && savedBriefing.v === 2) {
       setBriefing(savedBriefing);
-      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch {}
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(savedBriefing)); } catch { /* storage unavailable */ }
     }
   }, [savedBriefing, briefingLoading, loadedFor, profile?.id]);
 
@@ -3710,7 +3690,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
       const ctx = userContext.getContextString();
       const result = await buildBriefingPayload(ctx, language);
       setBriefing(result);
-      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveBriefing(result).catch(err => console.error("briefing save failed", err));
       logActivity("Daily briefing regenerated");
       insertNotification(profile?.id, { type: "briefing", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
@@ -3874,7 +3854,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
       const result = await buildPlanPayload(ctx, language);
       console.log("[PlanPage] Generation succeeded");
       setPlan(result);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
       logActivity("Daily plan regenerated");
       insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
@@ -3900,12 +3880,12 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
           return;
         }
       }
-    } catch {}
+    } catch { /* fall through to Supabase-sourced plan below */ }
 
     // 2. Supabase has today's plan
     if (savedPlan && savedPlan.v === 2 && Array.isArray(savedPlan.categories) && isToday(savedPlan.generatedAt)) {
       setPlan(savedPlan);
-      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch {}
+      try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(savedPlan)); } catch { /* storage unavailable */ }
       return;
     }
 
@@ -3927,7 +3907,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
       updated = { ...plan, sectionCompletions };
     }
     setPlan(updated);
-    try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(updated)); } catch {}
+    try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(updated)); } catch { /* storage unavailable */ }
     savePlan(updated).catch(err => console.error("[PlanPage] completion save failed", err));
   };
 
@@ -4084,7 +4064,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
 }
 
 // ─── CAREER PROGRESS PAGE ────────────────────────────────────────────────────
-function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile, resumes, analysisHistory, onNavigateResume }) {
+function CareerProgressPage({ profile, applications, savedJobs, setPage, updateProfile, resumes, onNavigateResume }) {
   const { t } = useI18n();
   const { session: interviewSession } = useInterviewSession(profile?.id);
   const { data: salaryData } = useSalaryResearch(profile?.id);
@@ -4111,7 +4091,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
     appliedRef.current = profile?.id;
     if (savedAnalysis?.v === 1) {
       setAnalysis(savedAnalysis);
-      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedAnalysis)); } catch {}
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(savedAnalysis)); } catch { /* storage unavailable */ }
     }
   }, [savedAnalysis, analysisLoading, loadedFor, profile?.id]);
 
@@ -4122,10 +4102,10 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
       const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline, t);
       setAnalysis(result);
       insertNotification(profile?.id, { type: "career_progress", title: "Career progress report ready.", body: "Your career progress report has been generated." });
-      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveAnalysis(result).catch(err => console.error("career progress save failed", err));
       logActivity("Career progress assessment generated");
-    } catch {}
+    } catch { /* keep existing analysis */ }
     finally { setGenLoading(false); }
   };
 
@@ -4140,7 +4120,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
 
   const saveGoal = async () => {
     setGoalSaving(true);
-    try { await updateProfile({ career_goal: goalDraft.trim(), career_timeline: timelineDraft.trim() }); setEditingGoal(false); } catch {}
+    try { await updateProfile({ career_goal: goalDraft.trim(), career_timeline: timelineDraft.trim() }); setEditingGoal(false); } catch { /* keep editing open so the user can retry */ }
     finally { setGoalSaving(false); }
   };
 
@@ -4501,7 +4481,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
     appliedRef.current = profile?.id;
     if (savedAnalysis?.v === 1) {
       setAnalysis(savedAnalysis);
-      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedAnalysis)); } catch {}
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(savedAnalysis)); } catch { /* storage unavailable */ }
     }
   }, [savedAnalysis, analysisLoading, loadedFor, profile?.id]);
 
@@ -4513,10 +4493,10 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
       const result = await buildJobIntelligencePayload(profile, savedJobs, applications);
       setAnalysis(result);
       insertNotification(profile?.id, { type: "job_intel", title: "Job Intelligence updated.", body: "Job Intelligence has finished analyzing your opportunities." });
-      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch {}
+      try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
       logActivity("Job Intelligence landscape analysis generated");
-    } catch (e) {
+    } catch {
       setGenError(t("jobIntel.genError"));
     } finally { setGenLoading(false); }
   };
@@ -5064,7 +5044,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
 {"strengths":["<specific strength 1 that makes this candidate competitive for this role>","<specific strength 2>","<specific strength 3>"],"highPriorityImprovements":["<the single most important improvement that would increase resume quality and recruiter appeal>","<second most important improvement>","<third most important improvement>"],"missingSkills":["<broader skill or qualification this role requires that the resume does not demonstrate — do NOT duplicate ATS keyword suggestions>","<missing skill 2>","<missing skill 3>","<missing skill 4>","<missing skill 5>"],"tailoringOpportunities":["<specific intelligent recommendation to better tailor this resume for this role beyond keyword optimization>","<tailoring tip 2>","<tailoring tip 3>"]}
 RESUME:${capturedResume}
 JOB DESCRIPTION:${capturedJobDesc}`, 900, "resume_analysis_followup").then(insightRaw => {
-        try { setResultsInsights(JSON.parse(insightRaw)); } catch {}
+        try { setResultsInsights(JSON.parse(insightRaw)); } catch { /* leave insights unset on parse failure */ }
       }).catch(e => console.warn("[Insights]", e)).finally(() => setInsightsLoading(false));
     } catch (e) { console.error("[ResumeTailor]", e); setError(t("resume.analysisFailed")); }
     finally { clearInterval(iv); setLoading(false); }
@@ -5382,7 +5362,7 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
           const key = `cp_resume_history_${profile.id}`;
           const existing = JSON.parse(localStorage.getItem(key) || '[]');
           localStorage.setItem(key, JSON.stringify([{ ...entry, id: Date.now().toString(), date: new Date().toISOString() }, ...existing].slice(0, 50)));
-        } catch {}
+        } catch { /* local cache best-effort, DB write already failed above */ }
       });
     } else {
       // Not authenticated or hook unavailable — localStorage only.
@@ -6007,7 +5987,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                           onChange={async e => {
                             e.stopPropagation();
                             if (updateResumeLanguage) {
-                              try { await updateResumeLanguage(r.id, e.target.value, r.detected_language, r.language_confidence); } catch {}
+                              try { await updateResumeLanguage(r.id, e.target.value, r.detected_language, r.language_confidence); } catch { /* best-effort persistence */ }
                             }
                           }}
                           style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#fff", color: C.text, fontFamily: "inherit", cursor: "pointer" }}
@@ -6050,7 +6030,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                     <Btn
                       onClick={async () => {
                         if (!loadedResume || !updateResumeLanguage) return;
-                        try { await updateResumeLanguage(loadedResume.id, suggestLang, loadedResume.detected_language, loadedResume.language_confidence); } catch {}
+                        try { await updateResumeLanguage(loadedResume.id, suggestLang, loadedResume.detected_language, loadedResume.language_confidence); } catch { /* best-effort persistence */ }
                       }}
                       style={{ fontSize: 12, padding: "7px 14px" }}
                     >
@@ -7571,7 +7551,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       }
       const saved = await saveResume(file.name, text, file);
       onResumeLoad?.(saved.id);
-    } catch (err) {
+    } catch {
       setError(t("jobSearch.fileReadFailedGeneric"));
     } finally {
       setUploadingResume(false);
@@ -8485,7 +8465,7 @@ Return ONLY this JSON (no markdown):
           finalSummary = { ...baseSummary, aiSummary: parsed };
           setMockSummary(finalSummary);
         }
-      } catch {}
+      } catch { /* keep baseSummary already shown above */ }
     }
 
     // Mark session as completed with the full final data. This writes the
@@ -9612,7 +9592,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
         // Save immediately so quick navigation doesn't race the 600ms debounce
         saveSearch(form, parsed).catch(() => {});
       }
-    } catch (e) {
+    } catch {
       setError(t("salary.serviceUnreachable"));
     } finally { setLoading(false); }
   };
@@ -9735,7 +9715,6 @@ function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist
   const [savedContacts, setSavedContacts] = useNetworkingContacts(profile?.id);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(null);
-  const statusColors = {"Waiting for Reply": C.yellow, "Replied": C.green, "Met": "#7C3AED", "Connected": C.blue, "No Response": C.red};
   const statusEmoji = {"Waiting for Reply": "🟡", "Replied": "🟢", "Met": "🟣", "Connected": "🔵", "No Response": "🔴"};
   const NET_STATUS_LABEL_KEY = { "Waiting for Reply": "networking.statusWaiting", "Replied": "networking.statusReplied", "Met": "networking.statusMet", "Connected": "networking.statusConnected", "No Response": "networking.statusNoResponse" };
   const tStatus = (s) => t(NET_STATUS_LABEL_KEY[s] || s);
@@ -9832,7 +9811,6 @@ Return ONLY the follow-up message text, no JSON, no markdown fences. Keep it bri
   const updateDraft = (key, val) => setDraft(d => ({ ...(d || {}), [key]: val }));
   const updateIcebreaker = (i, val) => setDraft(d => { const ic = [...(d?.icebreakers || [])]; ic[i] = val; return { ...d, icebreakers: ic }; });
   const purposes = [{ value: "coffee-chat", label: t("networking.coffeeChatLabel") }, { value: "referral", label: t("networking.referralLabel") }, { value: "informational", label: t("networking.informationalLabel") }, { value: "reconnect", label: t("networking.reconnectLabel") }, { value: "cold-outreach", label: t("networking.coldOutreachLabel") }];
-  const txt = (v, fallback = "—") => (v !== undefined && v !== null && String(v).trim() !== "") ? v : fallback;
 
   // Safe JSON parse with truncation recovery
   const safeParse = (raw) => {
@@ -9866,7 +9844,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
         setDraft(null);
         setEmailTo("");
       }
-    } catch (e) {
+    } catch {
       setError(t("networking.networkError"));
     } finally { setLoading(false); }
   };
@@ -10870,7 +10848,6 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
             const activeEntry = getActiveEntry(job);
             const appliedEntry = getAppliedEntry(job);
             const readyEntry = getReadyEntry(job);
-            const isQueued = !!activeEntry;
             const isApplied = !!appliedEntry;
             const isExpanded = expandedJobs.has(job.job_id);
             const hasJobChanges = !!job.previous_description && job.previous_description !== job.description;
@@ -11062,7 +11039,7 @@ function PlanDetailsModal({ planId, planName, onClose }) {
   );
 }
 
-function PricingPage({ profile, setPage, billingState, refreshBillingState }) {
+function PricingPage({ setPage, billingState, refreshBillingState }) {
   const { t } = useI18n();
   const [detailsPlan, setDetailsPlan] = useState(null);
   // checkoutLoadingPlan / checkoutErrorPlan track WHICH card ("pro" | "premium")
@@ -12211,8 +12188,8 @@ function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jo
     catch { setAddError(t("jobTracker.addCompanyFailed")); }
     finally { setAddingCompany(false); }
   };
-  const handleRemoveJob = async (id) => { setRemovingId(id); try { await jobWatchlist.remove(id); } catch {} finally { setRemovingId(null); } };
-  const handleRemoveCompany = async (id) => { setRemovingId(id); try { await companyWatchlist.remove(id); } catch {} finally { setRemovingId(null); } };
+  const handleRemoveJob = async (id) => { setRemovingId(id); try { await jobWatchlist.remove(id); } catch { /* item stays in the list on failure */ } finally { setRemovingId(null); } };
+  const handleRemoveCompany = async (id) => { setRemovingId(id); try { await companyWatchlist.remove(id); } catch { /* item stays in the list on failure */ } finally { setRemovingId(null); } };
   const markSeen = (row) => { if (row.has_unread_change) jobWatchlist.applyChange(row.id, { has_unread_change: false }); };
 
   const activity = jobs.filter(j => j.has_unread_change)
@@ -12380,7 +12357,7 @@ function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jo
 }
 
 // ─── SETTINGS PAGE ─────────────────────────────────────────
-function SettingsPage({ profile, updateProfile, logout, setPage, billingState, refreshBillingState }) {
+function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBillingState }) {
   const { t, language, setLanguage } = useI18n();
   const [notifyEmail, setNotifyEmail] = useStorage("cp_notify_email", true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -12461,7 +12438,7 @@ function SettingsPage({ profile, updateProfile, logout, setPage, billingState, r
     try {
       const data = await exportUserData(profile.id, profile.email);
       downloadJSON(data, `careerpersona-data-export-${new Date().toISOString().slice(0, 10)}.json`);
-    } catch (e) {
+    } catch {
       setExportError(t("settings.exportFailed"));
     } finally { setExportLoading(false); }
   };
@@ -12744,7 +12721,7 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
 
   const handleCancel = async () => {
     setCanceling(true); setError("");
-    try { await onCancelDeletion(); } catch (e) { setError(t("accountDeletion.cancelFailed")); }
+    try { await onCancelDeletion(); } catch { setError(t("accountDeletion.cancelFailed")); }
     finally { setCanceling(false); }
   };
 
@@ -12753,7 +12730,7 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
     try {
       const data = await exportUserData(userId, email);
       downloadJSON(data, `careerpersona-data-export-${new Date().toISOString().slice(0, 10)}.json`);
-    } catch (e) { setError(t("accountDeletion.exportFailed")); }
+    } catch { setError(t("accountDeletion.exportFailed")); }
     finally { setExporting(false); }
   };
 
@@ -13001,7 +12978,7 @@ export default function App() {
   const getInitialPage = () => {
     const hash = window.location.hash.replace("#", "").split("?")[0];
     if (hash && validPages.has(hash)) return hash;
-    try { const stored = localStorage.getItem("cp_active_page"); if (stored) { const p = JSON.parse(stored); if (validPages.has(p)) return p; } } catch {}
+    try { const stored = localStorage.getItem("cp_active_page"); if (stored) { const p = JSON.parse(stored); if (validPages.has(p)) return p; } } catch { /* fall through to default page */ }
     return "dashboard";
   };
 
@@ -13099,10 +13076,10 @@ export default function App() {
     await logout();
     setProfile(null);
     // Session state — scoped to current tab, always cleared on logout
-    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash","cp_progress_analysis","cp_job_intel_analysis"].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+    ["cp_resume_text","cp_resume_jobdesc","cp_resume_results","cp_resume_tab","cp_resume_loaded_id","cp_resume_source","cp_resume_selected_kws","cp_resume_improve_stats","cp_resume_master_kws","cp_resume_optimized","cp_resume_insights","cp_resume_lib_saved","cp_resume_manual_reset","cp_resume_benchmark","cp_resume_jobfit","cp_resume_linkedin_opt","cp_resume_linkedin_profile","cp_resume_cover_versions","cp_resume_cover_active","cp_resume_deep_insights","cp_jobs_filters","cp_jobs_results","cp_jobs_page","cp_jobs_hasmore","cp_jobs_searched","cp_jobs_match","cp_jobs_resume","cp_jobs_resumefilename","cp_jobs_sourcecounts","cp_tracker_filter","cp_tracker_search","cp_interview_filter","cp_net_tab","cp_briefing_dash","cp_plan_dash","cp_progress_analysis","cp_job_intel_analysis"].forEach(k => { try { sessionStorage.removeItem(k); } catch { /* storage unavailable */ } });
     // User-specific localStorage — cleared so a subsequent login (same or different account)
     // starts from Supabase, not from the previous user's stale cached data
-    ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch {} });
+    ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } });
   };
   const updateProfile = (updates) => {
     const updated = { ...profile, ...updates };

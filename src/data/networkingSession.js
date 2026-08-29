@@ -9,7 +9,7 @@ const LS = {
   emailSent: "cp_network_emailsent",
 };
 const safe = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-const lsWrite = (key, val) => { try { localStorage.setItem(LS[key], JSON.stringify(val)); } catch {} };
+const lsWrite = (key, val) => { try { localStorage.setItem(LS[key], JSON.stringify(val)); } catch { /* storage unavailable */ } };
 
 export function useNetworkingSession(userId, defaultForm = {}) {
   const [session, setSession] = useState(() => ({
@@ -26,7 +26,7 @@ export function useNetworkingSession(userId, defaultForm = {}) {
     if (!userId) {
       loadedFor.current = null;
       clearTimeout(saveTimer.current);
-      Object.values(LS).forEach(k => { try { localStorage.removeItem(k); } catch {} });
+      Object.values(LS).forEach(k => { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } });
       setSession({ form: { targetName: "", targetRole: "", targetCompany: "", yourBackground: "", purpose: "coffee-chat", jobDesc: "" }, results: null, draft: null, emailTo: "", emailSent: false });
       return;
     }
@@ -48,7 +48,7 @@ export function useNetworkingSession(userId, defaultForm = {}) {
           emailSent: !!data.email_sent,
         };
         // Populate localStorage so subsequent page loads are instant
-        Object.keys(LS).forEach(k => { try { localStorage.setItem(LS[k], JSON.stringify(next[k])); } catch {} });
+        Object.keys(LS).forEach(k => { try { localStorage.setItem(LS[k], JSON.stringify(next[k])); } catch { /* storage unavailable */ } });
         setSession(next);
       } else {
         // First load for this account — migrate any existing localStorage data to Supabase

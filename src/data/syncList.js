@@ -43,7 +43,7 @@ async function migrateLocalOnce(table, localKey, userId, toRow, migrateConflict 
   const flag = `${localKey}_migrated_v2_${userId}`;
   if (localStorage.getItem(flag)) return;
   let local = [];
-  try { local = JSON.parse(localStorage.getItem(localKey) || "[]"); } catch {}
+  try { local = JSON.parse(localStorage.getItem(localKey) || "[]"); } catch { /* local stays [] */ }
   if (local.length) {
     const rows = local.map(x => {
       const row = toRow(x, userId);

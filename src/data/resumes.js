@@ -186,7 +186,7 @@ export function useResumeHistory(userId) {
     if (!error && data) {
       const normalised = data.map(rowToEntry);
       setEntries(normalised);
-      try { localStorage.setItem(HISTORY_CACHE_KEY(userId), JSON.stringify(normalised)); } catch {}
+      try { localStorage.setItem(HISTORY_CACHE_KEY(userId), JSON.stringify(normalised)); } catch { /* storage unavailable */ }
     }
   }, [userId]);
 
@@ -197,7 +197,7 @@ export function useResumeHistory(userId) {
     try {
       const cached = JSON.parse(localStorage.getItem(HISTORY_CACHE_KEY(userId)) || "[]");
       if (cached.length > 0) setEntries(cached);
-    } catch {}
+    } catch { /* leave entries empty, Supabase fetch below will populate */ }
   }, [userId]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -223,7 +223,7 @@ export function useResumeHistory(userId) {
       if (entry.jobTitle) query = query.eq("job_title", entry.jobTitle);
       const { data: found } = await query.order("created_at", { ascending: false }).limit(1);
       if (found?.[0]?.id) existingId = found[0].id;
-    } catch {}
+    } catch { /* fall through to insert below */ }
 
     let data, error;
     if (existingId) {
@@ -267,7 +267,7 @@ export function useResumeHistory(userId) {
       // Remove the old entry (if updated) so it re-appears at the top with fresh data.
       const filtered = existingId ? prev.filter(e => e.id !== existingId) : prev;
       const updated = [normalised, ...filtered].slice(0, 50);
-      try { localStorage.setItem(HISTORY_CACHE_KEY(userId), JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(HISTORY_CACHE_KEY(userId), JSON.stringify(updated)); } catch { /* storage unavailable */ }
       return updated;
     });
     return normalised;

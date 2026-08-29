@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 const ACCENT = "#7C3AED";
 const ACCENT2 = "#06B6D4";
@@ -187,7 +187,7 @@ ${filters.employmentType !== "Any" ? "Employment: " + filters.employmentType : "
 RESUME: ${resume}
 JOB: ${job.title} at ${job.company} - ${job.description}`, 1500);
       setMatchResult(JSON.parse(raw));
-    } catch {} finally { setAnalyzing(null); }
+    } catch { /* leave matchResult unset on failure */ } finally { setAnalyzing(null); }
   };
 
   const toggleSave = (job) => {
@@ -399,8 +399,8 @@ RESUME: ${resume}\nJOB: ${jobDesc}`, 3000);
 function InterviewPage() {
   const [jobDesc, setJobDesc] = useState(""); const [resume, setResume] = useState(""); const [loading, setLoading] = useState(false); const [questions, setQuestions] = useState([]); const [activeQ, setActiveQ] = useState(null); const [answer, setAnswer] = useState(""); const [feedback, setFeedback] = useState(null); const [fbLoading, setFbLoading] = useState(false); const [filterCat, setFilterCat] = useState("All");
   const diffColor = { Easy: ACCENT3, Medium: WARNING, Hard: DANGER };
-  const generate = async () => { if (!jobDesc.trim()) return; setLoading(true); setQuestions([]); try { const raw = await callClaude(`Generate 12 interview questions. Return ONLY JSON array (no markdown):\n[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<q>","whyAsked":"<why>","tipToAnswer":"<tip>","sampleAnswer":"<answer>"}]\nJOB: ${jobDesc}${resume ? "\nRESUME: " + resume : ""}`, 3000); setQuestions(JSON.parse(raw)); } catch {} finally { setLoading(false); } };
-  const getFeedback = async () => { if (!answer.trim()) return; setFbLoading(true); setFeedback(null); try { const raw = await callClaude(`Rate answer. Return ONLY JSON:\n{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<better>"}\nQ: ${activeQ.question}\nA: ${answer}`, 1500); setFeedback(JSON.parse(raw)); } catch {} finally { setFbLoading(false); } };
+  const generate = async () => { if (!jobDesc.trim()) return; setLoading(true); setQuestions([]); try { const raw = await callClaude(`Generate 12 interview questions. Return ONLY JSON array (no markdown):\n[{"id":1,"category":"<Behavioral|Technical|Situational|Culture Fit>","difficulty":"<Easy|Medium|Hard>","question":"<q>","whyAsked":"<why>","tipToAnswer":"<tip>","sampleAnswer":"<answer>"}]\nJOB: ${jobDesc}${resume ? "\nRESUME: " + resume : ""}`, 3000); setQuestions(JSON.parse(raw)); } catch { /* leave questions empty on failure */ } finally { setLoading(false); } };
+  const getFeedback = async () => { if (!answer.trim()) return; setFbLoading(true); setFeedback(null); try { const raw = await callClaude(`Rate answer. Return ONLY JSON:\n{"score":<1-10>,"strengths":["<s1>","<s2>"],"improvements":["<i1>","<i2>"],"revisedAnswer":"<better>"}\nQ: ${activeQ.question}\nA: ${answer}`, 1500); setFeedback(JSON.parse(raw)); } catch { /* leave feedback unset on failure */ } finally { setFbLoading(false); } };
   const cats = ["All","Behavioral","Technical","Situational","Culture Fit"];
   const filtered = questions.filter(q => filterCat === "All" || q.category === filterCat);
   return (
