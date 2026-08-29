@@ -18,6 +18,7 @@ anything containing real user data.
 | [`verify-compatibility-engine.cjs`](verify-compatibility-engine.cjs) | Confirms the Career Compatibility Engine renders a Match % badge with zero Claude calls, and that "AI Match" is fully gone from the UI. | No — fully mocked | Dev server on `:5183` |
 | [`verify-downstream-pages.cjs`](verify-downstream-pages.cjs) | Confirms Dashboard, Saved Jobs, and Opportunity Intelligence all still read `match_score` correctly off a saved job. | No — fully mocked | Dev server on `:5185` |
 | [`verify-resume-sync.cjs`](verify-resume-sync.cjs) | Confirms Job Search's auto-activated resume matches the one highlighted as active in Resume Library. | No — fully mocked | Dev server on `:5173` |
+| [`verify-pro-premium-change-plan.cjs`](verify-pro-premium-change-plan.cjs) | Confirms an existing Pro subscriber's "Upgrade to Premium" click goes through `/api/billing/change-plan` (not a new Stripe Checkout session), and that the UI/billingState correctly reflect Premium afterward. | No — fully mocked, no real Stripe contact | Dev server on `:5173` |
 | [`verify-i18n.mjs`](verify-i18n.mjs) | Loads every page in every supported language, checks for auth-screen leakage and untranslated English text. | No — fully mocked | Dev server on `:5173` |
 | [`verify-post-deploy-live.cjs`](verify-post-deploy-live.cjs) | Runs a real job search against the live Cloudflare Worker and live Supabase `skill_synonyms` table. The only script that talks to production infrastructure. | **Partially** — real Worker/Supabase reads, safe to run any time, but not offline | Dev server on `:5180`, and that port must be present in `worker.js`'s `ALLOWED_ORIGINS` |
 
@@ -41,7 +42,10 @@ before running it.
    nothing downstream of a saved job broke.
 4. `npm run verify:resume-sync` (`verify-resume-sync.cjs`) — confirms resume
    selection still stays in sync between Job Search and Resume Library.
-5. `npm run verify:i18n` (`verify-i18n.mjs`) — slowest (5 languages x 16
+5. `npm run verify:change-plan` (`verify-pro-premium-change-plan.cjs`) —
+   confirms an existing Pro subscriber's upgrade click still routes through
+   change-plan, not a duplicate Stripe Checkout session.
+6. `npm run verify:i18n` (`verify-i18n.mjs`) — slowest (5 languages x 16
    pages), run last or independently after i18n-affecting changes.
 
 ## Archived verification scripts

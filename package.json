@@ -14,6 +14,7 @@
     "verify:compat": "node scripts/verify/verify-compatibility-engine.cjs",
     "verify:downstream": "node scripts/verify/verify-downstream-pages.cjs",
     "verify:resume-sync": "node scripts/verify/verify-resume-sync.cjs",
+    "verify:change-plan": "node scripts/verify/verify-pro-premium-change-plan.cjs",
     "verify:i18n": "node scripts/verify/verify-i18n.mjs"
   },
   "dependencies": {
