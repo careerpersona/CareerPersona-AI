@@ -4801,7 +4801,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
-function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, downloadResume, saveAnalysis, updateVersionLabel, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState, onOnboardingSave, onOnboardingSkip }) {
+function ResumePage({ onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, saveAnalysis, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState, onOnboardingSave, onOnboardingSkip }) {
   const { t, language } = useI18n();
   // Mirrors the exact billingState -> canUseAI derivation JobSearchPage already
   // uses (App.jsx handleSmartApplyClick) -- same computed value, not a second
@@ -4826,19 +4826,17 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [savingResume, setSavingResume] = useState(false);
   const [resumeSaved, setResumeSaved] = useState(false);
   const [resumeError, setResumeError] = useState("");
-  const [deletingId, setDeletingId] = useState(null);
+  const [, setDeletingId] = useState(null);
   // activeResumeId (prop) is the single shared source of truth for "which resume is
   // active" across the whole app (Job Search, Smart Apply, Dashboard, this page) —
   // there is no separate local "loaded resume" concept here anymore.
-  const [editLabelId, setEditLabelId] = useState(null);
-  const [labelValue, setLabelValue] = useState("");
   // Read job search filters from session so the language suggestion can use the active search country.
   const [searchFilters] = useSessionState("cp_jobs_filters", {});
   // Session-persistent: survive navigation away and back without losing the active session.
   const [resumeSource, setResumeSource] = useSessionState("cp_resume_source", "upload");
   const [selectedKeywords, setSelectedKeywords] = useSessionState("cp_resume_selected_kws", []);
   const [improveStats, setImproveStats] = useSessionState("cp_resume_improve_stats", null);
-  const [masterMissingKws, setMasterMissingKws] = useSessionState("cp_resume_master_kws", []);
+  const [, setMasterMissingKws] = useSessionState("cp_resume_master_kws", []);
   const [isOptimized, setIsOptimized] = useSessionState("cp_resume_optimized", false);
   const [resultsInsights, setResultsInsights] = useSessionState("cp_resume_insights", null);
   const [librarySaved, setLibrarySaved] = useSessionState("cp_resume_lib_saved", false);
@@ -4922,7 +4920,7 @@ function ResumePage({ onSave, onNavigate, profile, applications, savedJobs, resu
   const [editingCoverLetter, setEditingCoverLetter] = useState(false);
   const [editedCoverText, setEditedCoverText] = useState("");
   // AI Agent philosophy: transient action states
-  const [tailoredApplied, setTailoredApplied] = useState(false);
+  const [, setTailoredApplied] = useState(false);
   const [pendingAutoAnalyze, setPendingAutoAnalyze] = useState(false);
   const [applyingAllFixes, setApplyingAllFixes] = useState(false);
   const [insightsDone, setInsightsDone] = useState(false);
@@ -5435,17 +5433,6 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
     }
   };
 
-  const handleLoadResume = (r) => {
-    setResume(r.content || ""); setUploadedFile(null); onResumeLoad?.(r.id);
-    // Backfill detection for existing resumes that were saved before this feature existed
-    if (r.content && !r.detected_language && updateResumeLanguage) {
-      const { lang, confidence } = detectResumeLanguage(r.content);
-      if (lang && confidence >= 0.72) {
-        updateResumeLanguage(r.id, r.language || lang, lang, confidence).catch(() => {});
-      }
-    }
-  };
-
   const handleGenerateResume = async () => {
     if (!canUseAI) return;
     if (!profile?.id) return;
@@ -5657,17 +5644,6 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
     setDeletingId(r.id);
     try { await deleteResume(r); } catch { setResumeError(t("resume.deleteResumeFailed")); }
     finally { setDeletingId(null); }
-  };
-
-  const handleDownloadResume = async (r) => {
-    if (r.file_url) {
-      try {
-        const url = await downloadResume(r);
-        if (url) window.open(url, "_blank");
-      } catch { setResumeError(t("resume.downloadLinkFailed")); }
-    } else {
-      downloadPDF(r.content, r.name.replace(/\.[^.]+$/, ""));
-    }
   };
 
   const handleEditResume = (r) => {
@@ -5930,6 +5906,13 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                               setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
                             } else {
                               setResume(r.content || ""); onResumeLoad?.(r.id);
+                              // Backfill detection for existing resumes that were saved before this feature existed
+                              if (r.content && !r.detected_language && updateResumeLanguage) {
+                                const { lang, confidence } = detectResumeLanguage(r.content);
+                                if (lang && confidence >= 0.72) {
+                                  updateResumeLanguage(r.id, r.language || lang, lang, confidence).catch(() => {});
+                                }
+                              }
                               setResumeSource("upload"); setLibrarySaved(false); setLibrarySaveError("");
                               setIsOptimized(false); setImproveStats(null); setSelectedKeywords([]); setResultsInsights(null);
                               if (r.ats_score != null) {
@@ -12374,7 +12357,6 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
   // Canonical billing state from Worker — all UI decisions derive from here
   const bs = billingState?.billingState || "FREE";
   const isActive = ["PRO_ACTIVE", "PRO_CANCELING", "PRO_PAST_DUE", "PREMIUM_ACTIVE", "PREMIUM_CANCELING", "PREMIUM_PAST_DUE", "ADMIN"].includes(bs);
-  const isCanceling = bs === "PRO_CANCELING" || bs === "PREMIUM_CANCELING";
   const isPastDue = bs === "PRO_PAST_DUE" || bs === "PREMIUM_PAST_DUE";
   const isExpired = bs === "PRO_EXPIRED" || bs === "PREMIUM_EXPIRED";
   const planDisplayName = billingState?.planDisplayName || "Free";
@@ -13180,7 +13162,7 @@ export default function App() {
 
   // Data lifted to App level so UserContext can aggregate them as the single
   // source of truth. Page-level hook instances keep their full mutation APIs.
-  const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, setDefaultResume: rootSetDefaultResume, refresh: refreshResumes, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel, updateResumeLanguage: rootUpdateResumeLanguage } = useResumes(profile?.id);
+  const { resumes, loading: resumesLoading, saveResume: rootSaveResume, deleteResume: rootDeleteResume, downloadResume: rootDownloadResume, saveAnalysis: rootSaveAnalysis, updateVersionLabel: rootUpdateVersionLabel, updateResumeLanguage: rootUpdateResumeLanguage } = useResumes(profile?.id);
   const [activeResumeId, setActiveResumeId] = useState(null);
   const { entries: analysisHistory, saveEntry: saveHistoryToDb } = useResumeHistory(profile?.id);
   // Resume Intelligence navigation state machine — computed once at root so every
