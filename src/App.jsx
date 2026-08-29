@@ -13570,6 +13570,12 @@ export default function App() {
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "settings" ? C.purpleLight : "#fff", color: page === "settings" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("settings"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>⚙️</span>{t("userMenu.settings")}
           </button>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "faq" ? C.purpleLight : "#fff", color: page === "faq" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("faq"); setMobileMenuOpen(false); }}>
+            <span style={{ fontSize: 20 }}>❓</span>{t("userMenu.faq")}
+          </button>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "support" ? C.purpleLight : "#fff", color: page === "support" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("support"); setMobileMenuOpen(false); }}>
+            <span style={{ fontSize: 20 }}>✉️</span>{t("userMenu.support")}
+          </button>
           <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: "#fff", color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>🚪</span>{t("userMenu.signOut")}
           </button>
