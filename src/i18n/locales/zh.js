@@ -231,6 +231,7 @@
     exportMyData: "导出我的数据",
     cancelFailed: "无法取消删除，请重试。",
     exportFailed: "无法导出您的数据，请重试。",
+    needHelp: "需要帮助？联系我们：",
   },
   auth: {
     tagline: "您的 AI 驱动职业平台",

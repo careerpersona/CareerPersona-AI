@@ -12728,6 +12728,9 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
           <Btn onClick={handleCancel} loading={canceling}>{t("accountDeletion.cancelDeletion")}</Btn>
           <Btn variant="secondary" onClick={handleExport} loading={exporting}>{t("accountDeletion.exportMyData")}</Btn>
         </div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 18 }}>
+          {t("accountDeletion.needHelp")} <a href="mailto:info@sellatrend.com" style={{ color: C.purple, fontWeight: 700, textDecoration: "none" }}>info@sellatrend.com</a>
+        </div>
       </Card>
     </div>
   );

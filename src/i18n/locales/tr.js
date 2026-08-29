@@ -231,6 +231,7 @@
     exportMyData: "Verilerimi Dışa Aktar",
     cancelFailed: "Silme işlemi iptal edilemedi. Lütfen tekrar deneyin.",
     exportFailed: "Verileriniz dışa aktarılamadı. Lütfen tekrar deneyin.",
+    needHelp: "Yardıma mı ihtiyacınız var? İletişim:",
   },
   auth: {
     tagline: "Yapay zekâ destekli kariyer platformunuz",

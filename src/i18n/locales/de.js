@@ -231,6 +231,7 @@
     exportMyData: "Meine Daten exportieren",
     cancelFailed: "Die Löschung konnte nicht abgebrochen werden. Bitte versuchen Sie es erneut.",
     exportFailed: "Ihre Daten konnten nicht exportiert werden. Bitte versuchen Sie es erneut.",
+    needHelp: "Brauchen Sie Hilfe? Kontaktieren Sie:",
   },
   auth: {
     tagline: "Ihre KI-gestützte Karriereplattform",

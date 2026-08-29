@@ -231,6 +231,7 @@
     exportMyData: "Exportar Meus Dados",
     cancelFailed: "Não foi possível cancelar a exclusão. Tente novamente.",
     exportFailed: "Não foi possível exportar seus dados. Tente novamente.",
+    needHelp: "Precisa de ajuda? Entre em contato:",
   },
   auth: {
     tagline: "A sua plataforma de carreira com IA",

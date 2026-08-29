@@ -231,6 +231,7 @@
     exportMyData: "내 데이터 내보내기",
     cancelFailed: "삭제를 취소할 수 없습니다. 다시 시도해 주세요.",
     exportFailed: "데이터를 내보낼 수 없습니다. 다시 시도해 주세요.",
+    needHelp: "도움이 필요하신가요? 문의:",
   },
   auth: {
     tagline: "AI 기반 커리어 플랫폼",

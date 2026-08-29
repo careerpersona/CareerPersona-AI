@@ -231,6 +231,7 @@
     exportMyData: "Mijn Gegevens Exporteren",
     cancelFailed: "De verwijdering kon niet worden geannuleerd. Probeer het opnieuw.",
     exportFailed: "Je gegevens konden niet worden geëxporteerd. Probeer het opnieuw.",
+    needHelp: "Hulp nodig? Neem contact op:",
   },
   auth: {
     tagline: "Jouw AI-gedreven loopbaanplatform",

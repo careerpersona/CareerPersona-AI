@@ -231,6 +231,7 @@
     exportMyData: "Exporter Mes Données",
     cancelFailed: "Impossible d'annuler la suppression. Veuillez réessayer.",
     exportFailed: "Impossible d'exporter vos données. Veuillez réessayer.",
+    needHelp: "Besoin d'aide ? Contactez :",
   },
   auth: {
     tagline: "Votre plateforme carrière propulsée par l'IA",

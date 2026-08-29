@@ -235,6 +235,7 @@ export default {
     exportMyData: "Export My Data",
     cancelFailed: "Could not cancel deletion. Please try again.",
     exportFailed: "Could not export your data. Please try again.",
+    needHelp: "Need help? Contact:",
   },
   auth: {
     tagline: "Your AI-powered career platform",
