@@ -1469,6 +1469,7 @@ function UserMenu({ profile, page, setPage, onLogout }) {
           <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
             <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
             <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
+            <button onClick={() => { setPage("faq"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "faq" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>❓ {t("userMenu.faq")}</button>
             <button onClick={() => { setPage("support"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "support" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>✉️ {t("userMenu.support")}</button>
             <div style={{ borderTop: `1px solid ${C.border}` }} />
             <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 {t("userMenu.signOut")}</button>
@@ -12844,6 +12845,117 @@ function SupportPage() {
   );
 }
 
+// ─── FAQ PAGE ────────────────────────────────────────────────
+// 44 questions across 14 categories, built directly from a code audit of the
+// current app (see the approved FAQ Structure proposal) -- deliberately
+// independent of src/legal/, same reasoning as SupportPage above: the
+// Privacy/Terms/Deletion-data answers stay intentionally conservative and
+// never link to the still-unapproved legal package.
+const FAQ_CATEGORIES = [
+  { heading: "catPlansBilling", questions: [1, 2, 3, 4, 5, 6] },
+  { heading: "catAiFeatures", questions: [7, 8] },
+  { heading: "catResumes", questions: [9, 10, 11, 12, 13, 14] },
+  { heading: "catJobs", questions: [15, 16, 17] },
+  { heading: "catSmartApply", questions: [18, 19, 20] },
+  { heading: "catInterviews", questions: [21, 22, 23, 24] },
+  { heading: "catLinkedin", questions: [25, 26, 27] },
+  { heading: "catNetworking", questions: [28, 29, 30] },
+  { heading: "catTrackers", questions: [31, 32, 33] },
+  { heading: "catLocalization", questions: [34, 35] },
+  { heading: "catPrivacy", questions: [36, 37, 38] },
+  { heading: "catAccount", questions: [39, 40, 41] },
+  { heading: "catLimits", questions: [42, 43] },
+  { heading: "catSupport", questions: [44] },
+];
+
+// Question 42 ("What are the monthly usage limits...") gets a table appended
+// below its answer text -- the only item with structured content beyond a
+// plain sentence, so it's a special case here rather than forcing every
+// other answer through a table-capable renderer it doesn't need.
+function FAQLimitsTable({ t }) {
+  const rows = [
+    ["limitsRowResumeAnalysis", "0", "10/mo", "10/mo"],
+    ["limitsRowInterview", "0", "100/mo", "120/mo"],
+    ["limitsRowSalary", "0", "10/mo", "10/mo"],
+    ["limitsRowLinkedin", "0", "10/mo", "10/mo"],
+    ["limitsRowNetworking", "0", "20/mo", "20/mo"],
+    ["limitsRowSmartApply", "0", "20/mo", "30/mo"],
+    ["limitsRowJobIntel", "0", "20/mo", "30/mo"],
+    ["limitsRowOpportunityIntel", "0", "20/mo", "30/mo"],
+  ];
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 12.5, width: "100%", minWidth: 420 }}>
+          <thead>
+            <tr>
+              {["limitsColFeature", "limitsColFree", "limitsColPro", "limitsColPremium"].map(k => (
+                <th key={k} style={{ padding: "6px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{t(`faq.${k}`)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([labelKey, free, pro, premium]) => (
+              <tr key={labelKey}>
+                <td style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, color: C.textMid }}>{t(`faq.${labelKey}`)}</td>
+                <td style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, color: C.textMuted }}>{free}</td>
+                <td style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, color: C.textMid }}>{pro}</td>
+                <td style={{ padding: "6px 10px", borderBottom: `1px solid ${C.border}`, color: C.textMid }}>{premium}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, lineHeight: 1.6 }}>{t("faq.limitsFootnote")}</div>
+    </div>
+  );
+}
+
+function FAQPage() {
+  const { t } = useI18n();
+  const [expandedQ, setExpandedQ] = useState(new Set());
+  const toggle = (n) => setExpandedQ(prev => {
+    const next = new Set(prev);
+    if (next.has(n)) next.delete(n); else next.add(n);
+    return next;
+  });
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("faq.heading")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 28 }}>{t("faq.subtitle")}</p>
+
+      {FAQ_CATEGORIES.map(({ heading, questions }) => (
+        <div key={heading} style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 10, paddingBottom: 8, borderBottom: `2px solid ${C.text}` }}>{t(`faq.${heading}`)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {questions.map(n => {
+              const isOpen = expandedQ.has(n);
+              return (
+                <Card key={n} style={{ padding: 0, overflow: "hidden" }}>
+                  <button
+                    onClick={() => toggle(n)}
+                    style={{ width: "100%", padding: "14px 16px", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", fontFamily: "inherit" }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t(`faq.q${n}`)}</span>
+                    <span style={{ flexShrink: 0, color: C.textMuted, fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: "0 16px 16px" }}>
+                      <div style={{ fontSize: 13.5, color: C.textMid, lineHeight: 1.7 }}>{t(`faq.a${n}`)}</div>
+                      {n === 42 && <FAQLimitsTable t={t} />}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── FIRST-LAUNCH EXPERIENCE ───────────────────────────────
 // Locked design (approved, do not modify): 0-4s logo reveal (pure scale
 // growth from small, full color/opacity throughout -- no fade during the
@@ -12957,7 +13069,7 @@ export default function App() {
   // legal package still unapproved) -- see the "LEGAL DOCUMENT PAGES" comment
   // near LegalDocumentPage/SupportPage. "support" was reconnected separately
   // (Phase 9) once confirmed independent of that frozen legal content.
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","faq"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -13484,6 +13596,7 @@ export default function App() {
         {page === "settings" && <SettingsPage profile={profile} updateProfile={updateProfile} logout={handleLogout} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
         {page === "support" && <SupportPage />}
+        {page === "faq" && <FAQPage />}
         {/* Legal document page render block remains intentionally removed
             (Phase 8 build-fix, legal package still unapproved) -- see the
             "LEGAL DOCUMENT PAGES" comment above LegalDocumentPage/SupportPage
