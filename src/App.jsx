@@ -3173,13 +3173,13 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       {/* TOP ROW: Briefing + Daily Plan */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
         {/* Daily Briefing */}
-        <Card style={{ padding: "8px 14px 8px", position: "relative", overflow: "hidden", alignSelf: "flex-start" }}>
+        <Card className="dashboard-hero-card" style={{ padding: "8px 14px 8px", position: "relative", overflow: "hidden", alignSelf: "flex-start" }}>
           {/* Flex row: content + mobile spark only — robot is out of flow below */}
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {/* Left: content */}
             <div className="briefing-content-col" style={{ flex: 1, minWidth: 0 }}>
               {!canUseAI ? (
-                <LockedAICard icon="🤖" title={t("dashboard.lockedBriefingTitle")} description={t("dashboard.lockedBriefingDesc")} benefits={t("dashboard.lockedBriefingBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+                <LockedAICard compact icon="🤖" title={t("dashboard.lockedBriefingTitle")} description={t("dashboard.lockedBriefingDesc")} benefits={t("dashboard.lockedBriefingBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
               ) : (
                 <>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.briefingTitle")}</div>
@@ -3241,9 +3241,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         </Card>
 
         {/* Today's Action Plan */}
-        <Card style={{ padding: "8px 14px 8px", alignSelf: "flex-start" }}>
+        <Card className="dashboard-hero-card" style={{ padding: "8px 14px 8px", alignSelf: "flex-start" }}>
           {!canUseAI ? (
-            <LockedAICard icon="🤖" title={t("dashboard.lockedPlanTitle")} description={t("dashboard.lockedPlanDesc")} benefits={t("dashboard.lockedPlanBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+            <LockedAICard compact icon="🤖" title={t("dashboard.lockedPlanTitle")} description={t("dashboard.lockedPlanDesc")} benefits={t("dashboard.lockedPlanBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
           ) : (
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 2 }}>{t("dashboard.planTitle")}</div>
@@ -7297,9 +7297,18 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
 // list, no featured variant) -- kept local to this file section since Job Search is
 // its only consumer today, per "keep the component localized." All copy is passed in
 // as already-translated strings, matching every other component in this file.
-function LockedAICard({ icon = "🔒", title, description, benefits, buttonLabel, onUpgrade, featured = false }) {
+// compact: desktop-only density override (see the .locked-ai-card-compact
+// desktop media-query rules) used only by the two Dashboard hero-card call
+// sites (AI Daily Briefing / Today's Action Plan) -- every other call site
+// (~20 across Resume, Job Search, Interview, Salary, Networking, Saved Jobs,
+// Opportunity/Job Intelligence) omits it and renders byte-identical to
+// before, at every viewport width. The base inline styles here are always
+// the original values, unconditionally -- mobile never sees a difference,
+// even for the two compact call sites, since the tighter spacing is applied
+// entirely via a desktop-gated CSS class, not JS branching on the values.
+function LockedAICard({ icon = "🔒", title, description, benefits, buttonLabel, onUpgrade, featured = false, compact = false }) {
   return (
-    <div style={{
+    <div className={compact ? "locked-ai-card-compact" : undefined} style={{
       background: "#fff",
       border: featured ? `2px solid ${C.purple}` : `1.5px solid ${C.purple}22`,
       borderRadius: 14,
@@ -13606,6 +13615,30 @@ export default function App() {
   .desktop-nav { display: contents !important; }
   .nav-utility { grid-column: 3 !important; grid-row: 1 !important; justify-self: end !important; gap: 0 !important; }
   .nav-utility button { padding: 6px 4px !important; }
+  /* Desktop-only header-to-content tightening -- #main-content's inline style
+     sets the full padding shorthand (32px top, for mobile too); overriding
+     just padding-top here leaves its right/bottom values untouched and keeps
+     the existing 32px exactly as-is below this breakpoint. */
+  #main-content { padding-top: 24px !important; }
+  /* Dashboard density pass (desktop only) -- both rules below override only
+     the two Dashboard hero cards (.dashboard-hero-card) and the compact
+     LockedAICard variant (.locked-ai-card-compact, used only by those same
+     two cards). Base inline styles stay the original values unconditionally,
+     so mobile is untouched even for these two call sites.
+     Original outer Card padding was "8px 14px 8px" (top/bottom 8, sides 14)
+     -- reduced here, not increased.
+     LockedAICard's own margin-bottom (8px in its compact form) is zeroed
+     here specifically: LockedAICard is the sole content inside this Card's
+     padded box (no sibling below it), so that margin was pure dead space
+     stacking on top of the Card's own bottom padding, not separating it
+     from anything. Removing it doesn't affect the other ~22 LockedAICard
+     call sites, which keep their real margin-bottom for stacking against
+     whatever content follows them there. */
+  .dashboard-hero-card { padding: 6px 12px !important; }
+  .locked-ai-card-compact { padding: 12px 16px !important; margin-bottom: 0 !important; }
+  .locked-ai-card-compact > div:first-child { margin-bottom: 4px !important; }
+  .locked-ai-card-compact > div:nth-child(2) { margin-bottom: 6px !important; }
+  .locked-ai-card-compact > ul { margin-bottom: 8px !important; }
 }
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
