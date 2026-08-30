@@ -1,4 +1,3 @@
-// Legal document content — English-only, DRAFT / PENDING LEGAL REVIEW.
 //
 // These strings are the verbatim text of the five approved English legal
 // drafts produced during the Phase 7 legal-document drafting work. They are
