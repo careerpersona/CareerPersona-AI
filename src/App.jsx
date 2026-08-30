@@ -1008,22 +1008,14 @@ async function downloadPDF(content, filename) {
 
         chk(7);
         const contentX = mL + EXP_INDENT;
-        const contentW = cW - EXP_INDENT;
 
         if (isExpSec) {
           // Mark entry start for timeline
           entryStartY = y - 1;
           // Role | Company on left, date right-aligned
           const sf = doc.internal.scaleFactor;
-          let rightBlockW = 0;
-          if (date) { const dw = doc.getStringUnitWidth(date) * 9 / sf; rightBlockW = Math.max(rightBlockW, dw); }
-          if (location) { doc.setFontSize(9); const lw = doc.getStringUnitWidth(location) * 9 / sf; rightBlockW = Math.max(rightBlockW, lw); }
-          const leftW = contentW - rightBlockW - 3;
 
           doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
-          const roleText = company ? `${role} | ${company}` : role;
-          // Measure role part only for bold, then company in italic
-          const roleWrapped = doc.splitTextToSize(role, leftW - (company ? doc.getStringUnitWidth(' | ') * 10.5 / sf + doc.getStringUnitWidth(company) * 10 / sf : 0));
           // Simplified: render "Role | Company" as mixed run on first line
           const firstLineY = y;
           doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
