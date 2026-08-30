@@ -17,6 +17,7 @@ export default {
     pricing: "Pricing",
     upgrade: "Upgrade",
     menu: "Menu",
+    skipToContent: "Skip to main content",
   },
   userMenu: {
     profile: "Profile",

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import { Sentry } from "./sentry.js";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
@@ -51,7 +51,7 @@ if ("scrollRestoration" in window.history) window.history.scrollRestoration = "m
 export const C = {
   bg: "#FFFFFF", bgSoft: "#F7F8FC", bgCard: "#FFFFFF", border: "#E2E8F0", borderStrong: "#CBD5E1",
   purple: "#6B21E8", purpleLight: "#F3EEFF", purpleMid: "#9B59F5", text: "#0F172A", textMid: "#334155",
-  textMuted: "#64748B", green: "#059669", greenLight: "#ECFDF5", red: "#DC2626", redLight: "#FEF2F2",
+  textMuted: "#5B6B80", green: "#046C4E", greenLight: "#ECFDF5", red: "#C81E1E", redLight: "#FEF2F2",
   yellow: "#D97706", yellowLight: "#FFFBEB", orange: "#F97316", orangeLight: "#FFF7ED", blue: "#2563EB", blueLight: "#EFF6FF",
   navText: "#3B2A1F", navHover: "#6B21E8",
 };
@@ -1579,12 +1579,12 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
   );
 }
 
-export function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title }) {
+export function Btn({ children, onClick, variant = "primary", disabled, loading, style = {}, className, title, ...rest }) {
   const isDisabled = disabled || loading;
   const base = { border: "none", borderRadius: 10, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: isDisabled ? "not-allowed" : "pointer", opacity: disabled && !loading ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s" };
   const variants = { primary: { background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff" }, secondary: { background: C.bgSoft, color: C.textMid, border: `1px solid ${C.border}` }, green: { background: C.green, color: "#fff" }, ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` }, danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}40` }, blue: { background: C.blue, color: "#fff" } };
   return (
-    <button className={className} title={title} style={{ ...base, ...variants[variant], ...style }} onClick={onClick} disabled={isDisabled}>
+    <button className={className} title={title} style={{ ...base, ...variants[variant], ...style }} onClick={onClick} disabled={isDisabled} {...rest}>
       {loading && <span style={{ width: 13, height: 13, flexShrink: 0, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", opacity: 0.85, animation: "spin 0.8s linear infinite" }} />}
       {children}
     </button>
@@ -1603,16 +1603,20 @@ function Label({ children }) {
 // site (identical rendering to before); when passed, highlights the field
 // with a red border and shows the message directly beneath it.
 function Input({ label, error, style = {}, ...props }) {
+  const autoId = useId();
+  const id = props.id ?? autoId;
   return (
     <div>
-      {label && <Label>{label}</Label>}
-      <input style={{ width: "100%", background: "#ffffff", border: `1.5px solid ${error ? C.red : "#E2E8F0"}`, borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", ...style }} {...props} />
+      {label && <label htmlFor={id} style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 7, display: "block" }}>{label}</label>}
+      <input id={id} style={{ width: "100%", background: "#ffffff", border: `1.5px solid ${error ? C.red : "#E2E8F0"}`, borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box", ...style }} {...props} />
       {error && <div style={{ fontSize: 12, color: C.red, marginTop: 4, fontWeight: 600 }}>{error}</div>}
     </div>
   );
 }
 
 function Textarea({ label, style = {}, ...props }) {
+  const autoId = useId();
+  const id = props.id ?? autoId;
   const baseStyle = {
     width: "100%",
     minHeight: 220,
@@ -1632,11 +1636,13 @@ function Textarea({ label, style = {}, ...props }) {
     letterSpacing: "normal",
     ...style
   };
-  return <div style={{ width: "100%" }}>{label && <Label>{label}</Label>}<textarea style={baseStyle} {...props} /></div>;
+  return <div style={{ width: "100%" }}>{label && <label htmlFor={id} style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 7, display: "block" }}>{label}</label>}<textarea id={id} style={baseStyle} {...props} /></div>;
 }
 
 function Select({ label, children, ...props }) {
-  return <div>{label && <Label>{label}</Label>}<select style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} {...props}>{children}</select></div>;
+  const autoId = useId();
+  const id = props.id ?? autoId;
+  return <div>{label && <label htmlFor={id} style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 7, display: "block" }}>{label}</label>}<select id={id} style={{ width: "100%", background: "#ffffff", border: "1.5px solid #E2E8F0", borderRadius: 9, color: "#0F172A", fontSize: 14, padding: "12px 14px", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} {...props}>{children}</select></div>;
 }
 
 function Badge({ children, color = C.purple }) {
@@ -2157,9 +2163,10 @@ function AuthPage({ t, authLinkErrorCode }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <main style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h1 style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }}>CareerPersona AI</h1>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Logo size={56} /></div>
           <AppName size={26} />
           <div style={{ fontSize: 14, color: C.textMuted, marginTop: 10 }}>{t("auth.tagline")}</div>
@@ -2238,7 +2245,7 @@ function AuthPage({ t, authLinkErrorCode }) {
           )}
         </Card>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -3456,7 +3463,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           )}
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
-            <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("jobintel")}>
+            <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit", position: "relative" }} onClick={() => setPage("jobintel")}>
+              <span aria-hidden="true" style={{ position: "absolute", inset: "-8px" }} />
               {t("dashboard.viewFullAnalysis")}
             </button>
           </div>
@@ -3568,7 +3576,8 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
             </div>
           )}
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 14, paddingTop: 12 }}>
-            <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setPage("progress")}>
+            <button style={{ border: "none", background: "none", color: C.purple, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit", position: "relative" }} onClick={() => setPage("progress")}>
+              <span aria-hidden="true" style={{ position: "absolute", inset: "-8px" }} />
               {t("dashboard.viewCareerProgress")}
             </button>
           </div>
@@ -5746,7 +5755,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                         {profile?.work_type && <span style={{ whiteSpace: "nowrap" }}>🏢 {profile.work_type}</span>}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: "#CA8A04" }}>⚠️ {t("resume.completeProfilePrompt")} <span style={{ cursor: "pointer", textDecoration: "underline", color: C.purple }} onClick={() => onNavigate?.("profile")}>{t("resume.goToProfile")}</span></div>
+                      <div style={{ fontSize: 11, color: "#CA8A04" }}>⚠️ {t("resume.completeProfilePrompt")} <span role="link" tabIndex={0} style={{ cursor: "pointer", textDecoration: "underline", color: C.purple }} onClick={() => onNavigate?.("profile")} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate?.("profile"); } }}>{t("resume.goToProfile")}</span></div>
                     )}
                   </div>
                   <div>
@@ -5859,7 +5868,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
               never receive it, so this link never renders for them. */}
           {onOnboardingSkip && (
             <div style={{ textAlign: "center", marginTop: 18 }}>
-              <span onClick={onOnboardingSkip} style={{ fontSize: 13, color: C.textMuted, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+              <span role="link" tabIndex={0} onClick={onOnboardingSkip} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOnboardingSkip(); } }} style={{ fontSize: 13, color: C.textMuted, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
                 {t("resume.skipForNow")}
               </span>
             </div>
@@ -5959,6 +5968,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }} onClick={e => e.stopPropagation()}>
                         <span style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{t("resume.resumeLanguageLabel")}:</span>
                         <select
+                          aria-label={t("resume.resumeLanguageLabel")}
                           value={r.language || "en"}
                           onChange={async e => {
                             e.stopPropagation();
@@ -6042,7 +6052,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                 `}</style>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{t("resume.analysisComplete")}</div>
+                    <h1 style={{ fontSize: 16, fontWeight: 800, color: C.text, margin: 0 }}>{t("resume.analysisComplete")}</h1>
                     {results.jobTitle && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{results.jobTitle}{validCompany(results.company) ? t("resume.atSeparator") + results.company : ""}</div>}
                     {editingResumeName && <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 2 }}>{t("resume.editingLabel")} {editingResumeName}</div>}
                   </div>
@@ -6731,7 +6741,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
             const status = getStatus ? getStatus() : null;
             const isHighlighted = panelId ? activeToolPanel === panelId : false;
             return (
-              <div key={title} className={active ? "toolkit-active" : ""} onClick={() => {
+              <div key={title} className={active ? "toolkit-active" : ""} aria-disabled={!active} onClick={() => {
                 if (comingSoon) { setComingSoonNotice(comingSoon); setTimeout(() => setComingSoonNotice(""), 4000); return; }
                 if (!active) return;
                 if (action) action();
@@ -7867,7 +7877,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           <Input label={t("jobSearch.minSalaryLabel")} type="number" placeholder={t("jobSearch.minSalaryPlaceholder")} value={filters.salaryMin} onChange={e => setFilters(f => ({ ...f, salaryMin: e.target.value }))} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500 }}><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500, position: "relative" }}><span aria-hidden="true" style={{ position: "absolute", inset: "-6px" }} /><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
             <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
@@ -8527,7 +8537,7 @@ Return ONLY this JSON (no markdown):
 
       {restored && questions.length > 0 && (
         <div style={{ background: C.purpleLight, border: `1px solid ${C.purple}30`, borderRadius: 9, padding: "10px 14px", color: C.purple, fontSize: 13, marginBottom: 16 }}>
-          {t("interview.restored").replace("{count}", questions.length)} <span style={{ textDecoration: "underline", cursor: "pointer" }} onClick={clearSession}>{t("interview.startFresh")}</span>
+          {t("interview.restored").replace("{count}", questions.length)} <span role="link" tabIndex={0} style={{ textDecoration: "underline", cursor: "pointer" }} onClick={clearSession} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clearSession(); } }}>{t("interview.startFresh")}</span>
         </div>
       )}
 
@@ -10987,13 +10997,41 @@ const PLAN_DETAIL_GROUPS = {
 function PlanDetailsModal({ planId, planName, onClose }) {
   const { t } = useI18n();
   const groups = PLAN_DETAIL_GROUPS[planId] || [];
+  const headingId = useId();
+  const panelRef = useRef(null);
+  const closeBtnRef = useRef(null);
+
+  // Focus management: move focus into the dialog on open, trap Tab/Shift+Tab
+  // within it, close on Escape, and restore focus to whatever triggered the
+  // modal on close -- this is the app's only real modal, so this is written
+  // inline rather than as a shared hook (no other component needs it).
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    closeBtnRef.current?.focus();
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusable = panelRef.current.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)" }} />
-      <div style={{ position: "relative", background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={headingId} style={{ position: "relative", background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{t("pricing.detailsHeading").replace("{plan}", planName)}</div>
-          <button onClick={onClose} aria-label={t("pricing.detailsClose")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted, padding: 4, lineHeight: 1 }}>✕</button>
+          <div id={headingId} style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{t("pricing.detailsHeading").replace("{plan}", planName)}</div>
+          <button ref={closeBtnRef} onClick={onClose} aria-label={t("pricing.detailsClose")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted, padding: 4, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ padding: "18px 22px", overflowY: "auto" }}>
           {groups.map((group, gi) => (
@@ -11186,7 +11224,7 @@ function PricingPage({ setPage, billingState, refreshBillingState }) {
               {plan.blockedPastDue && (
                 <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>
                   {t("settings.pastDue")}{" "}
-                  <span onClick={() => setPage("settings")} style={{ color: C.purple, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>{t("settings.manageSub")}</span>
+                  <span role="link" tabIndex={0} onClick={() => setPage("settings")} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPage("settings"); } }} style={{ color: C.purple, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>{t("settings.manageSub")}</span>
                 </div>
               )}
               <Btn
@@ -12456,6 +12494,7 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("settings.appLanguageLabel")}</div>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("settings.appLanguageHint")}</div>
             <select
+              aria-label={t("settings.appLanguageLabel")}
               value={language}
               onChange={e => { setLanguage(e.target.value); updateProfile({ preferred_language: e.target.value }); }}
               style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}
@@ -12467,6 +12506,7 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>{t("settings.jobLanguageLabel")}</div>
             <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t("settings.jobLanguageHint")}</div>
             <select
+              aria-label={t("settings.jobLanguageLabel")}
               value={profile?.job_language || "en"}
               onChange={e => updateProfile({ job_language: e.target.value })}
               style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}
@@ -12644,7 +12684,7 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
             <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{t("settings.emailNotifications")}</div>
             <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>{t("settings.emailNotificationsHint")}</div>
           </div>
-          <Btn variant="ghost" onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, padding: 0, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, position: "relative" }}>
+          <Btn variant="ghost" role="switch" aria-checked={notifyEmail} aria-label={t("settings.emailNotifications")} onClick={() => setNotifyEmail(!notifyEmail)} style={{ width: 48, height: 26, padding: 0, borderRadius: 13, border: "none", background: notifyEmail ? C.purple : C.border, position: "relative" }}>
             <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 3, left: notifyEmail ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
           </Btn>
         </div>
@@ -12878,11 +12918,11 @@ function FAQLimitsTable({ t }) {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 12.5, width: "100%", minWidth: 420 }}>
+        <table aria-describedby="faq-limits-footnote" style={{ borderCollapse: "collapse", fontSize: 12.5, width: "100%", minWidth: 420 }}>
           <thead>
             <tr>
               {["limitsColFeature", "limitsColFree", "limitsColPro", "limitsColPremium"].map(k => (
-                <th key={k} style={{ padding: "6px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{t(`faq.${k}`)}</th>
+                <th key={k} scope="col" style={{ padding: "6px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{t(`faq.${k}`)}</th>
               ))}
             </tr>
           </thead>
@@ -12898,7 +12938,7 @@ function FAQLimitsTable({ t }) {
           </tbody>
         </table>
       </div>
-      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8, lineHeight: 1.6 }}>{t("faq.limitsFootnote")}</div>
+      <div id="faq-limits-footnote" style={{ fontSize: 12, color: C.textMuted, marginTop: 8, lineHeight: 1.6 }}>{t("faq.limitsFootnote")}</div>
     </div>
   );
 }
@@ -12927,13 +12967,15 @@ function FAQPage() {
                 <Card key={n} style={{ padding: 0, overflow: "hidden" }}>
                   <button
                     onClick={() => toggle(n)}
+                    aria-expanded={isOpen}
+                    aria-controls={`faq-panel-${n}`}
                     style={{ width: "100%", padding: "14px 16px", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", fontFamily: "inherit" }}
                   >
                     <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t(`faq.q${n}`)}</span>
                     <span style={{ flexShrink: 0, color: C.textMuted, fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
                   </button>
                   {isOpen && (
-                    <div style={{ padding: "0 16px 16px" }}>
+                    <div id={`faq-panel-${n}`} style={{ padding: "0 16px 16px" }}>
                       <div style={{ fontSize: 13.5, color: C.textMid, lineHeight: 1.7 }}>{t(`faq.a${n}`)}</div>
                       {n === 42 && <FAQLimitsTable t={t} />}
                     </div>
@@ -13391,6 +13433,7 @@ export default function App() {
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
     <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
+      <a href="#main-content" style={{ position: "absolute", left: -9999, top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 }} onFocus={e => { e.target.style.left = "16px"; e.target.style.top = "16px"; e.target.style.width = "auto"; e.target.style.height = "auto"; e.target.style.padding = "10px 16px"; e.target.style.background = "#fff"; e.target.style.color = C.purple; e.target.style.fontWeight = 700; e.target.style.borderRadius = 8; e.target.style.boxShadow = "0 2px 10px rgba(0,0,0,0.2)"; }} onBlur={e => { e.target.style.left = "-9999px"; e.target.style.width = "1px"; e.target.style.height = "1px"; e.target.style.padding = 0; e.target.style.boxShadow = "none"; }}>{t("nav.skipToContent")}</a>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13496,7 +13539,7 @@ export default function App() {
       <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", minHeight: 52 }}>
         {/* Row 1: Hamburger (left) + Logo (center) + Subscription badge (right) — grid keeps the logo centered regardless of side-element width */}
         <div className="mobile-logo-row" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 6, padding: "10px 16px 0" }}>
-          <button className="hamburger-btn" onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", gridColumn: 1, justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
+          <button className="hamburger-btn" aria-haspopup="true" aria-expanded={mobileMenuOpen} aria-label={t("nav.menu")} onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", gridColumn: 1, justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
           {/* Desktop-only hamburger trigger — completely separate element/state from the
               mobile hamburger above (mobileMenuOpen). Hidden by default; shown only at
               >=1025px via .desktop-hamburger-wrap in the <style> block below, where it's
@@ -13507,9 +13550,9 @@ export default function App() {
             {desktopMenuOpen && (
               <div>
                 <div onClick={() => setDesktopMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 149 }} />
-                <div role="menu" style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
+                <nav aria-label={t("nav.menu")} style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
                   {nav.map(n => (
-                    <button key={n.id} role="menuitem" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
+                    <button key={n.id} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
                       {/* Fixed-width, centered icon slot -- not a per-item fix. Every nav
                           icon here is a wide-presentation emoji (~22px natural width)
                           except "♥" (Saved Jobs), which renders as a narrow text-style
@@ -13521,11 +13564,11 @@ export default function App() {
                       <span style={{ fontSize: 16, flexShrink: 0, width: 22, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{n.icon}</span>{n.label}
                     </button>
                   ))}
-                </div>
+                </nav>
               </div>
             )}
           </div>
-          <div className="logo-block" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }} onClick={goHome}>
+          <div className="logo-block" role="link" tabIndex={0} aria-label={t("nav.dashboard")} onClick={goHome} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, minWidth: 0, cursor: "pointer", gridColumn: 2 }}>
             <Logo size={32} className="brand-logo" /><AppName size={17} className="brand-name" />
           </div>
           <button className="subscription-badge" onClick={() => setPage(isPaidPlan ? "settings" : "pricing")} style={{ display: "none", gridColumn: 3, justifySelf: "end", background: "none", border: "none", padding: "8px 12px 8px 4px", cursor: "pointer", lineHeight: 1 }}>
@@ -13547,11 +13590,13 @@ export default function App() {
       </header>
       {mobileMenuOpen && (
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
-          {nav.map(n => (
-            <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
-              <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
-            </button>
-          ))}
+          <nav aria-label={t("nav.menu")}>
+            {nav.map(n => (
+              <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
+                <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
+              </button>
+            ))}
+          </nav>
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
           <LanguageMenu variant="row" />
           <NotificationsMenu variant="row" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} unreadCount={unreadCount} />
@@ -13573,7 +13618,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <main style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
+      <main id="main-content" tabIndex={-1} style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} onOpenOutcomeIntelligence={openTrackerInsights} billingState={billingState} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
