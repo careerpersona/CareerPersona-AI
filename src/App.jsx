@@ -2246,7 +2246,7 @@ function AuthPage({ t, authLinkErrorCode, setPage }) {
       </div>
       </div>
       <footer style={{ borderTop: `1px solid ${C.border}`, padding: "20px 24px 0", marginTop: 20 }}>
-        <div style={{ maxWidth: 1124, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
+        <div style={{ maxWidth: 1040, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
           <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.privacyPolicy")}</button>
           <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.termsOfService")}</button>
           <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.refundPolicy")}</button>
@@ -13577,7 +13577,15 @@ export default function App() {
      grid sets on these same elements for their own mobile-only 3-col layout. */
   .hamburger-btn { display: none !important; }
   .subscription-badge { display: none !important; }
-  header { display: grid !important; grid-template-columns: auto 1fr auto !important; align-items: center !important; padding: 8px 14px !important; column-gap: 8px !important; }
+  /* .header-inner (not header itself) carries the grid + width ceiling, so the
+     bar's background/border/shadow/sticky positioning stays full-width while
+     its actual content (hamburger/logo/utility) aligns to the same column as
+     the page content below. position:relative here (not header's own
+     position:sticky) is what .logo-block's absolute centering below resolves
+     against -- without it, the logo would stay centered on the full viewport
+     while the hamburger/utility icons shift inward to the narrower column,
+     visibly misaligning them. */
+  .header-inner { display: grid !important; grid-template-columns: auto 1fr auto !important; align-items: center !important; padding: 8px 14px !important; column-gap: 8px !important; max-width: 1040px !important; width: 100% !important; margin: 0 auto !important; position: relative !important; }
   .mobile-logo-row { display: contents !important; }
   .desktop-hamburger-wrap { display: block !important; grid-column: 1 !important; grid-row: 1 !important; justify-self: start !important; }
   /* Absolute + translate, not grid-column:2/justify-self:center -- the left (hamburger)
@@ -13603,6 +13611,7 @@ export default function App() {
         input[type="date"] { color: ${C.text}; }
       `}</style>
       <header style={{ background: "#fff", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", minHeight: 52 }}>
+      <div className="header-inner">
         {/* Row 1: Hamburger (left) + Logo (center) + Subscription badge (right) — grid keeps the logo centered regardless of side-element width */}
         <div className="mobile-logo-row" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 6, padding: "10px 16px 0" }}>
           <button className="hamburger-btn" aria-haspopup="true" aria-expanded={mobileMenuOpen} aria-label={t("nav.menu")} onClick={() => setMobileMenuOpen(m => !m)} style={{ display: "none", gridColumn: 1, justifySelf: "start", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 26, color: "#6B21E8", width: 44, height: 44, lineHeight: "24px", textAlign: "center" }}>☰</button>
@@ -13653,6 +13662,7 @@ export default function App() {
             <UserMenu profile={profile} page={page} setPage={setPage} onLogout={handleLogout} />
           </div>
         </div>
+      </div>
       </header>
       {mobileMenuOpen && (
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
@@ -13684,7 +13694,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <main id="main-content" tabIndex={-1} style={{ maxWidth: 1124, margin: "0 auto", padding: "32px 24px 80px" }}>
+      <main id="main-content" tabIndex={-1} style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 24px 80px" }}>
         {page === "dashboard" && <DashboardPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} smartApplyQueueLoading={smartApplyQueueLoading} networkingSession={networkingSessionCtx} notifications={notifications} interviewSession={rootInterviewSession} salaryData={rootSalaryData} networkContacts={rootNetworkContacts} activeResumeId={activeResumeId} companyWatchlist={companyWatchlist} onNavigateResume={navigateToResume} isPremium={isPremium} latestOutcomeAnalysis={outcomeAnalysesHook.latest} onOpenOutcomeIntelligence={openTrackerInsights} billingState={billingState} />}
         {page === "briefing" && <BriefingPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} resumes={resumes} smartApplyQueue={smartApplyQueue} networkingSession={networkingSessionCtx} companyWatchlist={companyWatchlist} />}
         {page === "plan" && <PlanPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} onNavigateResume={navigateToResume} />}
@@ -13713,7 +13723,7 @@ export default function App() {
         {page === "legal-cookies" && <LegalDocumentPage title={t("legal.cookiePolicy")} content={COOKIE_POLICY} setPage={setPage} />}
       </main>
       <footer style={{ borderTop: `1px solid ${C.border}`, padding: "20px 24px", marginTop: 40 }}>
-        <div style={{ maxWidth: 1124, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
+        <div style={{ maxWidth: 1040, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
           <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.privacyPolicy")}</button>
           <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.termsOfService")}</button>
           <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.refundPolicy")}</button>
