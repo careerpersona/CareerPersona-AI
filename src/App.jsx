@@ -3171,7 +3171,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       </div>
 
       {/* TOP ROW: Briefing + Daily Plan */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col dashboard-row-gap">
         {/* Daily Briefing */}
         <Card className="dashboard-hero-card" style={{ padding: "8px 14px 8px", position: "relative", overflow: "hidden", alignSelf: "flex-start" }}>
           {/* Flex row: content + mobile spark only — robot is out of flow below */}
@@ -3290,11 +3290,11 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       </div>
 
       {/* ROW 2: Smart Apply + Opportunity Intelligence */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="two-col dashboard-row-gap dashboard-row-align-top">
         {/* Smart Apply Center */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.smartApplyTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.smartApplySubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.smartApplySubtitle")}</div>
           {smartApplyQueueLoading && saQueue.length === 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", marginBottom: 12 }}>
               <div style={{ width: 14, height: 14, border: `2px solid ${C.purple}30`, borderTopColor: C.purple, borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
@@ -3326,9 +3326,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         </Card>
 
         {/* Opportunity Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.opportunityTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.opportunitySubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.opportunitySubtitle")}</div>
           {saved.length === 0 ? (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{t("dashboard.opportunityEmpty")}</div>
           ) : (
@@ -3369,7 +3369,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         const oiAnalysis = latestOutcomeAnalysis?.analysis;
         const belowEmerging = !latestOutcomeAnalysis || latestOutcomeAnalysis.confidence_tier === "early_signal";
         return (
-          <Card style={{ padding: "16px 18px", marginBottom: 16 }}>
+          <Card className="dashboard-card dashboard-row-gap" style={{ padding: "16px 18px", marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.navText }}>{t("dashboard.oiTitle")}</div>
               <button onClick={onOpenOutcomeIntelligence} style={{ background: "none", border: "none", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>{t("dashboard.oiFullAnalysis")} ↗</button>
@@ -3393,11 +3393,11 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       })()}
 
       {/* ROW 3: Resume + Job + Interview Intelligence */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col dashboard-row-gap dashboard-row-align-top">
         {/* Resume Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.resumeIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.resumeIntelSubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.resumeIntelSubtitle")}</div>
           {bestResume ? (
             <div>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 8 }}>
@@ -3432,13 +3432,13 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{resumeCount > 0 ? t("dashboard.analyzeResumeHint") : t("dashboard.resumeIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
+          <Btn variant="secondary" className="dashboard-card-cta" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => onNavigateResume ? onNavigateResume() : setPage("resume")}>{t("dashboard.goToResume")}</Btn>
         </Card>
 
         {/* Job Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.jobIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.jobIntelSubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.4 }}>{t("dashboard.jobIntelSubtitle")}</div>
           {jiAnalysisLoading && !jiAnalysis ? (
             <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>{t("dashboard.loading")}</div>
           ) : jiAnalysis ? (
@@ -3478,9 +3478,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         </Card>
 
         {/* Interview Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.interviewIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.interviewIntelSubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.interviewIntelSubtitle")}</div>
           {mockInterviewScore != null ? (
             <div>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
@@ -3505,16 +3505,16 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.interviewEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>{t("dashboard.goToInterviewPrep")}</Btn>
+          <Btn variant="secondary" className="dashboard-card-cta" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("interview")}>{t("dashboard.goToInterviewPrep")}</Btn>
         </Card>
       </div>
 
       {/* ROW 4: Salary + Career Progress + Networking Intelligence */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col dashboard-row-gap">
         {/* Salary Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.marketIntelTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.marketSubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.marketSubtitle")}</div>
           {salaryData?.results ? (
             <div>
               <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>{t("dashboard.medianSalary")}</div>
@@ -3529,11 +3529,11 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.marketIntelEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
+          <Btn variant="secondary" className="dashboard-card-cta" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("salary")}>{t("dashboard.goToSalary")}</Btn>
         </Card>
 
         {/* Career Progress */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 12 }}>{t("dashboard.progressTitle")}</div>
           {cpAnalysisLoading && !cpAnalysis ? (
             <div style={{ fontSize: 12, color: C.textMuted, paddingBottom: 4 }}>{t("dashboard.loading")}</div>
@@ -3591,9 +3591,9 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
         </Card>
 
         {/* Networking Intelligence */}
-        <Card style={{ padding: "16px 18px" }}>
+        <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.networkingTitle")}</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.networkingSubtitle")}</div>
+          <div className="dashboard-card-subtitle" style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 1.4 }}>{t("dashboard.networkingSubtitle")}</div>
           {networkContacts.length > 0 ? (
             <div>
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -3614,12 +3614,12 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           ) : (
             <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{t("dashboard.networkingEmpty")}</div>
           )}
-          <Btn variant="secondary" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("network")}>{t("dashboard.goToNetworking")}</Btn>
+          <Btn variant="secondary" className="dashboard-card-cta" style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, color: C.purple }} onClick={() => setPage("network")}>{t("dashboard.goToNetworking")}</Btn>
         </Card>
       </div>
 
       {/* BOTTOM: AI Chat Assistant */}
-      <Card>
+      <Card className="dashboard-card">
         <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>🤖 {t("dashboard.assistantTitle")}</span>
           {chatMessages.length > 0 && (
@@ -3630,7 +3630,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
           )}
         </div>
         {!canUseAI ? (
-          <LockedAICard icon="🤖" title={t("dashboard.lockedChatTitle")} description={t("dashboard.lockedChatDesc")} benefits={t("dashboard.lockedChatBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
+          <LockedAICard compact icon="🤖" title={t("dashboard.lockedChatTitle")} description={t("dashboard.lockedChatDesc")} benefits={t("dashboard.lockedChatBenefits")} buttonLabel={t("settings.upgradeToPro")} onUpgrade={() => setPage("pricing")} />
         ) : (
           <>
             <div style={{ background: C.bgSoft, borderRadius: 12, padding: 16, minHeight: 180, maxHeight: 320, overflowY: "auto", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -13639,6 +13639,31 @@ export default function App() {
   .locked-ai-card-compact > div:first-child { margin-bottom: 4px !important; }
   .locked-ai-card-compact > div:nth-child(2) { margin-bottom: 6px !important; }
   .locked-ai-card-compact > ul { margin-bottom: 8px !important; }
+  /* Dashboard density pass #2 (desktop only) -- Row 2, Application Outcome
+     Intelligence, Row 3, Row 4, and the AI Chat Assistant card. Same technique
+     as above: every rule below targets a new, additive className layered on
+     top of unchanged base inline styles, so mobile/tablet stay byte-for-byte
+     identical. No shared component (Card, Btn, LockedAICard) base style is
+     touched -- only these DashboardPage-local JSX call sites opt in. */
+  .dashboard-card { padding: 12px 14px !important; }
+  .dashboard-row-gap { margin-bottom: 12px !important; }
+  .dashboard-card-subtitle { margin-bottom: 8px !important; }
+  .dashboard-card-cta { margin-top: 8px !important; }
+  /* Row 2 (Smart Apply/Opportunity Intelligence) and Row 3 (Resume/Job/
+     Interview Intelligence) each have cards whose real content heights vary
+     a lot (e.g. a populated Resume Intelligence card vs. an empty/locked Job
+     or Interview Intelligence card). CSS Grid's default align-items:stretch
+     was forcing every card in a row to match that row's tallest one, leaving
+     up to ~150px (Row 3) / ~37px (Row 2) of pure blank space inside the
+     shorter cards. align-items:start makes each card size to its own content
+     instead -- applied only to these two rows' own grid containers (a new
+     class, not the shared .three-col/.two-col utility used by 30+ other
+     grids app-wide) and only changes vertical alignment, not the column
+     count/widths. Row 1, Row 4, and Outcome Intelligence were measured and
+     found to have no meaningful stretch gap, so they intentionally don't use
+     this class (Row 1's two cards already have their own alignSelf from an
+     earlier pass). */
+  .dashboard-row-align-top { align-items: start !important; }
 }
         a { color: inherit; }
         input[type="date"] { color: ${C.text}; }
