@@ -538,6 +538,7 @@ export default {
     exportDataBody: "Download a copy of your profile, resumes, applications, saved jobs, and other data as a single file.",
     exportMyData: "Export My Data",
     exportFailed: "Could not export your data. Please try again.",
+    legalHeading: "Legal",
     languagesHeading: "Language Settings",
     appLanguageLabel: "App Language",
     appLanguageHint: "Controls all app text, AI responses, coaching, and briefings.",
@@ -2036,7 +2037,7 @@ export default {
     q37: "Can I export my data?",
     a37: "Yes — Settings includes an \"Export My Data\" option that downloads a JSON file of your account data.",
     q38: "Where can I find your Privacy Policy and Terms of Service?",
-    a38: "Our formal Privacy Policy and Terms of Service are still being finalized. In the meantime, for any data or privacy question, email info@sellatrend.com and we'll help directly.",
+    a38: "Yes — you'll find our Privacy Policy and Terms of Service (along with our other policies) under Settings > Legal.",
 
     q39: "How do I delete my account?",
     a39: "From Settings, request account deletion. Your account is scheduled for deletion on a set future date, giving you a window to change your mind before it's final.",
@@ -2065,5 +2066,13 @@ export default {
 
     q44: "How do I contact support?",
     a44: "Email info@sellatrend.com. There's no ticketing system yet, so email is the fastest way to reach us — please include the email address on your account and a description of the issue.",
+  },
+  legal: {
+    privacyPolicy: "Privacy Policy",
+    termsOfService: "Terms of Service",
+    refundPolicy: "Refund & Cancellation Policy",
+    fairUsePolicy: "Fair Use / Acceptable Use Policy",
+    cookiePolicy: "Cookie Policy",
+    backToSettings: "← Back to Settings",
   },
 };

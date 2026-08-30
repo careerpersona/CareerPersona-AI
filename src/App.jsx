@@ -3,9 +3,7 @@ import { Sentry } from "./sentry.js";
 import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { exportUserData, downloadJSON } from "./data/accountExport";
-// Legal-page import intentionally removed (Phase 8 build-fix) -- see the
-// "LEGAL DOCUMENT PAGES" comment above LegalDocumentPage/SupportPage below
-// for why, and what restoring this line requires.
+import { PRIVACY_POLICY, TERMS_OF_SERVICE, REFUND_POLICY, FAIR_USE_POLICY, COOKIE_POLICY } from "./legal/documents";
 import { useApplications, insertApplicationRow, deleteApplicationRow, upsertApplicationRow, isInterviewStage } from "./data/applications";
 import { useOutcomePatterns, useOutcomeAnalyses, useRecommendationEvaluations } from "./data/outcomeIntelligence";
 import { useReferralAnalyses } from "./data/referralIntelligence";
@@ -2106,7 +2104,7 @@ function ResetPasswordPage({ onDone, t }) {
 // Deliberately not Supabase's own error_description text -- see AuthPage.
 const AUTH_LINK_ERROR_MESSAGE = "This link is invalid or has expired. Please request a new one.";
 
-function AuthPage({ t, authLinkErrorCode }) {
+function AuthPage({ t, authLinkErrorCode, setPage }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [loading, setLoading] = useState(false);
@@ -2163,7 +2161,8 @@ function AuthPage({ t, authLinkErrorCode }) {
   };
 
   return (
-    <main style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <main style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", flexDirection: "column", padding: 20 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <h1 style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }}>CareerPersona AI</h1>
@@ -2245,6 +2244,14 @@ function AuthPage({ t, authLinkErrorCode }) {
           )}
         </Card>
       </div>
+      </div>
+      <footer style={{ borderTop: `1px solid ${C.border}`, padding: "20px 24px 0", marginTop: 20 }}>
+        <div style={{ maxWidth: 1124, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
+          <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.privacyPolicy")}</button>
+          <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.termsOfService")}</button>
+          <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.refundPolicy")}</button>
+        </div>
+      </footer>
     </main>
   );
 }
@@ -12698,6 +12705,18 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
         <Btn variant="secondary" onClick={handleExportData} loading={exportLoading}>{t("settings.exportMyData")}</Btn>
       </Card>
 
+      {/* LEGAL */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>⚖️</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.legalHeading")}</span></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.privacyPolicy")}</button>
+          <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.termsOfService")}</button>
+          <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.refundPolicy")}</button>
+          <button onClick={() => setPage("legal-fairuse")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.fairUsePolicy")}</button>
+          <button onClick={() => setPage("legal-cookies")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid }}>{t("legal.cookiePolicy")}</button>
+        </div>
+      </Card>
+
       <Card>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.account")}</span></div>
         <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}>{t("settings.deleteAccount")}</Btn>
@@ -12769,34 +12788,25 @@ function AccountDeletionLockedPage({ profile, onCancelDeletion, userId, email, t
   );
 }
 
-// ─── LEGAL DOCUMENT PAGES (internal inspection only) ───────
-// INTENTIONALLY DISCONNECTED (Phase 8 build-fix): the import of
-// PRIVACY_POLICY/TERMS_OF_SERVICE/REFUND_POLICY/FAIR_USE_POLICY/COOKIE_POLICY,
-// the 6 "legal-*" validPages entries, and the render block for these
-// components have all been removed elsewhere in this file because
-// src/legal/documents.js is deliberately kept untracked (the Phase 7 legal
-// package is still unapproved) -- committing this file without also
-// committing that file breaks the Cloudflare Pages build. Do NOT delete the
-// functions below; they are correct and ready to use. To restore this
-// feature once the legal package is approved and committed: re-add the
-// import at the top of the file, re-add the 6 entries to validPages, and
-// re-add the render block that used to sit just before </main>.
+// ─── LEGAL DOCUMENT PAGES ───────────────────────────────────
+// Connected to the live app: the five documents in src/legal/documents.js
+// (approved, annotation-free) are reachable via Settings > Legal, each on
+// its own route (validPages "legal-privacy"/"legal-terms"/"legal-refund"/
+// "legal-fairuse"/"legal-cookies"), rendered below just before </main>.
 //
-// English-only by explicit instruction: these documents are not localized
-// and must not be added to src/i18n/locales/*.js until legally approved and
-// ready for translation. Not linked from primary navigation, footer,
-// signup, checkout, or (as of Phase 9) SupportPage -- reachable only via
-// direct route/hash for internal review.
+// Document body text is intentionally NOT run through t() -- each document's
+// own "Language" clause states it is written and maintained in English and
+// that the English version is authoritative, so the content string is
+// reproduced verbatim regardless of the active UI language. Only the
+// surrounding chrome (page title, Settings link labels, the back button) is
+// localized via the "legal" i18n namespace, consistent with the rest of the
+// app's UI text.
 //
-// Content lives in src/legal/documents.js as the verbatim approved English
-// drafts. renderLegalContent below is a small, deliberately simple
-// markdown-flavored formatter (headings, **bold**/*italic*, "- " lists,
-// "> " blockquotes, "---" rules) -- it only applies presentational styling
-// to text that is otherwise reproduced exactly; it never alters wording.
-// One known limitation: the single markdown table in the Privacy Policy
-// (Section 5's subprocessor table) doesn't match any of the patterns below,
-// so its rows render as plain paragraphs rather than an HTML table --
-// acceptable for an internal-inspection build, not a cosmetic priority here.
+// renderLegalContent below is a small, deliberately simple markdown-flavored
+// formatter (headings, **bold**/*italic*, "- " lists, "> " blockquotes,
+// "---" rules, and "| ... |" table rows) -- it only applies presentational
+// styling to text that is otherwise reproduced exactly; it never alters
+// wording.
 
 function parseInline(text, keyPrefix) {
   const parts = [];
@@ -12813,10 +12823,20 @@ function parseInline(text, keyPrefix) {
   return parts;
 }
 
+// A "table row" is any line wrapped in pipes ("| a | b |"); its separator
+// row ("|---|---|") is all dashes/colons/spaces between the pipes and is
+// dropped rather than rendered. This only recognizes the simple pipe-table
+// shape already used in the source documents (e.g. the Privacy Policy's
+// subprocessor table) -- it doesn't need to handle general markdown tables.
+const isTableRow = (line) => /^\|.*\|$/.test(line);
+const isTableSeparatorRow = (line) => /^\|[\s:|-]+\|$/.test(line);
+const splitTableRow = (line) => line.slice(1, -1).split("|").map(c => c.trim());
+
 function renderLegalContent(text) {
   const lines = text.split("\n");
   const blocks = [];
   let listBuffer = [];
+  let tableBuffer = [];
   let key = 0;
   const flushList = () => {
     if (listBuffer.length) {
@@ -12824,8 +12844,33 @@ function renderLegalContent(text) {
       listBuffer = [];
     }
   };
+  const flushTable = () => {
+    if (!tableBuffer.length) return;
+    const [headerRow, ...bodyRows] = tableBuffer;
+    blocks.push(
+      <div key={`tbl-${key++}`} style={{ overflowX: "auto", marginBottom: 14 }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 480, fontSize: 13 }}>
+          <thead>
+            <tr>{headerRow.map((cell, ci) => <th key={`th-${key}-${ci}`} scope="col" style={{ padding: "8px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{parseInline(cell, `th${key}-${ci}`)}</th>)}</tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, ri) => (
+              <tr key={`tr-${key}-${ri}`}>{row.map((cell, ci) => <td key={`td-${key}-${ri}-${ci}`} style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}`, color: C.textMid, verticalAlign: "top" }}>{parseInline(cell, `td${key}-${ri}-${ci}`)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+    tableBuffer = [];
+  };
   for (const rawLine of lines) {
     const line = rawLine.trim();
+    if (isTableRow(line)) {
+      flushList();
+      if (!isTableSeparatorRow(line)) tableBuffer.push(splitTableRow(line));
+      continue;
+    }
+    flushTable();
     if (!line) { flushList(); continue; }
     if (line === "---") { flushList(); blocks.push(<hr key={`hr-${key++}`} style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "24px 0" }} />); continue; }
     if (line.startsWith("### ")) { flushList(); blocks.push(<h4 key={`h-${key++}`} style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: "20px 0 8px" }}>{parseInline(line.slice(4), `h${key}`)}</h4>); continue; }
@@ -12837,15 +12882,17 @@ function renderLegalContent(text) {
     blocks.push(<p key={`p-${key++}`} style={{ margin: "0 0 14px", color: C.textMid, fontSize: 14, lineHeight: 1.75 }}>{parseInline(line, `p${key}`)}</p>);
   }
   flushList();
+  flushTable();
   return blocks;
 }
 
-function LegalDocumentPage({ title, content }) {
+function LegalDocumentPage({ title, content, setPage, backTo = "settings", backLabel }) {
+  const { t } = useI18n();
   return (
     <div style={{ maxWidth: 760, margin: "0 auto" }}>
-      <div style={{ background: C.redLight, border: `1.5px solid ${C.red}40`, borderRadius: 10, padding: "14px 18px", marginBottom: 24, fontWeight: 800, fontSize: 14, color: C.red, textAlign: "center" }}>
-        DRAFT — NOT FOR PUBLICATION — PENDING LEGAL REVIEW
-      </div>
+      <button onClick={() => setPage(backTo)} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", padding: "0 0 20px 0", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+        {backLabel || t("legal.backToSettings")}
+      </button>
       <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 18 }}>{title}</h1>
       {renderLegalContent(content)}
     </div>
@@ -13099,11 +13146,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
-  // The "legal-*" routes remain intentionally removed (Phase 8 build-fix,
-  // legal package still unapproved) -- see the "LEGAL DOCUMENT PAGES" comment
-  // near LegalDocumentPage/SupportPage. "support" was reconnected separately
-  // (Phase 9) once confirmed independent of that frozen legal content.
-  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","faq"]);
+  const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","faq","legal-privacy","legal-terms","legal-refund","legal-fairuse","legal-cookies"]);
 
   // Read initial page from URL hash, then localStorage fallback
   const getInitialPage = () => {
@@ -13387,7 +13430,30 @@ export default function App() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
-  if (!user) return <AuthPage t={t} authLinkErrorCode={authLinkErrorCode} />;
+  // Logged-out visitors reach these 3 policies via the AuthPage footer (or a
+  // direct/shared #legal-* link) without needing an account -- reuses the
+  // exact same LegalDocumentPage/content/routes the authenticated app uses,
+  // just rendered ahead of the auth gate. Only the 3 footer-linked documents
+  // are reachable this way; Fair Use and Cookie Policy stay authenticated-only
+  // (Settings > Legal), per the footer's own scope.
+  if (!user) {
+    const loggedOutLegalPages = {
+      "legal-privacy": [t("legal.privacyPolicy"), PRIVACY_POLICY],
+      "legal-terms": [t("legal.termsOfService"), TERMS_OF_SERVICE],
+      "legal-refund": [t("legal.refundPolicy"), REFUND_POLICY],
+    };
+    if (loggedOutLegalPages[page]) {
+      const [legalTitle, legalContent] = loggedOutLegalPages[page];
+      return (
+        <I18nContext.Provider value={{ language, setLanguage, t }}>
+          <div style={{ minHeight: "100vh", background: C.bgSoft, padding: "32px 20px" }}>
+            <LegalDocumentPage title={legalTitle} content={legalContent} setPage={setPage} backTo="dashboard" backLabel={t("auth.backToSignIn")} />
+          </div>
+        </I18nContext.Provider>
+      );
+    }
+  }
+  if (!user) return <AuthPage t={t} authLinkErrorCode={authLinkErrorCode} setPage={setPage} />;
 
   if (profile?.deletion_status === "scheduled" || profile?.deletion_status === "in_progress") {
     return (
@@ -13640,11 +13706,19 @@ export default function App() {
         {page === "profile" && <ProfilePage profile={profile} updateProfile={updateProfile} onOnboardingSave={profileIsOnboarding ? () => { setProfileIsOnboarding(false); setResumeIsOnboarding(true); setOnboardingTransition({ message: t("firstLaunch.profileSavedMessage"), nextPage: "resume" }); } : undefined} />}
         {page === "support" && <SupportPage />}
         {page === "faq" && <FAQPage />}
-        {/* Legal document page render block remains intentionally removed
-            (Phase 8 build-fix, legal package still unapproved) -- see the
-            "LEGAL DOCUMENT PAGES" comment above LegalDocumentPage/SupportPage
-            for why, and what restoring this requires. */}
+        {page === "legal-privacy" && <LegalDocumentPage title={t("legal.privacyPolicy")} content={PRIVACY_POLICY} setPage={setPage} />}
+        {page === "legal-terms" && <LegalDocumentPage title={t("legal.termsOfService")} content={TERMS_OF_SERVICE} setPage={setPage} />}
+        {page === "legal-refund" && <LegalDocumentPage title={t("legal.refundPolicy")} content={REFUND_POLICY} setPage={setPage} />}
+        {page === "legal-fairuse" && <LegalDocumentPage title={t("legal.fairUsePolicy")} content={FAIR_USE_POLICY} setPage={setPage} />}
+        {page === "legal-cookies" && <LegalDocumentPage title={t("legal.cookiePolicy")} content={COOKIE_POLICY} setPage={setPage} />}
       </main>
+      <footer style={{ borderTop: `1px solid ${C.border}`, padding: "20px 24px", marginTop: 40 }}>
+        <div style={{ maxWidth: 1124, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 20 }}>
+          <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.privacyPolicy")}</button>
+          <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.termsOfService")}</button>
+          <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", color: C.textMuted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>{t("legal.refundPolicy")}</button>
+        </div>
+      </footer>
     </div>
     </I18nContext.Provider>
   );
