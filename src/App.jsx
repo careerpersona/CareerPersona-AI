@@ -3510,7 +3510,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       </div>
 
       {/* ROW 4: Salary + Career Progress + Networking Intelligence */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col dashboard-row-gap">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }} className="three-col dashboard-row-gap dashboard-row-align-top">
         {/* Salary Intelligence */}
         <Card className="dashboard-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.navText, marginBottom: 4 }}>{t("dashboard.marketIntelTitle")}</div>
@@ -3777,7 +3777,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
       {!b && !isLoading && (
         <Card style={{ textAlign: "center", padding: "48px 24px" }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🗞️</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("briefing.emptyTitle")}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("briefing.emptyTitle")}</div>
           <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 28, maxWidth: 420, margin: "0 auto 28px" }}>{t("briefing.emptyBody")}</div>
           <Btn onClick={generate} loading={genLoading}>{genLoading ? t("briefing.generating") : t("briefing.generateBtn")}</Btn>
         </Card>
@@ -4284,7 +4284,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
                       <span style={{ fontSize: 11, fontWeight: 700, color: pm.color, background: pm.bg, borderRadius: 20, padding: "2px 9px", flexShrink: 0, marginTop: 1 }}>{pm.label}</span>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>{b.issue}</div>
-                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{b.detail}</div>
+                        <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{b.detail}</div>
                       </div>
                     </div>
                   );
@@ -4551,7 +4551,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
                 {d.evidence.map((e, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ color: C.blue, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>→</span>
-                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{e}</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{e}</span>
                   </div>
                 ))}
               </div>
@@ -4560,7 +4560,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
           {d.trends && (
             <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>{t("jobIntel.trend")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.trends}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.trends}</div>
             </div>
           )}
         </div>
@@ -4591,7 +4591,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
                 {d.qualifications.map((q, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ color: C.purple, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>·</span>
-                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{q}</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{q}</span>
                   </div>
                 ))}
               </div>
@@ -4600,7 +4600,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
           {d.insight && (
             <div style={{ background: C.purpleLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.purple}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 3 }}>{t("jobIntel.keyInsight")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.insight}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.insight}</div>
             </div>
           )}
         </div>
@@ -4647,7 +4647,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
           {d.positioning && (
             <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>{t("jobIntel.marketPositioning")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.positioning}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.positioning}</div>
             </div>
           )}
         </div>
@@ -4664,13 +4664,13 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
           {d.alignment && (
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               <span style={{ color: C.blue, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>{t("jobIntel.goalAlignment")}</span>
-              <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.alignment}</span>
+              <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.alignment}</span>
             </div>
           )}
           {d.recommendation && (
             <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>{t("jobIntel.strategicRec")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.recommendation}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.recommendation}</div>
             </div>
           )}
         </div>
@@ -4691,7 +4691,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
                 {d.patterns.map((p, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ color: C.green, fontSize: 12, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>↗</span>
-                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span>
+                    <span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{p}</span>
                   </div>
                 ))}
               </div>
@@ -4700,7 +4700,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
           {d.insight && (
             <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>{t("jobIntel.analyticalConclusion")}</div>
-              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{d.insight}</div>
+              <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.insight}</div>
             </div>
           )}
         </div>
@@ -5896,7 +5896,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
           {/* SECTION 1 — Resume Library: always visible when resumes exist */}
           {resumes.length > 0 && (
             <Card style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("resume.libraryTitle")}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("resume.libraryTitle")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {resumes.slice(0, 6).map(r => {
                   const hl = hubHealthLabel(r.ats_score);
@@ -6716,7 +6716,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
 
       {/* SECTION 6 — AI Toolkit */}
       <Card style={{ marginBottom: activeToolPanel ? 0 : 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("resume.aiToolkitTitle")}</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("resume.aiToolkitTitle")}</div>
         <div className="hub-toolkit-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           {[
             { icon: "📊", title: t("resume.benchmarkToolTitle"), desc: t("resume.benchmarkToolDesc"),
@@ -6758,7 +6758,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   <div style={{ fontSize: 12, fontWeight: 700, color: active ? C.text : C.textMuted }}>{title}</div>
                   {active && <span style={{ fontSize: 11, color: C.purple, fontWeight: 700 }}>→</span>}
                 </div>
-                <div style={{ fontSize: 11, color: "#475569", fontWeight: 400, lineHeight: 1.4, marginBottom: status ? 6 : 0 }}>{desc}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 400, lineHeight: 1.4, marginBottom: status ? 6 : 0 }}>{desc}</div>
                 {status && <div style={{ fontSize: 10, fontWeight: 600, color: status.color, marginTop: 4 }}>{status.text}</div>}
                 {!active && <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, marginTop: 6 }}>{t("resume.comingSoon")}</div>}
                 {blockedPanelId === panelId && toolGuidanceMsg && (
@@ -7923,7 +7923,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       )}
 
       {loading && jobs.length === 0 && <Spinner steps={[t("jobSearch.step1"), t("jobSearch.step2"), t("jobSearch.step3")]} currentStep={1} />}
-      {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>{t("jobSearch.noResultsFound")}</div><div style={{ color: C.textMuted, marginTop: 6 }}>{t("jobSearch.tryDifferentKeywords")}</div></Card>}
+      {searched && !loading && jobs.length === 0 && <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div><div style={{ fontWeight: 700, fontSize: 16 }}>{t("jobSearch.noResultsFound")}</div><div style={{ fontSize: 14, color: C.textMuted, marginTop: 6 }}>{t("jobSearch.tryDifferentKeywords")}</div></Card>}
 
       {jobs.length > 0 && (
         <div>
@@ -8874,7 +8874,7 @@ function OutcomeAnalysisDeepDives({ analysis, t }) {
   ];
   return (
     <Card>
-      <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiDeepDivesHeading")}</div>
+      <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("tracker.oiDeepDivesHeading")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {sections.map(s => {
           const data = analysis?.analyses?.[s.key];
@@ -8923,7 +8923,7 @@ function RecommendationResults({ evaluations, t, language }) {
   const resultColor = { confirmed: C.green, no_change: C.textMuted, insufficient_data: C.yellow };
   return (
     <Card>
-      <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiRecommendationResultsHeading")}</div>
+      <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("tracker.oiRecommendationResultsHeading")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {evaluations.map(ev => (
           <div key={ev.id} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
@@ -9101,7 +9101,7 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
           {/* Zone 2 -- Top AI Insights */}
           {latestAnalysis && (
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("tracker.oiTopInsights")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {(latestAnalysis.topInsights || []).map((ins, i) => (
                   <div key={i} style={{ background: C.bgSoft, borderRadius: 10, padding: "12px 14px" }}>
@@ -9138,7 +9138,7 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
           {/* Zone 6 -- Analysis History */}
           {analyses.length > 1 && (
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 12 }}>{t("tracker.oiHistoryHeading")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {analyses.map(a => (
                   <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textMid, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
@@ -10456,7 +10456,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile, canUseA
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.greenFlagsHeader")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {ci.greenFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
+                    {ci.greenFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.green, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✓</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{f}</span></div>)}
                   </div>
                 </div>
               )}
@@ -10464,7 +10464,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile, canUseA
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.redFlagsHeader")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {ci.redFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{f}</span></div>)}
+                    {ci.redFlags.map((f, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.red, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>✗</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{f}</span></div>)}
                   </div>
                 </div>
               )}
@@ -10472,7 +10472,7 @@ function PackageView({ item, resumes, savedJob, patchQueueItem, profile, canUseA
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 6, letterSpacing: 0.5 }}>{t("savedJobs.interviewTalkingPoints")}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {ci.talkingPoints.map((p, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5 }}>{p}</span></div>)}
+                    {ci.talkingPoints.map((p, i) => <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ color: C.purple, fontWeight: 700, flexShrink: 0, fontSize: 13 }}>{i + 1}.</span><span style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{p}</span></div>)}
                   </div>
                 </div>
               )}
@@ -10841,7 +10841,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
         {savedJobs.length === 0 && (
           <Card style={{ textAlign: "center", padding: 64 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>♡</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.emptyTitle")}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("savedJobs.emptyTitle")}</div>
             <div style={{ fontSize: 14, color: C.textMuted }}>{t("savedJobs.emptyBody")}</div>
           </Card>
         )}
@@ -13649,19 +13649,23 @@ export default function App() {
   .dashboard-row-gap { margin-bottom: 12px !important; }
   .dashboard-card-subtitle { margin-bottom: 8px !important; }
   .dashboard-card-cta { margin-top: 8px !important; }
-  /* Row 2 (Smart Apply/Opportunity Intelligence) and Row 3 (Resume/Job/
-     Interview Intelligence) each have cards whose real content heights vary
-     a lot (e.g. a populated Resume Intelligence card vs. an empty/locked Job
-     or Interview Intelligence card). CSS Grid's default align-items:stretch
-     was forcing every card in a row to match that row's tallest one, leaving
-     up to ~150px (Row 3) / ~37px (Row 2) of pure blank space inside the
-     shorter cards. align-items:start makes each card size to its own content
-     instead -- applied only to these two rows' own grid containers (a new
-     class, not the shared .three-col/.two-col utility used by 30+ other
-     grids app-wide) and only changes vertical alignment, not the column
-     count/widths. Row 1, Row 4, and Outcome Intelligence were measured and
-     found to have no meaningful stretch gap, so they intentionally don't use
-     this class (Row 1's two cards already have their own alignSelf from an
+  /* Row 2 (Smart Apply/Opportunity Intelligence), Row 3 (Resume/Job/
+     Interview Intelligence), and Row 4 (Market/Career Progress/Networking
+     Intelligence) each have cards whose real content heights vary a lot
+     (e.g. a populated Resume Intelligence card vs. an empty/locked Job or
+     Interview Intelligence card; or a populated Networking Intelligence
+     card vs. an empty Market Intelligence/Career Progress card). CSS Grid's
+     default align-items:stretch was forcing every card in a row to match
+     that row's tallest one, leaving pure blank space inside the shorter
+     cards -- confirmed up to ~150px (Row 3), ~37px (Row 2), and ~82px
+     (Row 4, under realistic mixed-content data) of artificial padding.
+     align-items:start makes each card size to its own content instead --
+     applied only to these three rows' own grid containers (a new class,
+     not the shared .three-col/.two-col utility used by 30+ other grids
+     app-wide) and only changes vertical alignment, not the column
+     count/widths. Row 1 and Outcome Intelligence were measured and found to
+     have no meaningful stretch gap, so they intentionally don't use this
+     class (Row 1's two cards already have their own alignSelf from an
      earlier pass). */
   .dashboard-row-align-top { align-items: start !important; }
 }
