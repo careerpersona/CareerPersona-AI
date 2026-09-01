@@ -8062,7 +8062,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                     {/* View Details toggle — full-width, generous tap target: this is
                         carrying more weight on mobile than before, since mobile cards
                         never showed a description at all until now. */}
-                    <button onClick={() => toggleJobExpanded(job.id)} style={{ width: "100%", marginTop: 8, paddingTop: 10, borderTop: `1px dashed ${C.border}`, border: "none", borderTopStyle: "dashed", background: "none", color: C.purple, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "center" }}>
+                    <button onClick={() => toggleJobExpanded(job.id)} style={{ width: "100%", marginTop: 8, paddingTop: 10, border: "none", background: "none", color: C.purple, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "center" }}>
                       {isExpanded ? t("savedJobs.hideDetails") : t("savedJobs.viewDetails")} {isExpanded ? "▴" : "▾"}
                     </button>
                     {expandedContent}
