@@ -848,6 +848,40 @@ async function downloadPDF(content, filename) {
   const DATE_CLR  = [75, 85, 99];      // #4B5563 — dates
   const SEP       = [221, 214, 254];   // #DDD6FE — separator / light border
 
+  // ── Contact icon helper — simple, low-risk geometric glyphs (circle/rect/
+  // line/ellipse only, the same primitives already proven reliable elsewhere
+  // in this renderer), colored ACCENT, positioned just left of each item.
+  function detectContactType(text) {
+    const t = text.toLowerCase();
+    if (t.includes('@')) return 'email';
+    if (t.includes('linkedin')) return 'linkedin';
+    if (/^[\d\s()+\-.]{7,}$/.test(text.trim())) return 'phone';
+    if (/^https?:\/\//.test(t) || /\.(com|io|dev|net|org|co|me)(\/|$)/.test(t)) return 'web';
+    return 'location'; // fallback: city/state, address, etc.
+  }
+  function drawContactIcon(type, cx, cy, r) {
+    doc.setDrawColor(...ACCENT); doc.setLineWidth(0.3);
+    if (type === 'email') {
+      doc.rect(cx - r, cy - r * 0.72, r * 2, r * 1.44, 'S');
+      doc.line(cx - r, cy - r * 0.6, cx, cy + r * 0.1);
+      doc.line(cx, cy + r * 0.1, cx + r, cy - r * 0.6);
+    } else if (type === 'linkedin') {
+      doc.setFillColor(...ACCENT);
+      doc.roundedRect(cx - r * 0.75, cy - r * 0.75, r * 1.5, r * 1.5, 0.4, 0.4, 'F');
+    } else if (type === 'web') {
+      doc.circle(cx, cy, r * 0.75, 'S');
+      doc.line(cx - r * 0.75, cy, cx + r * 0.75, cy);
+      doc.ellipse(cx, cy, r * 0.34, r * 0.75, 'S');
+    } else if (type === 'location') {
+      doc.circle(cx, cy, r * 0.72, 'S');
+      doc.setFillColor(...ACCENT);
+      doc.circle(cx, cy, r * 0.26, 'F');
+    } else { // phone (default)
+      doc.setFillColor(...ACCENT);
+      doc.circle(cx, cy, r * 0.62, 'F');
+    }
+  }
+
   // ── Header: inset, rounded-corner light-purple box (not full-bleed) ─────────
   if (parsed.name || parsed.headerLines.length > 0) {
     const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
@@ -856,11 +890,45 @@ async function downloadPDF(content, filename) {
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
     const boxTop = 6; // visible white margin above the header box
+    const CONTACT_FS = 8.5;
+    const ICON_R = 1.5; const ICON_GAP = 2.2; // icon radius + gap to its text
+    const ITEM_GAP = 7; // gap between contact item groups
+
+    // First pass: word-wrap the contact row into as many lines as needed so it
+    // never overflows the header box width, regardless of how many/how long
+    // the actual contact items are (e.g. a long email + full name + LinkedIn URL).
+    let contactRows = [];
+    if (contactItems.length > 0) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(CONTACT_FS);
+      const sf = doc.internal.scaleFactor;
+      const availW = cW - 4; // small safety margin inside the box
+      let curRow = []; let curW = 0;
+      contactItems.forEach((c) => {
+        const textW = doc.getStringUnitWidth(c) * CONTACT_FS / sf;
+        const itemW = ICON_R * 2 + ICON_GAP + textW;
+        const addW = curRow.length > 0 ? itemW + ITEM_GAP : itemW;
+        if (curW + addW > availW && curRow.length > 0) {
+          contactRows.push(curRow);
+          curRow = [{ text: c, w: itemW }]; curW = itemW;
+        } else {
+          curRow.push({ text: c, w: itemW }); curW += addW;
+        }
+      });
+      if (curRow.length) contactRows.push(curRow);
+    }
+
+    // Word-wrap each headline/title line too, so a long job title never runs
+    // past the page edge (contact items and role/company already wrap the
+    // same way -- see above and the isExpSec branch below).
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(10.5);
+    const titleLineGroups = titleLines.map(h => doc.splitTextToSize(h.text, cW - 6));
+    const titleLineCount = titleLineGroups.reduce((a, g) => a + g.length, 0);
+
     // Pre-calculate header box height before drawing it (draw box first, then text over it)
     let headerH = 7; // name baseline padding
     if (parsed.name) headerH += 7.5;
-    headerH += titleLines.length * 4.2;
-    if (contactItems.length > 0) headerH += 4.5 + 5; // divider + contact row
+    headerH += titleLineCount * 4.2;
+    if (contactRows.length > 0) headerH += 4.5 + contactRows.length * 5; // divider + one line per wrapped row
     headerH += 4; // bottom padding
 
     doc.setFillColor(...ACCENT_BG);
@@ -872,31 +940,32 @@ async function downloadPDF(content, filename) {
       doc.text(parsed.name.toUpperCase(), pageW / 2, hy, { align: 'center' });
       hy += 6.5;
     }
-    titleLines.forEach(h => {
+    titleLineGroups.forEach(group => group.forEach(l => {
       doc.setFont('helvetica', 'italic'); doc.setFontSize(10.5); doc.setTextColor(...ACCENT);
-      doc.text(h.text, pageW / 2, hy, { align: 'center' });
+      doc.text(l, pageW / 2, hy, { align: 'center' });
       hy += 4.2;
-    });
-    if (contactItems.length > 0) {
+    }));
+    if (contactRows.length > 0) {
       // Light divider between name/headline block and the contact row
       hy += 2.3;
       doc.setDrawColor(...SEP); doc.setLineWidth(0.3);
       const dividerW = 44;
       doc.line(pageW / 2 - dividerW / 2, hy, pageW / 2 + dividerW / 2, hy);
-      hy += 4;
+      hy += 4.5;
 
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-      const sf = doc.internal.scaleFactor;
-      const sepStr = '   •   ';
-      const sepW = doc.getStringUnitWidth(sepStr) * 8.5 / sf;
-      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8.5 / sf);
-      const totalW = itemWidths.reduce((a, b) => a + b, 0) + sepW * Math.max(0, contactItems.length - 1);
-      let cx = (pageW - totalW) / 2;
-      contactItems.forEach((c, i) => {
-        if (i > 0) { doc.setTextColor(...ACCENT); doc.text(sepStr, cx, hy); cx += sepW; }
-        doc.setTextColor(...BODY);
-        doc.text(c, cx, hy);
-        cx += itemWidths[i];
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(CONTACT_FS);
+      contactRows.forEach((row) => {
+        const rowW = row.reduce((a, b) => a + b.w, 0) + ITEM_GAP * Math.max(0, row.length - 1);
+        let cx = (pageW - rowW) / 2;
+        row.forEach(({ text: c }) => {
+          const type = detectContactType(c);
+          drawContactIcon(type, cx + ICON_R, hy - 1.4, ICON_R);
+          doc.setTextColor(...BODY);
+          doc.text(c, cx + ICON_R * 2 + ICON_GAP, hy);
+          const w = doc.getStringUnitWidth(c) * CONTACT_FS / doc.internal.scaleFactor;
+          cx += ICON_R * 2 + ICON_GAP + w + ITEM_GAP;
+        });
+        hy += 5;
       });
     }
 
@@ -930,9 +999,12 @@ async function downloadPDF(content, filename) {
     doc.text(labelText, mL + pillPadX, y);
     y += pillH - 1.2;
 
-    // Summary/Objective/Profile: light bordered text box around the body copy
-    let summaryBoxStartY = null;
-    if (isSummarySec) { summaryBoxStartY = y; y += 3; }
+    // Summary/Objective/Profile: light bordered text box around the body copy.
+    // Tracks the starting page too -- if a page break happens mid-summary
+    // (a very long summary), the border is skipped rather than drawing a
+    // corrupted box that spans two different physical pages.
+    let summaryBoxStartY = null; let summaryBoxStartPage = null;
+    if (isSummarySec) { summaryBoxStartY = y; summaryBoxStartPage = doc.internal.getNumberOfPages(); y += 3; }
 
     const items = sec.items;
     for (let ii = 0; ii < items.length; ii++) {
@@ -982,41 +1054,67 @@ async function downloadPDF(content, filename) {
         const contentX = mL;
 
         if (isExpSec) {
-          // Role on its own line, Company on the line beneath (no timeline)
-          const firstLineY = y;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...DARK_GRAY);
-          doc.text(role, contentX, firstLineY);
+          // Role on its own line, Company on the line beneath (no timeline).
+          // Both wrap to multiple lines if too long to fit the width left
+          // after reserving space for the right-aligned date/location, so
+          // long titles/companies can never overlap or run off the page.
+          const sf = doc.internal.scaleFactor;
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+          let dateW = 0;
+          if (date) { doc.setFontSize(9); dateW = doc.getStringUnitWidth(date) * 9 / sf; doc.setFontSize(11); }
+          const roleW = dateW > 0 ? cW - dateW - 4 : cW;
+          const roleLines = doc.splitTextToSize(role, roleW);
+          doc.setTextColor(...DARK_GRAY);
+          const roleFirstY = y;
+          roleLines.forEach((l, li) => { if (li > 0) { y += ROLE_LINE_H; chk(ROLE_LINE_H); } doc.text(l, contentX, y); });
           if (date) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
-            doc.text(date, pageW - mR, firstLineY, { align: 'right' });
+            doc.text(date, pageW - mR, roleFirstY, { align: 'right' });
           }
           y += ROLE_LINE_H - 1;
+          chk(ROLE_LINE_H);
           if (company) {
-            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
-            doc.text(company, contentX, y);
-          }
-          if (location) {
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(10);
+            let locW = 0;
+            if (location) { doc.setFontSize(9); locW = doc.getStringUnitWidth(location) * 9 / sf; doc.setFontSize(10); }
+            const compW = locW > 0 ? cW - locW - 4 : cW;
+            const compLines = doc.splitTextToSize(company, compW);
+            doc.setTextColor(...ACCENT);
+            const compFirstY = y;
+            compLines.forEach((l, li) => { if (li > 0) { y += ROLE_LINE_H; chk(ROLE_LINE_H); } doc.text(l, contentX, y); });
+            if (location) {
+              doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
+              doc.text(location, pageW - mR, compFirstY, { align: 'right' });
+            }
+          } else if (location) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
-            doc.text(location, pageW - mR, y, { align: 'right' });
+            for (const l of doc.splitTextToSize(location, cW)) { doc.text(l, pageW - mR, y, { align: 'right' }); y += 4; }
+            y -= 4;
           }
           y += ROLE_LINE_H;
         } else if (isEduSec) {
-          // Degree on left, date+location on right
+          // Degree on left, date+location on right (each wraps independently)
           const sf = doc.internal.scaleFactor;
           let rightBlockW = 0;
-          if (date) { doc.setFontSize(9); rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(date) * 9 / sf); }
+          doc.setFontSize(9);
+          if (date) { rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(date) * 9 / sf); }
           if (location) { rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(location) * 9 / sf); }
+          if (rightBlockW > 0) rightBlockW += 3; // small buffer so a borderline-fitting string isn't wrapped
+          rightBlockW = Math.min(rightBlockW, cW * 0.45); // never let the right block eat more than ~45% of the line
           const leftW = cW - rightBlockW - 3;
           doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...DARK_GRAY);
           const degreeLines = doc.splitTextToSize(role, leftW);
-          degreeLines.forEach((l, li) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (li < degreeLines.length - 1) y += ROLE_LINE_H; });
+          const degFirstY = y;
+          degreeLines.forEach((l, li) => { if (li > 0) { y += ROLE_LINE_H; chk(ROLE_LINE_H); } doc.text(l, mL, y); });
           if (date) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
-            doc.text(date, pageW - mR, y - (degreeLines.length - 1) * ROLE_LINE_H, { align: 'right' });
+            doc.text(date, pageW - mR, degFirstY, { align: 'right' });
           }
           if (location) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
-            doc.text(location, pageW - mR, y - (degreeLines.length - 1) * ROLE_LINE_H + ROLE_LINE_H - 0.5, { align: 'right' });
+            const locLines = doc.splitTextToSize(location, rightBlockW);
+            locLines.forEach((l, li) => doc.text(l, pageW - mR, degFirstY + ROLE_LINE_H - 0.5 + li * 4, { align: 'right' }));
+            y = Math.max(y, degFirstY + ROLE_LINE_H - 0.5 + (locLines.length - 1) * 4);
           }
           y += ROLE_LINE_H;
           if (company) {
@@ -1080,8 +1178,9 @@ async function downloadPDF(content, filename) {
       for (const l of doc.splitTextToSize(item.text, cW - textIndent * 2)) { chk(BODY_LINE_H); doc.text(l, mL + textIndent, y); y += BODY_LINE_H; }
     }
 
-    // Close the Summary/Objective/Profile bordered box now that its height is known
-    if (summaryBoxStartY !== null) {
+    // Close the Summary/Objective/Profile bordered box now that its height is
+    // known -- only if it stayed on a single page (see comment above).
+    if (summaryBoxStartY !== null && doc.internal.getNumberOfPages() === summaryBoxStartPage) {
       y += 2;
       doc.setDrawColor(...SEP); doc.setLineWidth(0.3);
       doc.roundedRect(mL, summaryBoxStartY, cW, y - summaryBoxStartY, 1.5, 1.5, 'S');
@@ -1114,9 +1213,26 @@ async function downloadDOCX(content, filename) {
   const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: SEP_CLR, space: 6 };
   const boxBorder = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
 
+  // Contact-type detection + icon glyph — mirrors the PDF renderer's logic so
+  // both exports look consistent. Uses basic "Geometric Shapes" Unicode
+  // characters (U+25xx block) rather than emoji/dingbats, since that block is
+  // reliably available in Calibri and virtually every font Word falls back
+  // to, avoiding missing-glyph ("tofu") boxes.
+  function detectContactType(text) {
+    const t = text.toLowerCase();
+    if (t.includes('@')) return 'email';
+    if (t.includes('linkedin')) return 'linkedin';
+    if (/^[\d\s()+\-.]{7,}$/.test(text.trim())) return 'phone';
+    if (/^https?:\/\//.test(t) || /\.(com|io|dev|net|org|co|me)(\/|$)/.test(t)) return 'web';
+    return 'location';
+  }
+  const CONTACT_ICONS = { email: '◆', linkedin: '■', web: '○', location: '▲', phone: '●' };
+
   // ── Header: inset shaded box (via a single-cell borderless table so the
   // shading doesn't run full-bleed to the page edge), name + headline + a
-  // light divider + a plain contact row (no per-item underlines)
+  // light divider + a plain contact row (no per-item underlines). Word wraps
+  // this paragraph natively, so no manual line-wrapping is needed here even
+  // for many/long contact items.
   if (parsed.name || parsed.headerLines.length > 0) {
     const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
     const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
@@ -1147,7 +1263,9 @@ async function downloadDOCX(content, filename) {
       }));
       const contactRuns = [];
       contactItems.forEach((c, i) => {
-        if (i > 0) contactRuns.push(new TextRun({ text: '   •   ', size: 17, font: CAL, color: ACCENT }));
+        if (i > 0) contactRuns.push(new TextRun({ text: '     ', size: 17, font: CAL }));
+        const icon = CONTACT_ICONS[detectContactType(c)] || CONTACT_ICONS.location;
+        contactRuns.push(new TextRun({ text: icon + '  ', size: 13, font: CAL, color: ACCENT }));
         contactRuns.push(new TextRun({ text: c, size: 17, font: CAL, color: BODY_CLR }));
       });
       headerChildren.push(new Paragraph({
