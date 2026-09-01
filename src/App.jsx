@@ -831,12 +831,12 @@ async function downloadPDF(content, filename) {
   const parsed = parseResumeDoc(content);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   // Layout constants — single source of truth for all alignment
-  const mL = 8; const mR = 8; const mT = 14; const mB = 14;
+  const mL = 10; const mR = 10; const mT = 14; const mB = 14;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const cW = pageW - mL - mR;
   const BULLET_INDENT = 4; const BULLET_HANG = 9; // consistent bullet grid
-  const ROLE_LINE_H = 5.5; const BODY_LINE_H = 5;
+  const ROLE_LINE_H = 6; const BODY_LINE_H = 5.4;
   let y = 0;
 
   const chk = (n) => { if (y + n > pageH - mB) { doc.addPage(); y = mT; } };
@@ -846,147 +846,102 @@ async function downloadPDF(content, filename) {
   const DARK_GRAY = [45, 45, 45];      // #2d2d2d — job titles / degree
   const BODY      = [55, 65, 81];      // #374151 — body text
   const DATE_CLR  = [75, 85, 99];      // #4B5563 — dates
-  const SEP       = [221, 214, 254];   // #DDD6FE — separator
+  const SEP       = [221, 214, 254];   // #DDD6FE — separator / light border
 
-  // ── Header: full-width purple background strip
+  // ── Header: inset, rounded-corner light-purple box (not full-bleed) ─────────
   if (parsed.name || parsed.headerLines.length > 0) {
     const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
     const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
     const contactItems = [];
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
-    // Pre-calculate header height before drawing rect (draw rect first, then text over it)
-    let headerH = 5; // name baseline at 5mm — ~1.3mm visual top margin matches Browser 5px padding
-    if (parsed.name) headerH += 7; // 15pt × 1.2 lineH ≈ 6.4mm + margin → 7mm to title baseline
-    headerH += titleLines.length * 4; // 9pt × 1.2 lineH ≈ 3.8mm + margin → 4mm per title line
-    if (contactItems.length > 0) headerH += 4; // 1mm gap + contact height + 1.5mm bottom
-    else headerH += 2; // bottom padding only
+    const boxTop = 6; // visible white margin above the header box
+    // Pre-calculate header box height before drawing it (draw box first, then text over it)
+    let headerH = 7; // name baseline padding
+    if (parsed.name) headerH += 7.5;
+    headerH += titleLines.length * 4.2;
+    if (contactItems.length > 0) headerH += 4.5 + 5; // divider + contact row
+    headerH += 4; // bottom padding
 
     doc.setFillColor(...ACCENT_BG);
-    doc.rect(0, 0, pageW, headerH, 'F');
+    doc.roundedRect(mL, boxTop, pageW - mL - mR, headerH, 3, 3, 'F');
 
-    let hy = 5; // text baseline cursor — matches headerH initial (name baseline at 5mm)
+    let hy = boxTop + 7; // name baseline cursor
     if (parsed.name) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...ACCENT);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...DARK_GRAY);
       doc.text(parsed.name.toUpperCase(), pageW / 2, hy, { align: 'center' });
-      hy += 7;
+      hy += 6.5;
     }
     titleLines.forEach(h => {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BODY);
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(10.5); doc.setTextColor(...ACCENT);
       doc.text(h.text, pageW / 2, hy, { align: 'center' });
-      hy += 4;
+      hy += 4.2;
     });
     if (contactItems.length > 0) {
-      hy += 1;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...BODY);
+      // Light divider between name/headline block and the contact row
+      hy += 2.3;
+      doc.setDrawColor(...SEP); doc.setLineWidth(0.3);
+      const dividerW = 44;
+      doc.line(pageW / 2 - dividerW / 2, hy, pageW / 2 + dividerW / 2, hy);
+      hy += 4;
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
       const sf = doc.internal.scaleFactor;
-      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8 / sf);
-      const itemGap = 4;
-      const totalW = itemWidths.reduce((a, b) => a + b, 0) + itemGap * Math.max(0, contactItems.length - 1);
+      const sepStr = '   •   ';
+      const sepW = doc.getStringUnitWidth(sepStr) * 8.5 / sf;
+      const itemWidths = contactItems.map(c => doc.getStringUnitWidth(c) * 8.5 / sf);
+      const totalW = itemWidths.reduce((a, b) => a + b, 0) + sepW * Math.max(0, contactItems.length - 1);
       let cx = (pageW - totalW) / 2;
       contactItems.forEach((c, i) => {
-        const w = itemWidths[i];
+        if (i > 0) { doc.setTextColor(...ACCENT); doc.text(sepStr, cx, hy); cx += sepW; }
+        doc.setTextColor(...BODY);
         doc.text(c, cx, hy);
-        doc.setDrawColor(...ACCENT); doc.setLineWidth(0.35);
-        doc.line(cx, hy + 0.9, cx + w, hy + 0.9);
-        cx += w + itemGap;
+        cx += itemWidths[i];
       });
     }
 
-    y = headerH + 3; // gap below header before first section
+    y = boxTop + headerH + 6; // gap below header before first section
   } else {
     y = mT;
-  }
-
-  // ── PDF section icon helper ──────────────────────────────────────────────────
-  function drawPdfSecIcon(type, cx, cy, r) {
-    doc.setDrawColor(...ACCENT); doc.setLineWidth(0.35);
-    doc.circle(cx, cy, r, 'S');
-    doc.setLineWidth(0.28);
-    const ir = r * 0.55;
-    if (type === 'person') {
-      doc.circle(cx, cy - ir * 0.45, ir * 0.4, 'S');
-      doc.line(cx - ir * 0.85, cy + ir, cx - ir * 0.2, cy + ir * 0.1);
-      doc.line(cx - ir * 0.2, cy + ir * 0.1, cx + ir * 0.2, cy + ir * 0.1);
-      doc.line(cx + ir * 0.2, cy + ir * 0.1, cx + ir * 0.85, cy + ir);
-    } else if (type === 'briefcase') {
-      doc.rect(cx - ir * 0.9, cy - ir * 0.3, ir * 1.8, ir, 'S');
-      doc.line(cx - ir * 0.45, cy - ir * 0.3, cx - ir * 0.45, cy - ir);
-      doc.line(cx - ir * 0.45, cy - ir, cx + ir * 0.45, cy - ir);
-      doc.line(cx + ir * 0.45, cy - ir, cx + ir * 0.45, cy - ir * 0.3);
-      doc.line(cx, cy - ir * 0.3, cx, cy + ir * 0.7);
-    } else if (type === 'graduation') {
-      doc.lines([[ir, 0.6 * ir], [-ir, 0.6 * ir], [-ir, -0.6 * ir], [ir, -0.6 * ir]], cx - ir, cy - 0.3 * ir, [1, 1], 'S', true);
-      doc.line(cx + ir, cy - 0.3 * ir + 0.6 * ir, cx + ir, cy + ir * 0.7);
-      doc.line(cx - ir * 0.4, cy + ir * 0.2, cx + ir * 0.4, cy + ir * 0.2);
-    } else if (type === 'code') {
-      doc.line(cx - ir * 0.2, cy, cx - ir * 0.85, cy - ir * 0.55);
-      doc.line(cx - ir * 0.2, cy, cx - ir * 0.85, cy + ir * 0.55);
-      doc.line(cx + ir * 0.2, cy, cx + ir * 0.85, cy - ir * 0.55);
-      doc.line(cx + ir * 0.2, cy, cx + ir * 0.85, cy + ir * 0.55);
-    } else if (type === 'award') {
-      const pts = Array.from({ length: 5 }, (_, k) => {
-        const a1 = (k * 72 - 90) * Math.PI / 180;
-        const a2 = (k * 72 + 36 - 90) * Math.PI / 180;
-        return [[cx + ir * 0.9 * Math.cos(a1), cy + ir * 0.9 * Math.sin(a1)],
-                [cx + ir * 0.38 * Math.cos(a2), cy + ir * 0.38 * Math.sin(a2)]];
-      }).flat();
-      for (let k = 0; k < pts.length; k++) doc.line(pts[k][0], pts[k][1], pts[(k + 1) % pts.length][0], pts[(k + 1) % pts.length][1]);
-    } else if (type === 'folder') {
-      doc.rect(cx - ir * 0.85, cy - ir * 0.1, ir * 1.7, ir * 0.95, 'S');
-      doc.line(cx - ir * 0.85, cy - ir * 0.1, cx - ir * 0.4, cy - ir * 0.7);
-      doc.line(cx - ir * 0.4, cy - ir * 0.7, cx + ir * 0.1, cy - ir * 0.1);
-    } else if (type === 'globe') {
-      doc.circle(cx, cy, ir * 0.6, 'S');
-      doc.line(cx - ir * 0.6, cy, cx + ir * 0.6, cy);
-      doc.ellipse(cx, cy, ir * 0.28, ir * 0.6, 'S');
-    }
   }
 
   // ── Sections
   for (let si = 0; si < parsed.sections.length; si++) {
     const sec = parsed.sections[si];
-    y += si === 0 ? 4.5 : 3;
+    y += si === 0 ? 3 : 5;
     chk(10);
 
     const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+    const isSkillsSec = /^(technical\s+)?skills?$|core competencies|^competencies$|key skills|expertise|technologies|technical expertise/i.test(sec.title);
+    const isSummarySec = /summary|objective|profile|about|overview|highlights/i.test(sec.title);
     const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
     const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
 
-    // Section bar
-    const barH = 8; const barY = y - 5.5;
+    // Section label — small rounded pill, sized to the text (not a full-width bar)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    const sf0 = doc.internal.scaleFactor;
+    const labelText = sec.title.toUpperCase();
+    const labelTextW = doc.getStringUnitWidth(labelText) * 9 / sf0;
+    const pillPadX = 3.2; const pillH = 6.2;
+    const pillW = labelTextW + pillPadX * 2;
     doc.setFillColor(...ACCENT_BG);
-    doc.rect(0, barY, pageW, barH, 'F');
-    const secIconCX = mL + 3.8; const secIconCY = y - 1.5; const secIconR = 3.3;
-    drawPdfSecIcon(getSectionIconType(sec.title), secIconCX, secIconCY, secIconR);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...ACCENT);
-    doc.text(sec.title.toUpperCase(), mL + 9.5, y);
-    y += barH - 3;
+    doc.roundedRect(mL, y - pillH + 1.8, pillW, pillH, pillH / 2, pillH / 2, 'F');
+    doc.setTextColor(...ACCENT);
+    doc.text(labelText, mL + pillPadX, y);
+    y += pillH - 1.2;
 
-    // Experience: timeline line drawn retroactively after each entry
-    const EXP_INDENT = isExpSec ? 6 : 0; // shift content right for timeline
-    const TL_X = mL + 1.5; // timeline x
-    let entryStartY = null;
+    // Summary/Objective/Profile: light bordered text box around the body copy
+    let summaryBoxStartY = null;
+    if (isSummarySec) { summaryBoxStartY = y; y += 3; }
 
     const items = sec.items;
     for (let ii = 0; ii < items.length; ii++) {
       const item = items[ii];
 
       if (item.type === 'gap') {
-        // Draw timeline line + dot for completed experience entry
-        if (isExpSec && entryStartY !== null) {
-          const entryEndY = y - 2;
-          doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
-          doc.line(TL_X, entryStartY, TL_X, entryEndY);
-          doc.setFillColor(...ACCENT);
-          doc.circle(TL_X, entryStartY, 1.8, 'F');
-          entryStartY = null;
-        }
-        try { doc.setLineDash([1.5, 1.5], 0); } catch { /* dash styling unsupported, draw solid line */ }
-        doc.setDrawColor(...SEP); doc.setLineWidth(0.2);
+        doc.setDrawColor(...SEP); doc.setLineWidth(0.25);
         doc.line(mL, y + 1, pageW - mR, y + 1);
-        try { doc.setLineDash([], 0); } catch { /* dash styling unsupported */ }
-        y += 5;
+        y += 6;
         continue;
       }
 
@@ -995,8 +950,27 @@ async function downloadPDF(content, filename) {
         const { role, company } = splitRoleAndCompany(left);
 
         if (isBodySec || (!company && !date && role.length > 60)) {
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-          for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
+          if (isSkillsSec) {
+            // Compact horizontal skill list with purple pipe separators
+            const skills = item.text.split(/\s*[,|•·]\s*/).map(s => s.trim()).filter(Boolean);
+            doc.setFontSize(9.5);
+            const sf = doc.internal.scaleFactor;
+            const pipe = '   |   ';
+            const pipeW = doc.getStringUnitWidth(pipe) * 9.5 / sf;
+            let lineX = mL; chk(BODY_LINE_H);
+            skills.forEach((s, si2) => {
+              doc.setFont('helvetica', 'normal'); doc.setTextColor(...BODY);
+              const w = doc.getStringUnitWidth(s) * 9.5 / sf;
+              if (lineX + w > mL + cW && lineX > mL) { y += BODY_LINE_H; chk(BODY_LINE_H); lineX = mL; }
+              doc.text(s, lineX, y); lineX += w;
+              if (si2 < skills.length - 1) { doc.setTextColor(...ACCENT); doc.text(pipe, lineX, y); lineX += pipeW; }
+            });
+            y += BODY_LINE_H;
+            continue;
+          }
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
+          const textIndent = isSummarySec ? 3 : 0;
+          for (const l of doc.splitTextToSize(item.text, cW - textIndent * 2)) { chk(BODY_LINE_H); doc.text(l, mL + textIndent, y); y += BODY_LINE_H; }
           continue;
         }
 
@@ -1004,38 +978,28 @@ async function downloadPDF(content, filename) {
         let location = null;
         if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
 
-        chk(7);
-        const contentX = mL + EXP_INDENT;
+        chk(9);
+        const contentX = mL;
 
         if (isExpSec) {
-          // Mark entry start for timeline
-          entryStartY = y - 1;
-          // Role | Company on left, date right-aligned
-          const sf = doc.internal.scaleFactor;
-
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
-          // Simplified: render "Role | Company" as mixed run on first line
+          // Role on its own line, Company on the line beneath (no timeline)
           const firstLineY = y;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...DARK_GRAY);
           doc.text(role, contentX, firstLineY);
-          if (company) {
-            const roleOnlyW = doc.getStringUnitWidth(role) * 10.5 / sf;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
-            doc.text(' | ', contentX + roleOnlyW, firstLineY);
-            const sepW = doc.getStringUnitWidth(' | ') * 10 / sf;
-            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
-            doc.text(company, contentX + roleOnlyW + sepW, firstLineY);
-          }
-          y += ROLE_LINE_H;
-          // Date + location right-aligned
           if (date) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
             doc.text(date, pageW - mR, firstLineY, { align: 'right' });
           }
+          y += ROLE_LINE_H - 1;
+          if (company) {
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+            doc.text(company, contentX, y);
+          }
           if (location) {
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...DATE_CLR);
-            doc.text(location, pageW - mR, firstLineY + ROLE_LINE_H - 0.5, { align: 'right' });
+            doc.text(location, pageW - mR, y, { align: 'right' });
           }
+          y += ROLE_LINE_H;
         } else if (isEduSec) {
           // Degree on left, date+location on right
           const sf = doc.internal.scaleFactor;
@@ -1043,7 +1007,7 @@ async function downloadPDF(content, filename) {
           if (date) { doc.setFontSize(9); rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(date) * 9 / sf); }
           if (location) { rightBlockW = Math.max(rightBlockW, doc.getStringUnitWidth(location) * 9 / sf); }
           const leftW = cW - rightBlockW - 3;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...DARK_GRAY);
           const degreeLines = doc.splitTextToSize(role, leftW);
           degreeLines.forEach((l, li) => { chk(ROLE_LINE_H); doc.text(l, mL, y); if (li < degreeLines.length - 1) y += ROLE_LINE_H; });
           if (date) {
@@ -1062,7 +1026,7 @@ async function downloadPDF(content, filename) {
         } else {
           // Generic (projects, certifications, etc.)
           const sf = doc.internal.scaleFactor;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...DARK_GRAY);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...DARK_GRAY);
           if (date) {
             const dateW2 = doc.getStringUnitWidth(date) * 9 / sf;
             const rW = cW - dateW2 - 4;
@@ -1088,15 +1052,15 @@ async function downloadPDF(content, filename) {
       }
 
       if (item.type === 'bullet') {
-        const bulletX = mL + EXP_INDENT + BULLET_INDENT;
-        const textX = mL + EXP_INDENT + BULLET_HANG;
-        const textW = cW - EXP_INDENT - BULLET_HANG;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+        const bulletX = mL + BULLET_INDENT;
+        const textX = mL + BULLET_HANG;
+        const textW = cW - BULLET_HANG;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
         const wrapped = doc.splitTextToSize(item.text, textW);
         chk(BODY_LINE_H);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...ACCENT);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...DARK_GRAY);
         doc.text('•', bulletX, y - 0.3);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
         wrapped.forEach((l, li) => { chk(BODY_LINE_H); doc.text(l, textX, y); if (li < wrapped.length - 1) y += BODY_LINE_H; });
         y += BODY_LINE_H;
         continue;
@@ -1106,22 +1070,22 @@ async function downloadPDF(content, filename) {
       const inEduSec = /education|university|college|school/i.test(sec.title);
       const isYearGPA = /^\d{4}$|^GPA/i.test(item.text.trim());
       if (inEduSec && !isYearGPA) {
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(...ACCENT);
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(9.5); doc.setTextColor(...ACCENT);
       } else if (inEduSec && isYearGPA) {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...DATE_CLR);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...DATE_CLR);
       } else {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...BODY);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
       }
-      for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
+      const textIndent = isSummarySec ? 3 : 0;
+      for (const l of doc.splitTextToSize(item.text, cW - textIndent * 2)) { chk(BODY_LINE_H); doc.text(l, mL + textIndent, y); y += BODY_LINE_H; }
     }
 
-    // Close last experience entry's timeline
-    if (isExpSec && entryStartY !== null) {
-      const entryEndY = y - 2;
-      doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
-      doc.line(TL_X, entryStartY, TL_X, entryEndY);
-      doc.setFillColor(...ACCENT);
-      doc.circle(TL_X, entryStartY, 1.8, 'F');
+    // Close the Summary/Objective/Profile bordered box now that its height is known
+    if (summaryBoxStartY !== null) {
+      y += 2;
+      doc.setDrawColor(...SEP); doc.setLineWidth(0.3);
+      doc.roundedRect(mL, summaryBoxStartY, cW, y - summaryBoxStartY, 1.5, 1.5, 'S');
+      y += 3;
     }
   }
 
@@ -1142,92 +1106,113 @@ async function downloadDOCX(content, filename) {
   const DARK_GRAY = '2d2d2d';
   const BODY_CLR  = '374151';
   const DATE_CLR  = '4B5563';
+  const SEP_CLR   = 'DDD6FE';
 
   const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
+  const noBorder = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const allNoBorder = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder };
+  const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: SEP_CLR, space: 6 };
+  const boxBorder = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
 
-  // ── Header: name + title + contact with individual underlines
+  // ── Header: inset shaded box (via a single-cell borderless table so the
+  // shading doesn't run full-bleed to the page edge), name + headline + a
+  // light divider + a plain contact row (no per-item underlines)
   if (parsed.name || parsed.headerLines.length > 0) {
     const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
     const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
     const contactItems = [];
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
-    const hdrIndent = { left: -marginTwips, right: -marginTwips };
+    const headerChildren = [];
     if (parsed.name) {
-      paragraphs.push(new Paragraph({
+      headerChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: parsed.name.toUpperCase(), bold: true, size: 30, font: CAL, color: ACCENT })],
-        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        indent: hdrIndent,
-        ...sp(60, 30),
+        children: [new TextRun({ text: parsed.name.toUpperCase(), bold: true, size: 32, font: CAL, color: DARK_GRAY })],
+        ...sp(120, 60),
       }));
     }
     titleLines.forEach(h => {
-      paragraphs.push(new Paragraph({
+      headerChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: h.text, size: 18, font: CAL, color: BODY_CLR })],
-        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        indent: hdrIndent,
-        ...sp(0, 15),
+        children: [new TextRun({ text: h.text, italics: true, size: 21, font: CAL, color: ACCENT })],
+        ...sp(0, 40),
       }));
     });
     if (contactItems.length > 0) {
-      // Each contact item gets its own underline — spacing runs separate them
+      headerChildren.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: SEP_CLR, space: 6 } },
+        children: [new TextRun({ text: '', size: 4 })],
+        ...sp(60, 40),
+      }));
       const contactRuns = [];
       contactItems.forEach((c, i) => {
-        if (i > 0) contactRuns.push(new TextRun({ text: '   ', size: 16, font: CAL }));
-        contactRuns.push(new TextRun({ text: c, size: 16, font: CAL, color: BODY_CLR, underline: { type: 'single', color: ACCENT } }));
+        if (i > 0) contactRuns.push(new TextRun({ text: '   •   ', size: 17, font: CAL, color: ACCENT }));
+        contactRuns.push(new TextRun({ text: c, size: 17, font: CAL, color: BODY_CLR }));
       });
-      paragraphs.push(new Paragraph({
+      headerChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
         children: contactRuns,
-        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        indent: hdrIndent,
-        ...sp(0, 60),
+        ...sp(0, 120),
       }));
     } else {
-      // Close out header shading even with no contact row
-      paragraphs.push(new Paragraph({
-        children: [new TextRun({ text: '', size: 4 })],
-        shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-        indent: hdrIndent,
-        ...sp(0, 60),
-      }));
+      headerChildren.push(new Paragraph({ children: [new TextRun({ text: '', size: 4 })], ...sp(0, 120) }));
     }
+
+    paragraphs.push(new Table({
+      width: { size: contentW, type: WidthType.DXA },
+      borders: allNoBorder,
+      rows: [new TableRow({
+        children: [new TableCell({
+          width: { size: contentW, type: WidthType.DXA },
+          borders: allNoBorder,
+          shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+          margins: { top: 100, bottom: 100, left: 100, right: 100 },
+          children: headerChildren,
+        })],
+      })],
+    }));
+    paragraphs.push(new Paragraph({ children: [new TextRun({ text: '', size: 4 })], ...sp(0, 100) }));
   }
 
   // ── Sections
-  const DOCX_ICONS = { person: '◑', briefcase: '◈', graduation: '◆', code: '<>', award: '★', folder: '▭', globe: '◎' };
-  const noBorder = { style: BorderStyle.NONE, size: 0, color: 'auto' };
-  const allNoBorder = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder };
-
   for (let si = 0; si < parsed.sections.length; si++) {
     const sec = parsed.sections[si];
     const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+    const isSkillsSec = /^(technical\s+)?skills?$|core competencies|^competencies$|key skills|expertise|technologies|technical expertise/i.test(sec.title);
+    const isSummarySec = /summary|objective|profile|about|overview|highlights/i.test(sec.title);
     const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
     const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
-    const secIcon   = DOCX_ICONS[getSectionIconType(sec.title)] || '○';
 
-    // Section bar
-    paragraphs.push(new Paragraph({
-      children: [
-        new TextRun({ text: `${secIcon}  `, bold: true, size: 18, font: CAL, color: ACCENT }),
-        new TextRun({ text: sec.title, bold: true, size: 16, font: CAL, color: ACCENT, allCaps: true }),
-      ],
-      shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
-      indent: { left: -marginTwips, right: -marginTwips, firstLine: marginTwips },
-      ...sp(80, 60),
+    // Section label — small rounded-look pill (single-cell shaded table, sized
+    // to content rather than a full-width bar), no icon
+    paragraphs.push(new Table({
+      width: { size: 0, type: WidthType.AUTO },
+      borders: allNoBorder,
+      rows: [new TableRow({
+        children: [new TableCell({
+          width: { size: 0, type: WidthType.AUTO },
+          borders: allNoBorder,
+          shading: { type: ShadingType.SOLID, color: ACCENT_BG, fill: ACCENT_BG },
+          margins: { top: 40, bottom: 40, left: 120, right: 120 },
+          children: [new Paragraph({
+            children: [new TextRun({ text: sec.title, bold: true, size: 16, font: CAL, color: ACCENT, allCaps: true })],
+          })],
+        })],
+      })],
+      ...sp(si === 0 ? 40 : 140, 100),
     }));
 
     const items = sec.items;
+    let summaryBoxParas = isSummarySec ? [] : null;
     for (let ii = 0; ii < items.length; ii++) {
       const item = items[ii];
 
       if (item.type === 'gap') {
         paragraphs.push(new Paragraph({
           children: [new TextRun({ text: '', size: 8 })],
-          border: { bottom: { color: 'DDD6FE', space: 1, style: BorderStyle.DASHED, size: 2 } },
-          ...sp(0, 60),
+          border: { bottom: { color: SEP_CLR, space: 1, style: BorderStyle.SINGLE, size: 4 } },
+          ...sp(20, 100),
         }));
         continue;
       }
@@ -1237,10 +1222,22 @@ async function downloadDOCX(content, filename) {
         const { role, company } = splitRoleAndCompany(left);
 
         if (isBodySec || (!company && !date && role.length > 60)) {
-          paragraphs.push(new Paragraph({
+          if (isSkillsSec) {
+            // Compact horizontal skill list with purple pipe separators
+            const skills = item.text.split(/\s*[,|•·]\s*/).map(s => s.trim()).filter(Boolean);
+            const runs = [];
+            skills.forEach((s, si2) => {
+              runs.push(new TextRun({ text: s, size: 19, font: CAL, color: BODY_CLR }));
+              if (si2 < skills.length - 1) runs.push(new TextRun({ text: '   |   ', size: 19, font: CAL, color: ACCENT }));
+            });
+            paragraphs.push(new Paragraph({ children: runs, ...sp(0, 60) }));
+            continue;
+          }
+          const p = new Paragraph({
             children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
-            ...sp(0, 30),
-          }));
+            ...sp(0, 60),
+          });
+          if (summaryBoxParas) summaryBoxParas.push(p); else paragraphs.push(p);
           continue;
         }
 
@@ -1252,15 +1249,7 @@ async function downloadDOCX(content, filename) {
         const rightW = contentW - leftW;
 
         if (isExpSec) {
-          // Experience: "● Role | Company" left + date/location right
-          const leftRuns = [
-            new TextRun({ text: '● ', size: 20, font: CAL, color: ACCENT, bold: true }),
-            new TextRun({ text: role, bold: true, size: 21, font: CAL, color: DARK_GRAY }),
-          ];
-          if (company) {
-            leftRuns.push(new TextRun({ text: ' | ', size: 20, font: CAL, color: BODY_CLR }));
-            leftRuns.push(new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT }));
-          }
+          // Role on its own line; Company on the line beneath (no timeline)
           const rightRuns = [];
           if (date)     rightRuns.push(new TextRun({ text: date, size: 17, font: CAL, color: DATE_CLR, break: rightRuns.length ? 1 : 0 }));
           if (location) rightRuns.push(new TextRun({ text: location, size: 17, font: CAL, color: DATE_CLR, break: 1 }));
@@ -1273,16 +1262,22 @@ async function downloadDOCX(content, filename) {
                 new TableCell({
                   width: { size: leftW, type: WidthType.DXA },
                   borders: allNoBorder,
-                  children: [new Paragraph({ children: leftRuns, indent: { left: 180 }, border: { left: { style: BorderStyle.SINGLE, size: 10, color: ACCENT, space: 4 } }, ...sp(80, 20) })],
+                  children: [new Paragraph({ children: [new TextRun({ text: role, bold: true, size: 22, font: CAL, color: DARK_GRAY })], ...sp(100, 10) })],
                 }),
                 new TableCell({
                   width: { size: rightW, type: WidthType.DXA },
                   borders: allNoBorder,
-                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 20) })],
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(100, 10) })],
                 }),
               ],
             })],
           }));
+          if (company) {
+            paragraphs.push(new Paragraph({
+              children: [new TextRun({ text: company, italics: true, size: 20, font: CAL, color: ACCENT })],
+              ...sp(0, 60),
+            }));
+          }
         } else if (isEduSec) {
           // Education: degree left + date/location right
           const rightRuns = [];
@@ -1367,6 +1362,23 @@ async function downloadDOCX(content, filename) {
       paragraphs.push(new Paragraph({
         children: [new TextRun({ text: item.text, size: 20, font: CAL, color: txtColor, italics: inEduSec2 && !isYearGPA })],
         ...sp(0, 30),
+      }));
+    }
+
+    // Summary/Objective/Profile: wrap its collected paragraphs in a light bordered box
+    if (summaryBoxParas && summaryBoxParas.length) {
+      paragraphs.push(new Table({
+        width: { size: contentW, type: WidthType.DXA },
+        borders: allNoBorder,
+        rows: [new TableRow({
+          children: [new TableCell({
+            width: { size: contentW, type: WidthType.DXA },
+            borders: boxBorder,
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+            children: summaryBoxParas,
+          })],
+        })],
+        ...sp(0, 140),
       }));
     }
   }
