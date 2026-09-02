@@ -917,6 +917,17 @@ async function downloadPDF(content, filename) {
       if (curRow.length) contactRows.push(curRow);
     }
 
+    // Name: shrink to fit on one line rather than ever running past the page
+    // edge -- a name is expected to stay on a single line (unlike the title,
+    // which wraps below), so width safety comes from font size instead.
+    const nameText = parsed.name ? parsed.name.toUpperCase() : '';
+    let nameFS = 17;
+    if (nameText) {
+      const sfName = doc.internal.scaleFactor;
+      doc.setFont('helvetica', 'bold');
+      while (nameFS > 10 && doc.getStringUnitWidth(nameText) * nameFS / sfName > cW - 4) nameFS -= 1;
+    }
+
     // Word-wrap each headline/title line too, so a long job title never runs
     // past the page edge (contact items and role/company already wrap the
     // same way -- see above and the isExpSec branch below).
@@ -936,8 +947,8 @@ async function downloadPDF(content, filename) {
 
     let hy = boxTop + 7; // name baseline cursor
     if (parsed.name) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(...DARK_GRAY);
-      doc.text(parsed.name.toUpperCase(), pageW / 2, hy, { align: 'center' });
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(nameFS); doc.setTextColor(...DARK_GRAY);
+      doc.text(nameText, pageW / 2, hy, { align: 'center' });
       hy += 6.5;
     }
     titleLineGroups.forEach(group => group.forEach(l => {
@@ -982,7 +993,6 @@ async function downloadPDF(content, filename) {
 
     const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
     const isSkillsSec = /^(technical\s+)?skills?$|core competencies|^competencies$|key skills|expertise|technologies|technical expertise/i.test(sec.title);
-    const isSummarySec = /summary|objective|profile|about|overview|highlights/i.test(sec.title);
     const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
     const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
 
@@ -998,13 +1008,6 @@ async function downloadPDF(content, filename) {
     doc.setTextColor(...ACCENT);
     doc.text(labelText, mL + pillPadX, y);
     y += pillH - 1.2;
-
-    // Summary/Objective/Profile: light bordered text box around the body copy.
-    // Tracks the starting page too -- if a page break happens mid-summary
-    // (a very long summary), the border is skipped rather than drawing a
-    // corrupted box that spans two different physical pages.
-    let summaryBoxStartY = null; let summaryBoxStartPage = null;
-    if (isSummarySec) { summaryBoxStartY = y; summaryBoxStartPage = doc.internal.getNumberOfPages(); y += 3; }
 
     const items = sec.items;
     for (let ii = 0; ii < items.length; ii++) {
@@ -1041,8 +1044,7 @@ async function downloadPDF(content, filename) {
             continue;
           }
           doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
-          const textIndent = isSummarySec ? 3 : 0;
-          for (const l of doc.splitTextToSize(item.text, cW - textIndent * 2)) { chk(BODY_LINE_H); doc.text(l, mL + textIndent, y); y += BODY_LINE_H; }
+          for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
           continue;
         }
 
@@ -1174,18 +1176,9 @@ async function downloadPDF(content, filename) {
       } else {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BODY);
       }
-      const textIndent = isSummarySec ? 3 : 0;
-      for (const l of doc.splitTextToSize(item.text, cW - textIndent * 2)) { chk(BODY_LINE_H); doc.text(l, mL + textIndent, y); y += BODY_LINE_H; }
+      for (const l of doc.splitTextToSize(item.text, cW)) { chk(BODY_LINE_H); doc.text(l, mL, y); y += BODY_LINE_H; }
     }
 
-    // Close the Summary/Objective/Profile bordered box now that its height is
-    // known -- only if it stayed on a single page (see comment above).
-    if (summaryBoxStartY !== null && doc.internal.getNumberOfPages() === summaryBoxStartPage) {
-      y += 2;
-      doc.setDrawColor(...SEP); doc.setLineWidth(0.3);
-      doc.roundedRect(mL, summaryBoxStartY, cW, y - summaryBoxStartY, 1.5, 1.5, 'S');
-      y += 3;
-    }
   }
 
   await triggerDownload(doc.output('blob'), filename + '.pdf');
@@ -1210,8 +1203,6 @@ async function downloadDOCX(content, filename) {
   const sp = (before = 0, after = 0) => ({ spacing: { before, after } });
   const noBorder = { style: BorderStyle.NONE, size: 0, color: 'auto' };
   const allNoBorder = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder };
-  const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: SEP_CLR, space: 6 };
-  const boxBorder = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
 
   // Contact-type detection + icon glyph — mirrors the PDF renderer's logic so
   // both exports look consistent. Uses basic "Geometric Shapes" Unicode
@@ -1258,7 +1249,7 @@ async function downloadDOCX(content, filename) {
       headerChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
         border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: SEP_CLR, space: 6 } },
-        children: [new TextRun({ text: '', size: 4 })],
+        children: [new TextRun({ text: '', size: 4, font: CAL })],
         ...sp(60, 40),
       }));
       const contactRuns = [];
@@ -1274,7 +1265,7 @@ async function downloadDOCX(content, filename) {
         ...sp(0, 120),
       }));
     } else {
-      headerChildren.push(new Paragraph({ children: [new TextRun({ text: '', size: 4 })], ...sp(0, 120) }));
+      headerChildren.push(new Paragraph({ children: [new TextRun({ text: '', size: 4, font: CAL })], ...sp(0, 120) }));
     }
 
     paragraphs.push(new Table({
@@ -1290,7 +1281,7 @@ async function downloadDOCX(content, filename) {
         })],
       })],
     }));
-    paragraphs.push(new Paragraph({ children: [new TextRun({ text: '', size: 4 })], ...sp(0, 100) }));
+    paragraphs.push(new Paragraph({ children: [new TextRun({ text: '', size: 4, font: CAL })], ...sp(0, 100) }));
   }
 
   // ── Sections
@@ -1298,7 +1289,6 @@ async function downloadDOCX(content, filename) {
     const sec = parsed.sections[si];
     const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
     const isSkillsSec = /^(technical\s+)?skills?$|core competencies|^competencies$|key skills|expertise|technologies|technical expertise/i.test(sec.title);
-    const isSummarySec = /summary|objective|profile|about|overview|highlights/i.test(sec.title);
     const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
     const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
 
@@ -1322,13 +1312,12 @@ async function downloadDOCX(content, filename) {
     }));
 
     const items = sec.items;
-    let summaryBoxParas = isSummarySec ? [] : null;
     for (let ii = 0; ii < items.length; ii++) {
       const item = items[ii];
 
       if (item.type === 'gap') {
         paragraphs.push(new Paragraph({
-          children: [new TextRun({ text: '', size: 8 })],
+          children: [new TextRun({ text: '', size: 8, font: CAL })],
           border: { bottom: { color: SEP_CLR, space: 1, style: BorderStyle.SINGLE, size: 4 } },
           ...sp(20, 100),
         }));
@@ -1351,11 +1340,10 @@ async function downloadDOCX(content, filename) {
             paragraphs.push(new Paragraph({ children: runs, ...sp(0, 60) }));
             continue;
           }
-          const p = new Paragraph({
+          paragraphs.push(new Paragraph({
             children: [new TextRun({ text: item.text, size: 20, font: CAL, color: BODY_CLR })],
             ...sp(0, 60),
-          });
-          if (summaryBoxParas) summaryBoxParas.push(p); else paragraphs.push(p);
+          }));
           continue;
         }
 
@@ -1385,7 +1373,7 @@ async function downloadDOCX(content, filename) {
                 new TableCell({
                   width: { size: rightW, type: WidthType.DXA },
                   borders: allNoBorder,
-                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(100, 10) })],
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '', font: CAL })], ...sp(100, 10) })],
                 }),
               ],
             })],
@@ -1415,7 +1403,7 @@ async function downloadDOCX(content, filename) {
                 new TableCell({
                   width: { size: rightW, type: WidthType.DXA },
                   borders: allNoBorder,
-                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 10) })],
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '', font: CAL })], ...sp(80, 10) })],
                 }),
               ],
             })],
@@ -1442,7 +1430,7 @@ async function downloadDOCX(content, filename) {
                 new TableCell({
                   width: { size: rightW, type: WidthType.DXA },
                   borders: allNoBorder,
-                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '' })], ...sp(80, 10) })],
+                  children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: rightRuns.length ? rightRuns : [new TextRun({ text: '', font: CAL })], ...sp(80, 10) })],
                 }),
               ],
             })],
@@ -1480,23 +1468,6 @@ async function downloadDOCX(content, filename) {
       paragraphs.push(new Paragraph({
         children: [new TextRun({ text: item.text, size: 20, font: CAL, color: txtColor, italics: inEduSec2 && !isYearGPA })],
         ...sp(0, 30),
-      }));
-    }
-
-    // Summary/Objective/Profile: wrap its collected paragraphs in a light bordered box
-    if (summaryBoxParas && summaryBoxParas.length) {
-      paragraphs.push(new Table({
-        width: { size: contentW, type: WidthType.DXA },
-        borders: allNoBorder,
-        rows: [new TableRow({
-          children: [new TableCell({
-            width: { size: contentW, type: WidthType.DXA },
-            borders: boxBorder,
-            margins: { top: 120, bottom: 120, left: 160, right: 160 },
-            children: summaryBoxParas,
-          })],
-        })],
-        ...sp(0, 140),
       }));
     }
   }
