@@ -884,8 +884,29 @@ async function downloadPDF(content, filename) {
 
   // ── Header: inset, rounded-corner light-purple box (not full-bleed) ─────────
   if (parsed.name || parsed.headerLines.length > 0) {
-    const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
-    const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
+    // parseResumeDoc only classifies a header line as "contact" if it
+    // contains an email or phone pattern -- a location/LinkedIn/website on
+    // its own line (no phone/email in it) falls through as "title", which
+    // would otherwise render as a second headline between the job title and
+    // the contact row. A resume only ever has one genuine title line, so:
+    // keep the first "title" line that doesn't itself look like a contact
+    // item (LinkedIn, a bare URL/domain, or a "City, ST" location) as the
+    // real headline, and route every other "title"-classified line into the
+    // contact row instead. This is a local, export-only reclassification --
+    // parseResumeDoc and the Resume Preview are untouched.
+    const looksLikeContactNotTitle = (text) => {
+      const t = text.trim();
+      const tl = t.toLowerCase();
+      if (tl.includes('linkedin')) return true;
+      if (/^https?:\/\//.test(tl)) return true;
+      if (!/\s/.test(t) && /\.(com|io|dev|net|org|co|me)$/i.test(t)) return true;
+      if (/,\s*[A-Z]{2}$/.test(t)) return true;
+      return false;
+    };
+    const allTitleLines = parsed.headerLines.filter(h => h.type === 'title');
+    const realTitleIdx = allTitleLines.findIndex(h => !looksLikeContactNotTitle(h.text));
+    const titleLines = realTitleIdx === -1 ? [] : [allTitleLines[realTitleIdx]];
+    const contactLines = [...parsed.headerLines.filter(h => h.type === 'contact'), ...allTitleLines.filter((h, i) => i !== realTitleIdx)];
     const contactItems = [];
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
@@ -1225,8 +1246,29 @@ async function downloadDOCX(content, filename) {
   // this paragraph natively, so no manual line-wrapping is needed here even
   // for many/long contact items.
   if (parsed.name || parsed.headerLines.length > 0) {
-    const titleLines   = parsed.headerLines.filter(h => h.type === 'title');
-    const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
+    // parseResumeDoc only classifies a header line as "contact" if it
+    // contains an email or phone pattern -- a location/LinkedIn/website on
+    // its own line (no phone/email in it) falls through as "title", which
+    // would otherwise render as a second headline between the job title and
+    // the contact row. A resume only ever has one genuine title line, so:
+    // keep the first "title" line that doesn't itself look like a contact
+    // item (LinkedIn, a bare URL/domain, or a "City, ST" location) as the
+    // real headline, and route every other "title"-classified line into the
+    // contact row instead. This is a local, export-only reclassification --
+    // parseResumeDoc and the Resume Preview are untouched.
+    const looksLikeContactNotTitle = (text) => {
+      const t = text.trim();
+      const tl = t.toLowerCase();
+      if (tl.includes('linkedin')) return true;
+      if (/^https?:\/\//.test(tl)) return true;
+      if (!/\s/.test(t) && /\.(com|io|dev|net|org|co|me)$/i.test(t)) return true;
+      if (/,\s*[A-Z]{2}$/.test(t)) return true;
+      return false;
+    };
+    const allTitleLines = parsed.headerLines.filter(h => h.type === 'title');
+    const realTitleIdx = allTitleLines.findIndex(h => !looksLikeContactNotTitle(h.text));
+    const titleLines = realTitleIdx === -1 ? [] : [allTitleLines[realTitleIdx]];
+    const contactLines = [...parsed.headerLines.filter(h => h.type === 'contact'), ...allTitleLines.filter((h, i) => i !== realTitleIdx)];
     const contactItems = [];
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
 
