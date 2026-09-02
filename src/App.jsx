@@ -952,7 +952,7 @@ async function downloadPDF(content, filename) {
     // Word-wrap each headline/title line too, so a long job title never runs
     // past the page edge (contact items and role/company already wrap the
     // same way -- see above and the isExpSec branch below).
-    doc.setFont('helvetica', 'italic'); doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
     const titleLineGroups = titleLines.map(h => doc.splitTextToSize(h.text, cW - 6));
     const titleLineCount = titleLineGroups.reduce((a, g) => a + g.length, 0);
 
@@ -973,7 +973,7 @@ async function downloadPDF(content, filename) {
       hy += 6.5;
     }
     titleLineGroups.forEach(group => group.forEach(l => {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(10.5); doc.setTextColor(...ACCENT);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...ACCENT);
       doc.text(l, pageW / 2, hy, { align: 'center' });
       hy += 4.2;
     }));
@@ -1283,7 +1283,7 @@ async function downloadDOCX(content, filename) {
     titleLines.forEach(h => {
       headerChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: h.text, italics: true, size: 21, font: CAL, color: ACCENT })],
+        children: [new TextRun({ text: h.text, size: 21, font: CAL, color: ACCENT })],
         ...sp(0, 40),
       }));
     });
