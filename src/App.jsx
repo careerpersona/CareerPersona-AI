@@ -40,7 +40,7 @@ import { parseResumeDoc } from "./lib/resumeParsing";
 import { computeResumeCompleteness } from "./lib/resumeCompleteness";
 import { buildSmartApplyPrompt, validateSmartApplyPackage, summarizeSmartApplyIntegrity } from "./lib/smartApply/generation";
 import { LANGUAGES } from "./i18n/languages";
-import { MapPin, Mail, Phone, Globe, User, Briefcase, GraduationCap, Code2, Award, FolderOpen } from 'lucide-react';
+import { MapPin, Mail, Phone, Globe } from 'lucide-react';
 
 // Disable browser scroll restoration before React mounts — prevents the
 // browser from jumping to the last scroll position on page refresh.
@@ -1888,17 +1888,6 @@ function ContentDisplay({ content, highlightTokens }) {
 // ─── Resume renderer helpers ─────────────────────────────────────────────────
 // detectContactType now lives in ./lib/contactNormalization (Contact
 // Normalization Service) — imported above, not redefined here.
-function getSectionIconType(title) {
-  const t = title.toLowerCase();
-  if (/summary|profile|objective|about|overview|highlight/.test(t)) return 'person';
-  if (/experience|work|employment|career|relevant|internship|volunteer/.test(t)) return 'briefcase';
-  if (/education|academic|university|college|school/.test(t)) return 'graduation';
-  if (/skill|competenc|expertise|technolog/.test(t)) return 'code';
-  if (/cert|license|credential|training|development/.test(t)) return 'award';
-  if (/project|portfolio|open.source/.test(t)) return 'folder';
-  if (/language/.test(t)) return 'globe';
-  return 'person';
-}
 function ContactIcon({ type, size = 13, color = '#6B21E8' }) {
   const props = { size, color, strokeWidth: 1.8, style: { display: 'block', flexShrink: 0 } };
   if (type === 'email')     return <Mail {...props}/>;
@@ -1918,29 +1907,32 @@ function ContactIcon({ type, size = 13, color = '#6B21E8' }) {
   );
   return <MapPin {...props}/>;
 }
-function SectionCircleIcon({ type, size = 28 }) {
-  const iconProps = { size: Math.round(size * 0.55), color: '#fff', strokeWidth: 1.8, style: { display: 'block' } };
-  const icon = {
-    person:     <User {...iconProps}/>,
-    briefcase:  <Briefcase {...iconProps}/>,
-    graduation: <GraduationCap {...iconProps}/>,
-    code:       <Code2 {...iconProps}/>,
-    award:      <Award {...iconProps}/>,
-    folder:     <FolderOpen {...iconProps}/>,
-    globe:      <Globe {...iconProps}/>,
-  }[type] || <User {...iconProps}/>;
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: '#6B21E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      {icon}
-    </div>
-  );
-}
 
 function ResumeDoc({ content, profile }) {
   const parsed = useMemo(() => parseResumeDoc(content), [content]);
 
-  const titleLines  = parsed.headerLines.filter(h => h.type === 'title');
-  const contactLines = parsed.headerLines.filter(h => h.type === 'contact');
+  // parseResumeDoc only classifies a header line as "contact" if it contains
+  // an email or phone pattern -- a location/LinkedIn/website on its own line
+  // falls through as "title" and would otherwise render as a stray extra
+  // headline between the job title and the contact row. Keep the first
+  // "title" line that doesn't itself look like a contact item (LinkedIn, a
+  // bare URL/domain, or a "City, ST" location) as the real headline, and
+  // route every other "title"-classified line into the contact row instead.
+  // Mirrors the same reclassification used in downloadPDF/downloadDOCX so
+  // the Preview matches the exported header.
+  const looksLikeContactNotTitle = (text) => {
+    const t = text.trim();
+    const tl = t.toLowerCase();
+    if (tl.includes('linkedin')) return true;
+    if (/^https?:\/\//.test(tl)) return true;
+    if (!/\s/.test(t) && /\.(com|io|dev|net|org|co|me)$/i.test(t)) return true;
+    if (/,\s*[A-Z]{2}$/.test(t)) return true;
+    return false;
+  };
+  const allTitleLines = parsed.headerLines.filter(h => h.type === 'title');
+  const realTitleIdx = allTitleLines.findIndex(h => !looksLikeContactNotTitle(h.text));
+  const titleLines = realTitleIdx === -1 ? [] : [allTitleLines[realTitleIdx]];
+  const contactLines = [...parsed.headerLines.filter(h => h.type === 'contact'), ...allTitleLines.filter((h, i) => i !== realTitleIdx)];
   const contactItems = [];
   if (contactLines.length > 0) {
     contactLines.forEach(h => h.text.split(/\s*[|·•]\s*/).filter(Boolean).forEach(p => { if (p.trim()) contactItems.push(p.trim()); }));
@@ -1958,217 +1950,166 @@ function ResumeDoc({ content, profile }) {
   const BODY = '#374151';
   const DATE = '#4B5563';
   const SEP  = '#DDD6FE';
+  const PAD  = 24; // horizontal inset, matching the exported PDF's page margins
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 600, overflowY: 'auto', fontFamily: "Calibri,'Helvetica Neue',Arial,sans-serif", fontSize: 13, lineHeight: 1.5, color: '#111' }}>
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 600, overflowY: 'auto', fontFamily: "Calibri,'Helvetica Neue',Arial,sans-serif", fontSize: 13, lineHeight: 1.5, color: '#111', padding: `20px ${PAD}px 24px` }}>
 
-      {/* ── Header: name + title + contacts — all on accentBg per blueprint ── */}
+      {/* ── Header: inset rounded light-purple box, matching the exported PDF ── */}
       {(parsed.name || titleLines.length > 0 || contactItems.length > 0) && (
-        <div style={{ background: ABGC, borderRadius: 16, margin: '0 0 30px 0', padding: '4px 40px 4px', textAlign: 'center' }}>
+        <div style={{ background: ABGC, borderRadius: 16, marginBottom: 24, padding: '20px 24px', textAlign: 'center', boxSizing: 'border-box' }}>
           {parsed.name && (
-            <div style={{ fontSize: 55, fontWeight: 800, color: ACC, textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: 1.0, marginBottom: 0 }}>
+            <div style={{ fontSize: 30, fontWeight: 800, color: DARK, textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.2, overflowWrap: 'anywhere' }}>
               {parsed.name}
             </div>
           )}
           {titleLines.map((h, i) => (
-            <div key={i} style={{ fontSize: 23, fontWeight: 400, color: DARK, lineHeight: 1.0, marginBottom: 4 }}>{h.text}</div>
+            <div key={i} style={{ fontSize: 15, fontWeight: 400, fontStyle: 'normal', color: ACC, lineHeight: 1.3, marginTop: 4, overflowWrap: 'anywhere' }}>{h.text}</div>
           ))}
           {contactItems.length > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 24px' }}>
-              {contactItems.filter(Boolean).map((ci, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: BODY }}>
-                  <ContactIcon type={detectContactType(ci, resolveCountry(profile?.country))} size={15} color={ACC}/>
-                  <span style={{ borderBottom: `1.5px solid ${ACC}`, paddingBottom: 1, lineHeight: 1.3 }}>{ci}</span>
-                </div>
-              ))}
-            </div>
+            <>
+              <div style={{ borderTop: `1px solid ${SEP}`, width: 120, margin: '12px auto 10px' }}/>
+              <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 20px' }}>
+                {contactItems.filter(Boolean).map((ci, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: BODY, maxWidth: '100%', minWidth: 0 }}>
+                    <ContactIcon type={detectContactType(ci, resolveCountry(profile?.country))} size={13} color={ACC}/>
+                    <span style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{ci}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
 
       {/* ── Sections ── */}
       {parsed.sections.map((sec, si) => {
-        const iconType  = getSectionIconType(sec.title);
         const isBodySec = /summary|objective|profile|about|skills?|language/i.test(sec.title);
+        const isSkillsSec = /^(technical\s+)?skills?$|core competencies|^competencies$|key skills|expertise|technologies|technical expertise/i.test(sec.title);
         const isExpSec  = /experience|work|employment|career|relevant|internship|volunteer/i.test(sec.title);
         const isEduSec  = /education|academic|university|college|school/i.test(sec.title);
 
-        // Build experience timeline entry groups
-        let expEntries = null;
-        if (isExpSec) {
-          expEntries = [];
-          let cur = null;
-          sec.items.forEach(item => {
-            if (item.type === 'gap') {
-              if (cur) expEntries.push(cur);
-              cur = null;
-              expEntries.push({ isSep: true });
-            } else if (item.type === 'roleHeader') {
-              if (cur) expEntries.push(cur);
-              cur = { header: item, location: null, bullets: [] };
-            } else if (cur && !cur.location && !cur.bullets.length && item.type === 'text') {
-              cur.location = item.text;
-            } else if (cur && item.type === 'bullet') {
-              cur.bullets.push({ isText: false, text: item.text });
-            } else if (cur && item.type === 'text') {
-              cur.bullets.push({ isText: true, text: item.text });
-            } else {
-              expEntries.push({ isSingle: true, item });
-            }
-          });
-          if (cur) expEntries.push(cur);
-          while (expEntries.length && expEntries[expEntries.length - 1].isSep) expEntries.pop();
-        }
-
         return (
-          <div key={si}>
-            {/* Section bar: accentBg + filled circle icon + uppercase title */}
-            <div style={{ background: ABGC, padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <SectionCircleIcon type={iconType} size={26}/>
-              <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.09em', color: ACC }}>
-                {sec.title}
-              </span>
+          <div key={si} style={{ marginTop: si === 0 ? 0 : 18 }}>
+            {/* Section label — small rounded pill, matching the exported PDF */}
+            <div style={{ display: 'inline-block', background: ABGC, color: ACC, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '4px 12px', borderRadius: 999, marginBottom: 8 }}>
+              {sec.title}
             </div>
 
             {/* Section content */}
-            <div style={{ padding: '8px 24px 6px' }}>
+            <div>
+              {(() => {
+                const elements = [];
+                const items = sec.items;
+                for (let ii = 0; ii < items.length; ii++) {
+                  const item = items[ii];
 
-              {/* ── Experience: timeline layout ── */}
-              {isExpSec && expEntries ? (
-                expEntries.map((entry, ei) => {
-                  if (entry.isSep) return (
-                    <div key={ei} style={{ borderTop: `1px dashed ${SEP}`, margin: '8px 0' }}/>
-                  );
-                  if (entry.isSingle) {
-                    const it = entry.item;
-                    if (it.type === 'bullet') return (
-                      <div key={ei} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 20 }}>
-                        <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
-                        <span>{it.text}</span>
-                      </div>
-                    );
-                    return <div key={ei} style={{ fontSize: 12.5, color: BODY, marginBottom: 3 }}>{it.text}</div>;
+                  if (item.type === 'gap') {
+                    elements.push(<div key={ii} style={{ borderTop: `1px dashed ${SEP}`, margin: '8px 0' }}/>);
+                    continue;
                   }
-                  const { left, date } = extractRoleDate(entry.header.text);
-                  const { role, company } = splitRoleAndCompany(left);
-                  return (
-                    <div key={ei} style={{ position: 'relative', borderLeft: `2px solid ${ACC}`, paddingLeft: 16, marginLeft: 6, paddingTop: 6, paddingBottom: 4, marginBottom: 2 }}>
-                      {/* Timeline dot */}
-                      <div style={{ position: 'absolute', left: -5, top: 9, width: 9, height: 9, borderRadius: '50%', background: ACC }}/>
-                      {/* Role | Company row + date/location */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: DARK, lineHeight: 1.3 }}>
-                          {role}
-                          {company && (
-                            <><span style={{ fontWeight: 400, color: BODY }}> | </span><em style={{ fontStyle: 'italic', color: ACC, fontWeight: 400 }}>{company}</em></>
-                          )}
-                        </div>
-                        {(date || entry.location) && (
-                          <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.4 }}>
-                            {date     && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{date}</div>}
-                            {entry.location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{entry.location}</div>}
-                          </div>
-                        )}
-                      </div>
-                      {/* Bullets */}
-                      {entry.bullets.map((b, bi) =>
-                        b.isText ? (
-                          <div key={bi} style={{ fontSize: 12.5, color: BODY, marginBottom: 3 }}>{b.text}</div>
-                        ) : (
-                          <div key={bi} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3 }}>
-                            <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
-                            <span>{b.text}</span>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                /* ── All other sections ── */
-                (() => {
-                  const elements = [];
-                  const items = sec.items;
-                  for (let ii = 0; ii < items.length; ii++) {
-                    const item = items[ii];
 
-                    if (item.type === 'gap') {
-                      elements.push(<div key={ii} style={{ borderTop: `1px dashed ${SEP}`, margin: '6px 0' }}/>);
-                      continue;
-                    }
-
-                    if (item.type === 'roleHeader') {
-                      const { left, date } = extractRoleDate(item.text);
-                      const { role, company } = splitRoleAndCompany(left);
-                      // Body sections (summary, skills, languages): treat header text as plain body
-                      if (isBodySec || (!company && !date && role.length > 60)) {
-                        elements.push(<div key={ii} style={{ fontSize: 12.5, color: BODY, marginBottom: 5, lineHeight: 1.6 }}>{item.text}</div>);
+                  if (item.type === 'roleHeader') {
+                    const { left, date } = extractRoleDate(item.text);
+                    const { role, company } = splitRoleAndCompany(left);
+                    // Body sections (summary, skills, languages): treat header text as plain body
+                    if (isBodySec || (!company && !date && role.length > 60)) {
+                      if (isSkillsSec) {
+                        // Compact horizontal skill list with purple pipe separators, wraps naturally
+                        const skills = item.text.split(/\s*[,|•·]\s*/).map(s => s.trim()).filter(Boolean);
+                        elements.push(
+                          <div key={ii} style={{ display: 'flex', flexWrap: 'wrap', rowGap: 4, fontSize: 12.5, color: BODY, marginBottom: 5 }}>
+                            {skills.map((s, si2) => (
+                              <span key={si2} style={{ whiteSpace: 'nowrap' }}>
+                                {s}{si2 < skills.length - 1 && <span style={{ color: ACC, margin: '0 8px' }}>|</span>}
+                              </span>
+                            ))}
+                          </div>
+                        );
                         continue;
                       }
-                      // Consume next text item as location
-                      let location = null;
-                      if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
-
-                      if (isEduSec) {
-                        // Education: degree left, date+location right, institution italic below
-                        elements.push(
-                          <div key={ii} style={{ marginTop: 6, marginBottom: 6 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
-                              {(date || location) && (
-                                <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.4 }}>
-                                  {date     && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{date}</div>}
-                                  {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{location}</div>}
-                                </div>
-                              )}
-                            </div>
-                            {company && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 2 }}>{company}</div>}
-                          </div>
-                        );
-                      } else {
-                        // Generic (projects, certs, etc.): name left, year right, company italic below
-                        elements.push(
-                          <div key={ii} style={{ marginTop: 6, marginBottom: 4 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
-                              {date && <span style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0 }}>{date}</span>}
-                            </div>
-                            {company  && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 1 }}>{company}</div>}
-                            {location && <div style={{ fontSize: 11.5, color: DATE, marginTop: 1 }}>{location}</div>}
-                          </div>
-                        );
-                      }
+                      elements.push(<div key={ii} style={{ fontSize: 12.5, color: BODY, marginBottom: 5, lineHeight: 1.6 }}>{item.text}</div>);
                       continue;
                     }
+                    // Consume next text item as location
+                    let location = null;
+                    if (ii + 1 < items.length && items[ii + 1].type === 'text') { location = items[ii + 1].text; ii++; }
 
-                    if (item.type === 'bullet') {
+                    if (isExpSec) {
+                      // Experience: role bold + date right on one row, company italic + location right below (no timeline)
                       elements.push(
-                        <div key={ii} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 4 }}>
-                          <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
-                          <span style={{ minWidth: 0 }}>{item.text}</span>
+                        <div key={ii} style={{ marginTop: 6, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
+                            {date && <span style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0 }}>{date}</span>}
+                          </div>
+                          {(company || location) && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginTop: 2 }}>
+                              {company && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic' }}>{company}</div>}
+                              {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 'auto' }}>{location}</div>}
+                            </div>
+                          )}
                         </div>
                       );
-                      continue;
+                    } else if (isEduSec) {
+                      // Education: degree left, date+location right, institution italic below
+                      elements.push(
+                        <div key={ii} style={{ marginTop: 6, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
+                            {(date || location) && (
+                              <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.4 }}>
+                                {date     && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{date}</div>}
+                                {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap' }}>{location}</div>}
+                              </div>
+                            )}
+                          </div>
+                          {company && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 2 }}>{company}</div>}
+                        </div>
+                      );
+                    } else {
+                      // Generic (projects, certs, etc.): name left, year right, company italic below
+                      elements.push(
+                        <div key={ii} style={{ marginTop: 6, marginBottom: 4 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: DARK }}>{role}</div>
+                            {date && <span style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0 }}>{date}</span>}
+                          </div>
+                          {company  && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic', marginTop: 1 }}>{company}</div>}
+                          {location && <div style={{ fontSize: 11.5, color: DATE, marginTop: 1 }}>{location}</div>}
+                        </div>
+                      );
                     }
+                    continue;
+                  }
 
-                    // Plain text item
-                    const isEduAccent = isEduSec && !/^\d{4}$|^GPA/i.test(item.text.trim());
+                  if (item.type === 'bullet') {
                     elements.push(
-                      <div key={ii} style={{ fontSize: 12.5, color: isEduAccent ? ACC : BODY, fontStyle: isEduAccent ? 'italic' : 'normal', marginBottom: 3 }}>
-                        {item.text}
+                      <div key={ii} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 4 }}>
+                        <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
+                        <span style={{ minWidth: 0 }}>{item.text}</span>
                       </div>
                     );
+                    continue;
                   }
-                  return elements;
-                })()
-              )}
+
+                  // Plain text item
+                  const isEduAccent = isEduSec && !/^\d{4}$|^GPA/i.test(item.text.trim());
+                  elements.push(
+                    <div key={ii} style={{ fontSize: 12.5, color: isEduAccent ? ACC : BODY, fontStyle: isEduAccent ? 'italic' : 'normal', marginBottom: 3 }}>
+                      {item.text}
+                    </div>
+                  );
+                }
+                return elements;
+              })()}
             </div>
           </div>
         );
       })}
 
       {!parsed.name && parsed.sections.length === 0 && (
-        <div style={{ padding: '14px 24px', whiteSpace: 'pre-wrap', fontSize: 13, color: C.text }}>{content}</div>
+        <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, color: C.text }}>{content}</div>
       )}
     </div>
   );
