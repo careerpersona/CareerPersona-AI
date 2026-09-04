@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo, useId } from "react";
 import { Sentry } from "./sentry.js";
-import { supabase, initialLocationHash, initialLocationSearch } from "./lib/supabaseClient";
+import { supabase, initialLocationHash, initialLocationSearch, isImpersonationEntry, impersonationTokenHash, impersonationExpiresAtMs } from "./lib/supabaseClient";
 import { fetchProfile, upsertProfile } from "./data/profile";
 import { exportUserData, downloadJSON } from "./data/accountExport";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE, REFUND_POLICY, FAIR_USE_POLICY, COOKIE_POLICY } from "./legal/documents";
@@ -122,12 +122,15 @@ const useAuth = (setBillingState) => {
   const isRecoveryUrl = initialLocationHash.includes("type=recovery");
   const [user, setUser] = useState(() => {
     if (isRecoveryUrl) return null; // don't restore old session during recovery
+    if (isImpersonationEntry) return null; // never restore a stale local session into an impersonation tab
     try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; }
   });
   const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
   // Show a "Completing sign-in…" screen while Supabase exchanges the callback
-  // token. Cleared by the first onAuthStateChange event (success or failure).
-  const [authResolving, setAuthResolving] = useState(isAuthCallbackUrl && !isRecoveryUrl);
+  // token, INCLUDING the impersonation token-redemption round-trip below --
+  // cleared by the first onAuthStateChange event (success or failure) for a
+  // normal callback, or explicitly on verifyOtp's own result for impersonation.
+  const [authResolving, setAuthResolving] = useState((isAuthCallbackUrl && !isRecoveryUrl) || isImpersonationEntry);
   // Sync ref so async callbacks read the latest value without stale closures.
   const recoveryRef = useRef(isRecoveryUrl);
   const authResolvingRef = useRef(authResolving);
@@ -190,6 +193,32 @@ const useAuth = (setBillingState) => {
         cleanAuthCallbackUrl();
       }
     };
+
+    // True Customer Impersonation: redeem the one-time token via this tab's
+    // own (ephemeral, non-persisting -- see supabaseClient.js) client. This
+    // is the exact same supabase-js verifyOtp() flow a real magic-link
+    // email click would trigger; success sets the client's internal
+    // session and fires the SAME onAuthStateChange SIGNED_IN handler below,
+    // so syncFromSession/profile/billing-state population is completely
+    // unchanged from here on -- this call site's only job is to kick that
+    // off. Skips the getSession() bootstrap below entirely: persistSession
+    // is off for this tab, so getSession() would only ever find nothing.
+    if (isImpersonationEntry) {
+      if (!impersonationTokenHash) { setAuthResolving(false); return () => {}; }
+      supabase.auth.verifyOtp({ token_hash: impersonationTokenHash, type: "magiclink" }).then(({ error }) => {
+        if (error) {
+          console.error("impersonation_token_redeem_failed", error.message);
+          setAuthResolving(false);
+        }
+        // Success: onAuthStateChange's SIGNED_IN branch below takes over.
+      });
+      const { data: impSub } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.user) { syncFromSession(session); resolveAuthCallback(); }
+        else if (event === "SIGNED_OUT") { setUser(null); resolveAuthCallback(); }
+        else resolveAuthCallback();
+      });
+      return () => impSub.subscription.unsubscribe();
+    }
 
     // On load: sync from Supabase session, or clear stale cp_user if session is gone.
     // Without this, an expired refresh token leaves the user visually "signed in"
@@ -2177,6 +2206,57 @@ function ResetPasswordPage({ onDone, t }) {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+// ─── TRUE CUSTOMER IMPERSONATION ───────────────────────────
+// Shown once this tab's impersonation session is gone for any reason
+// (timer expiry, explicit exit, or even the app's own Sign Out). This tab
+// is not a real customer's browser -- it must never fall through to a
+// fresh login of any kind.
+function ImpersonationEndedScreen() {
+  return (
+    <div style={{ minHeight: "100vh", background: C.bgSoft, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><Logo size={56} /></div>
+        <Card>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }}>Impersonation session ended</div>
+          <div style={{ fontSize: 13, color: C.textMuted }}>You may close this tab and return to the Back Office.</div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Persistent, unmistakable banner for the duration of an impersonation
+// session -- rendered wrapping the REAL app tree (not a separate stripped-
+// down view), since the whole point is seeing exactly what the customer
+// sees. Countdown is purely a client-side display; the actual time bound
+// is enforced by exitImpersonation firing when it reaches zero, and
+// backstopped independently by the session's own short, non-refreshing
+// Supabase access-token lifetime regardless of what this timer does.
+function ImpersonationBanner({ expiresAt, onExit }) {
+  const [now, setNow] = useState(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (now == null) return null;
+  const remainingMs = Math.max(0, expiresAt - now);
+  const minutes = Math.floor(remainingMs / 60000);
+  const seconds = Math.floor((remainingMs % 60000) / 1000);
+  return (
+    <div style={{ background: "#FBBF24", color: "#1a1400", padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "center", gap: 14, fontSize: 13, fontWeight: 700, position: "sticky", top: 0, zIndex: 9999 }}>
+      <span>🔒 Support staff is viewing this account — ends in {minutes}:{String(seconds).padStart(2, "0")}</span>
+      <button
+        onClick={onExit}
+        style={{ padding: "3px 12px", borderRadius: 6, border: "1px solid #1a1400", background: "transparent", color: "#1a1400", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+      >
+        Exit impersonation
+      </button>
     </div>
   );
 }
@@ -13236,6 +13316,20 @@ export default function App() {
   // on setBillingState's use inside useAuth (App.jsx, syncFromSession).
   const [billingState, setBillingState] = useState(null);
   const { user, logout, recoveryMode, clearRecovery, authResolving, authLinkErrorCode } = useAuth(setBillingState);
+  // True Customer Impersonation: enforces the 15-minute window (matching
+  // the Back Office's own KV grant TTL) by calling the app's own normal
+  // logout() when it elapses -- the same signOut() a real customer's own
+  // "Sign out" button calls, just triggered by a timer instead of a click.
+  // This is a soft, UX-facing bound; the hard bound is the session's own
+  // short, non-refreshing Supabase access-token lifetime (supabaseClient.js),
+  // which nothing here or in devtools can extend.
+  useEffect(() => {
+    if (!isImpersonationEntry || !impersonationExpiresAtMs || !user) return;
+    const remaining = impersonationExpiresAtMs - Date.now();
+    if (remaining <= 0) { logout(); return; }
+    const id = setTimeout(logout, remaining);
+    return () => clearTimeout(id);
+  }, [user, logout]);
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
   const [applications, setApplications] = useApplications(user?.id);
   const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
@@ -13523,6 +13617,12 @@ export default function App() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
+  // True Customer Impersonation: once this tab's session is gone -- the
+  // timer expired, the admin clicked "Exit impersonation", or even the
+  // app's own normal Sign Out was used -- show a neutral end screen
+  // instead of AuthPage. This tab held someone else's account; it should
+  // never invite a fresh login of any kind.
+  if (!user && isImpersonationEntry) return <ImpersonationEndedScreen />;
   // Logged-out visitors reach these 3 policies via the AuthPage footer (or a
   // direct/shared #legal-* link) without needing an account -- reuses the
   // exact same LegalDocumentPage/content/routes the authenticated app uses,
@@ -13592,6 +13692,7 @@ export default function App() {
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
     <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
+      {isImpersonationEntry && impersonationExpiresAtMs && <ImpersonationBanner expiresAt={impersonationExpiresAtMs} onExit={logout} />}
       <a href="#main-content" style={{ position: "absolute", left: -9999, top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 }} onFocus={e => { e.target.style.left = "16px"; e.target.style.top = "16px"; e.target.style.width = "auto"; e.target.style.height = "auto"; e.target.style.padding = "10px 16px"; e.target.style.background = "#fff"; e.target.style.color = C.purple; e.target.style.fontWeight = 700; e.target.style.borderRadius = 8; e.target.style.boxShadow = "0 2px 10px rgba(0,0,0,0.2)"; }} onBlur={e => { e.target.style.left = "-9999px"; e.target.style.width = "1px"; e.target.style.height = "1px"; e.target.style.padding = 0; e.target.style.boxShadow = "none"; }}>{t("nav.skipToContent")}</a>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');

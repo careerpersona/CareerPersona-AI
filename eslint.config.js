@@ -5,7 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // 'dist' alone only matches the repo-root build output (eslint's ignore
+  // globs aren't gitignore-style recursive-by-default) -- admin/dist needs
+  // its own entry now that the Back Office app (admin/) has its own build.
+  globalIgnores(['dist', 'admin/dist']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
