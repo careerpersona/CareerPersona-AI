@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAdminAuth } from "./useAdminAuth.js";
 import { fetchAIUsage } from "./lib/adminApi.js";
 import { formatUsd } from "./lib/format.js";
@@ -33,6 +33,76 @@ function formatTokens(n) {
 function formatMs(ms) {
   if (ms == null) return "—";
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
+}
+
+// Reads the Worker's byGroup response (11 product-level groups, each with
+// its own feature-tag children -- see AI_FEATURE_TAG_TO_GROUP in worker.js).
+// A dedicated component rather than a generic Table variant: expand/collapse
+// with nested child rows is a genuinely different shape than the flat
+// row-per-column tables elsewhere on this page, same reasoning
+// StaffManagementPage's expandable "Manage" row already established for
+// this codebase (Fragment + a conditional detail block right under the row
+// that opened it, not a separate table).
+function GroupTable({ groups }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggle = (groupId) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
+    return next;
+  });
+
+  if (groups.length === 0) return <div style={{ fontSize: 12.5, color: MUTED }}>No AI requests in this period.</div>;
+
+  const thStyle = { textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textTransform: "uppercase", borderBottom: `1px solid ${BORDER}` };
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: SURFACE }}>
+            <th style={thStyle}>Group</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Requests</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Tokens (in/out)</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g) => {
+            const isOpen = expanded.has(g.groupId);
+            return (
+              <Fragment key={g.groupId}>
+                <tr
+                  onClick={() => toggle(g.groupId)}
+                  style={{ borderBottom: `1px solid ${BORDER}`, cursor: "pointer" }}
+                >
+                  <td style={{ padding: "8px 12px", color: TEXT, fontWeight: 600 }}>
+                    <span
+                      aria-hidden="true"
+                      style={{ display: "inline-block", width: 14, color: MUTED, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.12s" }}
+                    >
+                      ▶
+                    </span>{" "}
+                    {g.groupLabel}
+                  </td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", color: TEXT }}>{g.requests.toLocaleString()}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", color: TEXT }}>{formatTokens(g.tokensIn)} / {formatTokens(g.tokensOut)}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", color: TEXT, fontWeight: 600 }}>{formatUsd(g.costUsd)}</td>
+                </tr>
+                {isOpen && g.children.map((c) => (
+                  <tr key={c.feature} style={{ borderBottom: `1px solid ${BORDER}`, background: "#15131E" }}>
+                    <td style={{ padding: "6px 12px 6px 34px", color: MUTED, fontSize: 12.5 }}>{c.feature}</td>
+                    <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{c.requests.toLocaleString()}</td>
+                    <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{formatTokens(c.tokensIn)} / {formatTokens(c.tokensOut)}</td>
+                    <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{formatUsd(c.costUsd)}</td>
+                  </tr>
+                ))}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function Table({ columns, rows, emptyText }) {
@@ -139,18 +209,8 @@ export default function AIUsagePage() {
               )}
             </Card>
 
-            <Card title="Usage & cost by feature">
-              <Table
-                emptyText="No AI requests in this period."
-                columns={[
-                  { key: "feature", label: "Feature" },
-                  { key: "requests", label: "Requests", align: "right" },
-                  { key: "tokens", label: "Tokens (in/out)", align: "right", render: (r) => `${formatTokens(r.tokensIn)} / ${formatTokens(r.tokensOut)}` },
-                  { key: "costUsd", label: "Cost", align: "right", render: (r) => formatUsd(r.costUsd) },
-                  { key: "errorCount", label: "Errors", align: "right" },
-                ]}
-                rows={d.byFeature}
-              />
+            <Card title="Usage & cost by group">
+              <GroupTable groups={d.byGroup} />
             </Card>
 
             <Card title="Usage & cost by customer (top 20 by cost)">
