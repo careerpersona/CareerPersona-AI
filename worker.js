@@ -3988,6 +3988,87 @@ function planForStatus(subscriptionStatus) {
   return BILLING_STATE_PLAN[computeBillingState({ subscription_status: subscriptionStatus })] ?? "Free";
 }
 
+// Reporting-only grouping layer (Full AI Call-Site Audit work order). Maps
+// every one of the 18 feature tags actually written to ai_request_log/
+// usage_daily_summary into one of 11 product-level groups, verified against
+// the audit's 38 call sites (each call site's tag appears in exactly one
+// group below -- no tag, and therefore no call site, is unmapped or double
+// counted). Does not touch quota/entitlement logic anywhere -- getFeatureLimit
+// and the three Layer 1b/1c/1d gates in handleClaude are untouched; this is
+// purely how the Back Office reads the SAME already-logged rows back.
+//
+//   Resume Intelligence            resume_analysis, resume_analysis_followup
+//                                   (12 call sites: ATS analysis, Deep Insights,
+//                                   Cover Letter, Score Benchmark, Job Fit,
+//                                   AI Resume Builder, apply-fix x2, improve,
+//                                   re-score, image OCR upload)
+//   Interview Intelligence         interview_prep, interview_prep_followup
+//                                   (3 call sites: generate questions,
+//                                   per-answer feedback, mock summary)
+//   Networking Intelligence        networking_outreach
+//                                   (2 call sites: initial message, follow-up)
+//   Market & Opportunity           salary_analysis, job_intelligence,
+//     Intelligence                 opportunity_intelligence (3 call sites)
+//   Smart Apply & Job Tracking     smart_apply, job_tracker_change,
+//                                   job_change_analysis (5 call sites: manual
+//                                   generate/retry/prepare + the two job-change
+//                                   tags neither has a dedicated quota case).
+//                                   Deliberately excludes smart_apply_auto_prep
+//                                   (kept separate below -- distinct scheduled
+//                                   flagship feature, not a manual action).
+//   Career Guidance & Coaching     ai_request (4 call sites: Daily Briefing,
+//                                   Action Plan, Career Progress, AI Career
+//                                   Coach chat -- every one of these omits a
+//                                   feature tag and falls to the default).
+//   LinkedIn Intelligence          linkedin_intelligence,
+//                                   linkedin_intelligence_premium (3 call sites)
+//   Outcome Intelligence           outcome_intelligence (1 call site)
+//   Referral Intelligence          referral_intelligence (1 call site)
+//   Proactive Job Alerts           proactive_job_alerts (3 call sites: Critical
+//                                   Opportunity, Watchlist Activity, Weekly)
+//   Smart Apply Auto Prep          smart_apply_auto_prep (1 call site)
+//
+// 12 + 3 + 2 + 3 + 5 + 4 + 3 + 1 + 1 + 3 + 1 = 38, matching the audit total
+// exactly. Any tag NOT in this map (none exist today -- `feature` is
+// client-supplied and unvalidated, see handleClaude) falls into "other"
+// rather than being silently dropped, so a future/unexpected tag still shows
+// up with its real cost instead of vanishing from the report.
+const AI_FEATURE_TAG_TO_GROUP = {
+  resume_analysis: "resume_intelligence",
+  resume_analysis_followup: "resume_intelligence",
+  interview_prep: "interview_intelligence",
+  interview_prep_followup: "interview_intelligence",
+  networking_outreach: "networking_intelligence",
+  salary_analysis: "market_opportunity_intelligence",
+  job_intelligence: "market_opportunity_intelligence",
+  opportunity_intelligence: "market_opportunity_intelligence",
+  smart_apply: "smart_apply_job_tracking",
+  job_tracker_change: "smart_apply_job_tracking",
+  job_change_analysis: "smart_apply_job_tracking",
+  ai_request: "career_guidance_coaching",
+  linkedin_intelligence: "linkedin_intelligence",
+  linkedin_intelligence_premium: "linkedin_intelligence",
+  outcome_intelligence: "outcome_intelligence",
+  referral_intelligence: "referral_intelligence",
+  proactive_job_alerts: "proactive_job_alerts",
+  smart_apply_auto_prep: "smart_apply_auto_prep",
+};
+
+const AI_FEATURE_GROUP_LABELS = {
+  resume_intelligence: "Resume Intelligence",
+  interview_intelligence: "Interview Intelligence",
+  networking_intelligence: "Networking Intelligence",
+  market_opportunity_intelligence: "Market & Opportunity Intelligence",
+  smart_apply_job_tracking: "Smart Apply & Job Tracking",
+  career_guidance_coaching: "Career Guidance & Coaching",
+  linkedin_intelligence: "LinkedIn Intelligence",
+  outcome_intelligence: "Outcome Intelligence",
+  referral_intelligence: "Referral Intelligence",
+  proactive_job_alerts: "Proactive Job Alerts",
+  smart_apply_auto_prep: "Smart Apply Auto Prep",
+  other: "Other / Unclassified",
+};
+
 function normalizeAiRequestLogRow(row) {
   return {
     userId: row.user_id, feature: row.feature,
@@ -4038,7 +4119,32 @@ function aggregateAiUsageRows(normalizedRows) {
     ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
     : null;
 
-  return { totals, byFeature, byUser, p95LatencyMs };
+  // Group rollup, built from byFeature (not a second pass over normalizedRows)
+  // so a group's totals are always exactly the sum of its own children --
+  // trivially verifiable, never a separately-accumulated number that could
+  // drift from the per-feature figures the admin can already see today.
+  const byGroup = new Map();
+  for (const f of byFeature.values()) {
+    const groupId = AI_FEATURE_TAG_TO_GROUP[f.feature] || "other";
+    const g = byGroup.get(groupId) || {
+      groupId, groupLabel: AI_FEATURE_GROUP_LABELS[groupId] || AI_FEATURE_GROUP_LABELS.other,
+      requests: 0, tokensIn: 0, tokensOut: 0, tokensTotal: 0, costUsd: 0, children: [],
+    };
+    g.requests += f.requests;
+    g.tokensIn += f.tokensIn;
+    g.tokensOut += f.tokensOut;
+    g.tokensTotal += f.tokensIn + f.tokensOut;
+    g.costUsd += f.costUsd; // real logged cost only -- rows with no cost data contribute 0, never estimated
+    g.children.push({
+      feature: f.feature,
+      requests: f.requests, tokensIn: f.tokensIn, tokensOut: f.tokensOut,
+      tokensTotal: f.tokensIn + f.tokensOut, costUsd: f.costUsd,
+    });
+    byGroup.set(groupId, g);
+  }
+  for (const g of byGroup.values()) g.children.sort((a, b) => b.costUsd - a.costUsd);
+
+  return { totals, byFeature, byUser, byGroup, p95LatencyMs };
 }
 
 async function handleAdminAiUsage(request, env) {
@@ -4076,7 +4182,7 @@ async function handleAdminAiUsage(request, env) {
     truncated = total > rows.length;
   }
 
-  const { totals, byFeature, byUser, p95LatencyMs } = aggregateAiUsageRows(normalizedRows);
+  const { totals, byFeature, byUser, byGroup, p95LatencyMs } = aggregateAiUsageRows(normalizedRows);
 
   // Top 20 by cost -- the operationally useful cut (who's actually driving
   // spend), not a full per-user list (Customer Management already covers
@@ -4117,6 +4223,14 @@ async function handleAdminAiUsage(request, env) {
     byFeature: [...byFeature.values()].sort((a, b) => b.costUsd - a.costUsd),
     byCustomer: topUsers.map((u) => ({ ...u, email: people[u.userId]?.email ?? null, fullName: people[u.userId]?.fullName ?? null })),
     byPlan: [...byPlan.values()].sort((a, b) => b.costUsd - a.costUsd),
+    // Additive only -- byFeature/byCustomer/byPlan/totals above are byte-for-byte
+    // unchanged from before this work order, so the existing admin frontend
+    // keeps working without modification. byGroup is new: the same per-feature
+    // figures already in byFeature, organized into the 11 product-level groups
+    // with each group's own feature-tag children (the finest resolution
+    // ai_request_log/usage_daily_summary can distinguish -- several call
+    // sites intentionally share one feature tag today, see the audit).
+    byGroup: [...byGroup.values()].sort((a, b) => b.costUsd - a.costUsd),
   });
 }
 
