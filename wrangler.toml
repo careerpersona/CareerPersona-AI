@@ -21,6 +21,11 @@ crons = [
   "0 6 * * 1",    # Analyses 02+03+05+06 — weekly (Monday 06:00 UTC)
   "0 13 * * *",   # Smart Apply Auto Prep (Premium Feature #5) — daily
   "0 3 * * *",    # Account Deletion Purge (Phase 7) — daily
+  "15 0 * * *",   # AI Usage & Cost: daily ai_request_log -> usage_daily_summary
+                  # aggregation. Same time pg_cron's billing-daily-usage-
+                  # aggregation job used -- replaces it here because pg_cron
+                  # isn't available on this Supabase tier (confirmed live),
+                  # so that job has never actually run.
 ]
 
 # Secrets (set via: npx wrangler secret put <NAME>)

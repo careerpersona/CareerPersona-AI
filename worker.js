@@ -41,6 +41,13 @@
 //                                          blocks self-lockout and demoting/deactivating the last active superadmin
 //   GET  /api/admin/system-health            → worker/database/KV/Stripe status + overall (any active staff role;
 //                                          no audit logging, same as the dashboard -- an aggregate operational read)
+//   GET  /api/admin/ai-usage                 → AI requests/tokens/cost/errors/latency, by feature/customer/plan
+//                                          (billing_ops/superadmin -- company AI spend, same sensitivity as
+//                                          Stripe revenue; no audit logging, aggregate read like the dashboard
+//                                          and System Health). period=today/7d/30d reads ai_request_log
+//                                          (90-day ledger, precise incl. p95 latency); period=90d reads the
+//                                          permanent usage_daily_summary aggregate instead (no p95 -- a daily
+//                                          sum has no per-request distribution)
 //   High-risk customer operations (Work Order 6), all superadmin-only unless noted:
 //   POST /api/admin/customers/refund                    → refund a specific charge (full or partial)
 //   POST /api/admin/customers/subscription/cancel        → cancel a customer's subscription on their behalf
@@ -123,6 +130,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5180",
   "https://careerpersonaai.com",
   "https://admin.careerpersonaai.com", // Back Office — separate app, same Worker
+  "https://careerpersona-admin.pages.dev", // Back Office — temporary production origin until admin.careerpersonaai.com custom domain is wired up
 ];
 
 // KV TTL in seconds, keyed by subscription_status.
@@ -819,13 +827,34 @@ async function verifyStripeSignature(rawBody, sigHeader, secret) {
 // ─── LOGGING ──────────────────────────────────────────────────────────────────
 // Fire-and-forget via ctx.waitUntil — does not block the AI response.
 
-async function logAIRequest(userId, feature, period, tokensIn, tokensOut, env) {
+// AI Usage & Cost metering -- $/1M-token rate per model, matching Anthropic's
+// published pricing at the time this was written. Only one model is ever
+// used today; this stays a map (not a bare constant) so a future model
+// change doesn't silently go uncosted -- an unknown model computes a null
+// cost rather than throwing, so metering can never block a real AI call.
+const AI_MODEL_PRICING = {
+  "claude-sonnet-4-6": { inputPerMTok: 3.00, outputPerMTok: 15.00 },
+};
+
+function computeAiCostUsd(model, tokensIn, tokensOut) {
+  const pricing = AI_MODEL_PRICING[model];
+  if (!pricing || tokensIn == null || tokensOut == null) return null;
+  return (tokensIn / 1_000_000) * pricing.inputPerMTok + (tokensOut / 1_000_000) * pricing.outputPerMTok;
+}
+
+// `options` covers what the Fix KV Health Reporting/Staff Invitation work
+// orders didn't need to touch: success/errorCode/latencyMs/model are all new
+// (AI Usage & Cost work order) -- every existing call site is updated below
+// to pass them, logging failures for the first time as well as successes.
+async function logAIRequest(userId, feature, period, tokensIn, tokensOut, env, options = {}) {
+  const { success = true, errorCode = null, latencyMs = null, model = "claude-sonnet-4-6" } = options;
   await supabasePost("ai_request_log", {
-    user_id: userId, feature,
-    model: "claude-sonnet-4-6",
+    user_id: userId, feature, model,
     tokens_in: tokensIn ?? null,
     tokens_out: tokensOut ?? null,
     period_key: period,
+    success, error_code: errorCode, latency_ms: latencyMs,
+    cost_usd: computeAiCostUsd(model, tokensIn, tokensOut),
   }, env);
 }
 
@@ -1005,6 +1034,7 @@ async function handleClaude(request, env, ctx) {
 
   const model = "claude-sonnet-4-6";
   const max_tokens = Math.min(Number(claudeBody.max_tokens) || 1000, 8000);
+  const startedAt = Date.now();
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -1014,14 +1044,21 @@ async function handleClaude(request, env, ctx) {
     },
     body: JSON.stringify({ ...claudeBody, model, max_tokens }),
   });
+  const latencyMs = Date.now() - startedAt;
   const d = await r.json();
 
   if (!r.ok) {
     console.error('[handleClaude] Anthropic error', r.status, JSON.stringify(d));
   }
 
-  if (r.ok && ctx?.waitUntil) {
-    ctx.waitUntil(logAIRequest(userId, feature, period, d.usage?.input_tokens, d.usage?.output_tokens, env));
+  // AI Usage & Cost work order: logged on every call now, not only success --
+  // a failed call still needs to show up in the Back Office's error-rate and
+  // latency figures. tokens_in/out are absent on failure (Anthropic didn't
+  // return usage), so cost_usd computes to null for that row, same as before.
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(logAIRequest(userId, feature, period, d.usage?.input_tokens, d.usage?.output_tokens, env, {
+      success: r.ok, errorCode: r.ok ? null : String(r.status), latencyMs, model,
+    }));
   }
 
   return corsResponse(request, d, r.status);
@@ -1695,6 +1732,7 @@ const PROACTIVE_ALERTS_SEARCH_RESULTS_PAGE = 1;
 // auth/quota wrapper (the scheduler checks quota itself, per-user, before
 // calling this -- see checkAndConsumeAIQuota).
 async function callClaudeServerSide(prompt, maxTokens, env) {
+  const startedAt = Date.now();
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -1704,13 +1742,14 @@ async function callClaudeServerSide(prompt, maxTokens, env) {
     },
     body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: Math.min(maxTokens, 8000), messages: [{ role: "user", content: prompt }] }),
   });
+  const latencyMs = Date.now() - startedAt;
   const d = await r.json();
   if (!r.ok) {
     console.error("[proactiveAlerts] Claude error", r.status, JSON.stringify(d));
-    return { text: null, usage: null };
+    return { text: null, usage: null, latencyMs, ok: false, errorCode: String(r.status) };
   }
   const text = (d.content?.[0]?.text || "").replace(/```json|```/g, "").trim();
-  return { text, usage: d.usage };
+  return { text, usage: d.usage, latencyMs, ok: true, errorCode: null };
 }
 
 // Delivery Pipeline needs upsert semantics (alert_candidates is re-evaluated
@@ -1880,7 +1919,11 @@ async function runCriticalOpportunityCadence(userId, env) {
   if (allowed) {
     const built = buildCriticalOpportunityPrompt(capResult.deliver);
     if (built) {
-      const { text, usage } = await callClaudeServerSide(built.prompt, 900, env);
+      const { text, usage, latencyMs, ok, errorCode } = await callClaudeServerSide(built.prompt, 900, env);
+      // Logged unconditionally now (AI Usage & Cost work order) -- a failed
+      // call still needs to show up in the Back Office's error-rate figures,
+      // not just successes.
+      await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage?.input_tokens, usage?.output_tokens, env, { success: ok, errorCode, latencyMs, model: CLAUDE_MODEL });
       if (text) {
         const parsed = parseCriticalOpportunityResponse(text, capResult.deliver);
         if (parsed) {
@@ -1895,7 +1938,6 @@ async function runCriticalOpportunityCadence(userId, env) {
             });
           }
         }
-        if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
       }
     }
   }
@@ -1922,9 +1964,9 @@ async function runWatchlistActivityCadence(userId, env) {
   const built = buildWatchlistActivityPrompt(states);
   if (!built) return { userId, ranAnalysis: false, reason: "nothing_active" };
 
-  const { text, usage } = await callClaudeServerSide(built.prompt, 500, env);
+  const { text, usage, latencyMs, ok, errorCode } = await callClaudeServerSide(built.prompt, 500, env);
   const summary = text ? parseWatchlistActivityResponse(text) : null;
-  if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
+  await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage?.input_tokens, usage?.output_tokens, env, { success: ok, errorCode, latencyMs, model: CLAUDE_MODEL });
   if (summary) {
     // The exact deterministic states given to the AI travel with its output --
     // the UI renders them side by side, so "which companies/signals produced
@@ -1986,9 +2028,9 @@ async function runWeeklyCadence(userId, env) {
   });
   if (!built) return { userId, ranAnalysis: false, reason: "nothing_available" };
 
-  const { text, usage } = await callClaudeServerSide(built.prompt, 2200, env);
+  const { text, usage, latencyMs, ok, errorCode } = await callClaudeServerSide(built.prompt, 2200, env);
   const analyses = text ? parseWeeklyAnalysesResponse(text, built) : null;
-  if (usage) await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage.input_tokens, usage.output_tokens, env);
+  await logAIRequest(userId, "proactive_job_alerts", getPeriodKey(await getSubscription(userId, env)), usage?.input_tokens, usage?.output_tokens, env, { success: ok, errorCode, latencyMs, model: CLAUDE_MODEL });
   if (analyses) {
     // Same evidence-pairing discipline as the other two cadences: each
     // section's own deterministic input travels alongside its AI text, keyed
@@ -2232,7 +2274,13 @@ async function runSmartApplyAutoPrepForUser(userId, skillDictionary, env) {
       // No browser UserContext session exists to build a ctx block from --
       // buildSmartApplyPrompt already degrades gracefully with an empty one.
       const prompt = buildSmartApplyPrompt("", resume.content, entry.job, profile);
-      const { text } = await callClaudeServerSide(prompt, 8000, env);
+      const { text, usage, latencyMs, ok, errorCode } = await callClaudeServerSide(prompt, 8000, env);
+      // AI Usage & Cost work order -- this was the one AI call site that
+      // never logged to ai_request_log at all (usage was silently
+      // discarded). Logged immediately after the call, before the
+      // text/JSON checks below, so real Anthropic spend is captured even
+      // when what comes back afterward fails to parse.
+      await logAIRequest(userId, "smart_apply_auto_prep", getPeriodKey(await getSubscription(userId, env)), usage?.input_tokens, usage?.output_tokens, env, { success: ok, errorCode, latencyMs, model: CLAUDE_MODEL });
       if (!text) throw new Error("empty_claude_response");
       const braceStart = text.indexOf("{"), braceEnd = text.lastIndexOf("}");
       const clean = (braceStart >= 0 && braceEnd > braceStart) ? text.slice(braceStart, braceEnd + 1) : text;
@@ -3855,6 +3903,223 @@ async function handleAdminSystemHealth(request, env) {
   });
 }
 
+// ─── AI USAGE & COST: DAILY HISTORICAL AGGREGATION ─────────────────────────
+// Replaces the pg_cron job usage_daily_summary was designed around
+// (billing-daily-usage-aggregation, re-scheduled by
+// 20260905010000_ai_usage_historical_retention.sql) -- confirmed live that
+// pg_cron isn't available on this Supabase tier, so that job has never
+// actually executed. Same source/target tables, same daily 00:15 UTC
+// timing, same "sum yesterday's ai_request_log rows, upsert into
+// usage_daily_summary" shape -- just run by the Worker's own Cron Trigger
+// instead of Postgres's scheduler, through the exact same service-role path
+// every other scheduled job in this file already uses. No new endpoint, no
+// credentials exposed anywhere a request could reach them.
+//
+// Idempotent by construction, not by accident: each run recomputes the
+// FULL previous UTC day's totals from ai_request_log (immutable once
+// written -- nothing ever updates a row after logAIRequest inserts it) and
+// upserts via supabaseUpsert's existing resolution=merge-duplicates Prefer
+// header, which REPLACES the conflicting row's columns outright rather than
+// incrementing them. Running this twice for the same day recomputes and
+// writes the identical numbers both times -- never doubled.
+async function runAiUsageDailyAggregation(env) {
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const yesterdayUTC = new Date(todayUTC.getTime() - 86400000);
+  const summaryDate = yesterdayUTC.toISOString().slice(0, 10);
+
+  // A closed date range needs two `created_at` filters (gte + lt) --
+  // supabaseGet's flat params object can only hold one value per key (a
+  // second entry would just overwrite the first), so this one query is
+  // built directly instead of stretching that helper for a shape nothing
+  // else in the file needs.
+  const url = new URL(`${env.SUPABASE_URL}/rest/v1/ai_request_log`);
+  url.searchParams.set("select", "user_id,feature,tokens_in,tokens_out,success,latency_ms,cost_usd");
+  url.searchParams.append("created_at", `gte.${yesterdayUTC.toISOString()}`);
+  url.searchParams.append("created_at", `lt.${todayUTC.toISOString()}`);
+  url.searchParams.set("limit", "50000"); // one day's volume, comfortably above PostgREST's 1000-row default cap
+  const r = await fetch(url.toString(), { headers: sbHeaders(env) });
+  if (!r.ok) throw new Error(`ai_usage_aggregation_fetch_${r.status}`);
+  const rows = await r.json();
+
+  const buckets = new Map(); // `${user_id} ${feature}` -> running aggregate for summaryDate
+  for (const row of rows) {
+    const key = `${row.user_id} ${row.feature}`;
+    const b = buckets.get(key) || {
+      user_id: row.user_id, summary_date: summaryDate, feature: row.feature,
+      request_count: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0, error_count: 0, latency_sum_ms: 0,
+    };
+    b.request_count++;
+    b.tokens_in += row.tokens_in || 0;
+    b.tokens_out += row.tokens_out || 0;
+    b.cost_usd += row.cost_usd || 0;
+    if (!row.success) b.error_count++;
+    b.latency_sum_ms += row.latency_ms || 0;
+    buckets.set(key, b);
+  }
+
+  const summaryRows = [...buckets.values()];
+  if (summaryRows.length > 0) await supabaseUpsert("usage_daily_summary", summaryRows, "user_id,summary_date,feature", env);
+  return { summaryDate, buckets: summaryRows.length, sourceRows: rows.length };
+}
+
+// ─── BACK OFFICE: AI USAGE & COST ──────────────────────────────────────────
+// billing_ops/superadmin only, matching the existing BILLING_MGMT_ROLES --
+// this is company AI spend, the same sensitivity class as the Stripe revenue
+// billing_ops/superadmin already see elsewhere; support does not get it,
+// same precedent as every other billing-adjacent view.
+//
+// Two sources, one per period, never blended in the same response:
+//   - today/7d/30d: raw ai_request_log -- all three comfortably inside its
+//     90-day retention, more precise (per-request latency, so p95 is real).
+//   - 90d: usage_daily_summary -- the permanent aggregate (correction:
+//     ai_request_log's 90-day TTL cleanup would otherwise silently lose
+//     cost/error/latency history; usage_daily_summary now rolls those up
+//     nightly, see 20260905010000_ai_usage_historical_retention.sql, and
+//     survives the cleanup). p95 latency is NOT reconstructable from a daily
+//     sum, so it's reported as null for this period rather than guessed.
+// Both sources are normalized to the same intermediate shape so byFeature/
+// byUser/byPlan/totals are computed by one shared reducer regardless of
+// which table answered the query -- no duplicated aggregation logic.
+const AI_USAGE_WINDOW_DAYS = { today: 1, "7d": 7, "30d": 30, "90d": 90 };
+const AI_USAGE_HISTORICAL_PERIODS = new Set(["90d"]);
+
+function planForStatus(subscriptionStatus) {
+  return BILLING_STATE_PLAN[computeBillingState({ subscription_status: subscriptionStatus })] ?? "Free";
+}
+
+function normalizeAiRequestLogRow(row) {
+  return {
+    userId: row.user_id, feature: row.feature,
+    requests: 1, tokensIn: row.tokens_in || 0, tokensOut: row.tokens_out || 0,
+    costUsd: row.cost_usd || 0, errorCount: row.success ? 0 : 1,
+    latencySumMs: row.latency_ms != null ? row.latency_ms : 0,
+    latencyCount: row.latency_ms != null ? 1 : 0,
+    rawLatencyMs: row.latency_ms, // only individual rows can feed a percentile
+  };
+}
+
+function normalizeUsageDailySummaryRow(row) {
+  return {
+    userId: row.user_id, feature: row.feature,
+    requests: row.request_count || 0, tokensIn: row.tokens_in || 0, tokensOut: row.tokens_out || 0,
+    costUsd: row.cost_usd || 0, errorCount: row.error_count || 0,
+    latencySumMs: row.latency_sum_ms || 0,
+    latencyCount: row.request_count || 0, // every logged call carries a latency_ms, so request_count is the right denominator for this day's average
+    rawLatencyMs: null, // a daily sum has no per-request distribution -- no percentile from this source, by design
+  };
+}
+
+function aggregateAiUsageRows(normalizedRows) {
+  const totals = { requests: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, errorCount: 0, latencySumMs: 0, latencyCount: 0 };
+  const byFeature = new Map();
+  const byUser = new Map();
+  const latencies = [];
+
+  for (const r of normalizedRows) {
+    totals.requests += r.requests; totals.tokensIn += r.tokensIn; totals.tokensOut += r.tokensOut;
+    totals.costUsd += r.costUsd; totals.errorCount += r.errorCount;
+    totals.latencySumMs += r.latencySumMs; totals.latencyCount += r.latencyCount;
+    if (r.rawLatencyMs != null) latencies.push(r.rawLatencyMs);
+
+    const f = byFeature.get(r.feature) || { feature: r.feature, requests: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, errorCount: 0 };
+    f.requests += r.requests; f.tokensIn += r.tokensIn; f.tokensOut += r.tokensOut; f.costUsd += r.costUsd; f.errorCount += r.errorCount;
+    byFeature.set(r.feature, f);
+
+    const u = byUser.get(r.userId) || { userId: r.userId, requests: 0, tokensIn: 0, tokensOut: 0, costUsd: 0 };
+    u.requests += r.requests; u.tokensIn += r.tokensIn; u.tokensOut += r.tokensOut; u.costUsd += r.costUsd;
+    byUser.set(r.userId, u);
+  }
+
+  latencies.sort((a, b) => a - b);
+  // Only meaningful when every contributing row had a real percentile-eligible
+  // latency (i.e. the raw ai_request_log path) -- see normalizeUsageDailySummaryRow.
+  const p95LatencyMs = latencies.length === totals.latencyCount && latencies.length
+    ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
+    : null;
+
+  return { totals, byFeature, byUser, p95LatencyMs };
+}
+
+async function handleAdminAiUsage(request, env) {
+  const admin = await requireAdmin(request, env, { roles: BILLING_MGMT_ROLES });
+  if (!admin.ok) return corsResponse(request, { error: admin.error }, admin.status);
+
+  const url = new URL(request.url);
+  const requestedPeriod = url.searchParams.get("period");
+  const period = AI_USAGE_WINDOW_DAYS[requestedPeriod] ? requestedPeriod : "30d";
+  const isHistorical = AI_USAGE_HISTORICAL_PERIODS.has(period);
+
+  let normalizedRows, truncated;
+  if (isHistorical) {
+    // usage_daily_summary has no per-row created_at -- summary_date is a
+    // plain DATE, so the cutoff is computed the same way, just compared to
+    // a date instead of a timestamp.
+    const sinceDate = new Date(Date.now() - AI_USAGE_WINDOW_DAYS[period] * 86400000).toISOString().slice(0, 10);
+    const { rows, total } = await supabaseGetWithCount("usage_daily_summary", {
+      select: "user_id,feature,request_count,tokens_in,tokens_out,cost_usd,error_count,latency_sum_ms,summary_date",
+      summary_date: `gte.${sinceDate}`,
+      order: "summary_date.desc",
+      limit: "5000",
+    }, env);
+    normalizedRows = rows.map(normalizeUsageDailySummaryRow);
+    truncated = total > rows.length;
+  } else {
+    const since = new Date(Date.now() - AI_USAGE_WINDOW_DAYS[period] * 86400000).toISOString();
+    const { rows, total } = await supabaseGetWithCount("ai_request_log", {
+      select: "user_id,feature,model,tokens_in,tokens_out,success,error_code,latency_ms,cost_usd,created_at",
+      created_at: `gte.${since}`,
+      order: "created_at.desc",
+      limit: "5000",
+    }, env);
+    normalizedRows = rows.map(normalizeAiRequestLogRow);
+    truncated = total > rows.length;
+  }
+
+  const { totals, byFeature, byUser, p95LatencyMs } = aggregateAiUsageRows(normalizedRows);
+
+  // Top 20 by cost -- the operationally useful cut (who's actually driving
+  // spend), not a full per-user list (Customer Management already covers
+  // browsing every customer).
+  const topUsers = [...byUser.values()].sort((a, b) => b.costUsd - a.costUsd).slice(0, 20);
+  const people = await fetchProfilesById(topUsers.map((u) => u.userId), env);
+
+  // Plan breakdown needs every distinct user in the window, not just the
+  // cost-ranked top 20 -- a low-cost-but-frequent Free-plan caller shouldn't
+  // be invisible from the plan-level view just because they're not a top
+  // spender individually.
+  const allUserIds = [...byUser.keys()];
+  const profileRows = allUserIds.length
+    ? await supabaseGet("profiles", { id: `in.(${allUserIds.join(",")})`, select: "id,subscription_status" }, env).catch(() => [])
+    : [];
+  const planByUserId = Object.fromEntries(profileRows.map((p) => [p.id, planForStatus(p.subscription_status)]));
+  const byPlan = new Map();
+  for (const u of byUser.values()) {
+    const plan = planByUserId[u.userId] || "Free";
+    const p = byPlan.get(plan) || { plan, requests: 0, tokensIn: 0, tokensOut: 0, costUsd: 0 };
+    p.requests += u.requests; p.tokensIn += u.tokensIn; p.tokensOut += u.tokensOut; p.costUsd += u.costUsd;
+    byPlan.set(plan, p);
+  }
+
+  return corsResponse(request, {
+    period,
+    source: isHistorical ? "usage_daily_summary" : "ai_request_log",
+    truncated,
+    totals: {
+      requests: totals.requests,
+      tokensIn: totals.tokensIn, tokensOut: totals.tokensOut, tokensTotal: totals.tokensIn + totals.tokensOut,
+      costUsd: totals.costUsd,
+      errorCount: totals.errorCount,
+      errorRate: totals.requests ? totals.errorCount / totals.requests : 0,
+      avgLatencyMs: totals.latencyCount ? Math.round(totals.latencySumMs / totals.latencyCount) : null,
+      p95LatencyMs,
+    },
+    byFeature: [...byFeature.values()].sort((a, b) => b.costUsd - a.costUsd),
+    byCustomer: topUsers.map((u) => ({ ...u, email: people[u.userId]?.email ?? null, fullName: people[u.userId]?.fullName ?? null })),
+    byPlan: [...byPlan.values()].sort((a, b) => b.costUsd - a.costUsd),
+  });
+}
+
 // ─── BACK OFFICE: HIGH-RISK CUSTOMER OPERATIONS (Work Order 6) ─────────────
 // Every operation here is superadmin-only except billing-portal-link
 // generation (see BILLING_MGMT_ROLES below it, matching the existing
@@ -4444,6 +4709,7 @@ export default {
       if (method === "GET" && path === "/api/admin/staff-directory") return handleAdminStaffDirectory(request, env);
       if (method === "GET" && path === "/api/admin/staff/invitations") return handleAdminStaffInvitationsList(request, env);
       if (method === "GET" && path === "/api/admin/system-health") return handleAdminSystemHealth(request, env);
+      if (method === "GET" && path === "/api/admin/ai-usage") return handleAdminAiUsage(request, env);
       if (method === "GET" && path === "/api/admin/customers/impersonate/status") return handleAdminImpersonateStatus(request, env);
 
       if (method === "POST") {
@@ -4490,9 +4756,9 @@ export default {
   },
 
   // Scheduler entry point (Cron Triggers, see wrangler.toml). event.cron
-  // identifies which of the 4 registered schedules fired; ctx.waitUntil keeps
-  // the invocation alive until the full user loop (bounded by
-  // PROACTIVE_ALERTS_TIME_BUDGET_MS) finishes.
+  // identifies which registered schedule fired; ctx.waitUntil keeps the
+  // invocation alive until the work (bounded by PROACTIVE_ALERTS_TIME_BUDGET_MS
+  // for the Proactive Alerts branch) finishes.
   async scheduled(event, env, ctx) {
     if (event.cron === "0 13 * * *") {
       ctx.waitUntil(
@@ -4503,6 +4769,12 @@ export default {
     if (event.cron === "0 3 * * *") {
       ctx.waitUntil(
         runAccountDeletionPurgeSchedule(env).catch(e => console.error("[accountDeletion] schedule_error", e.message))
+      );
+      return;
+    }
+    if (event.cron === "15 0 * * *") {
+      ctx.waitUntil(
+        runAiUsageDailyAggregation(env).catch(e => console.error("[aiUsageAggregation] schedule_error", e.message))
       );
       return;
     }

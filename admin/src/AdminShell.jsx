@@ -10,6 +10,7 @@ import SupportCaseDetailPage from "./SupportCaseDetailPage.jsx";
 import SupportCaseFormPage from "./SupportCaseFormPage.jsx";
 import StaffManagementPage from "./StaffManagementPage.jsx";
 import SystemHealthPage from "./SystemHealthPage.jsx";
+import AIUsagePage from "./AIUsagePage.jsx";
 import { ACCENT, BG, SURFACE, BORDER, TEXT, MUTED, WARNING } from "./lib/theme.js";
 
 // Hash routing, not a router library -- same convention the customer app
@@ -40,6 +41,7 @@ function parseHash() {
   if (h === "support-cases") return { view: "supportCases" };
   if (h === "staff") return { view: "staff" };
   if (h === "system-health") return { view: "systemHealth" };
+  if (h === "ai-usage") return { view: "aiUsage" };
   return { view: "home" };
 }
 
@@ -78,6 +80,15 @@ function canManageSupportCases(role) {
 // CUSTOMER_MGMT_ROLES elsewhere.
 function canManageStaff(role) {
   return hasRole(role, []);
+}
+
+// AI Usage & Cost -- mirrors the Worker's own BILLING_MGMT_ROLES allowlist
+// (billing_ops, superadmin; support excluded), same gate as canManageBilling.
+// This is company AI spend, not customer billing data, but the sensitivity
+// class (financial, internal-only) is the same, so it reuses the same role
+// boundary rather than inventing a separate one.
+function canManageAiUsage(role) {
+  return hasRole(role, ["billing_ops"]);
 }
 
 function NavLink({ active, onClick, children }) {
@@ -145,6 +156,7 @@ export default function AdminShell() {
   const hasBillingAccess = canManageBilling(role); // billing page: billing_ops/superadmin
   const hasSupportCaseAccess = canManageSupportCases(role); // support/superadmin
   const hasStaffAccess = canManageStaff(role); // superadmin only
+  const hasAiUsageAccess = canManageAiUsage(role); // billing_ops/superadmin
   const isSuperadmin = hasRole(role, []); // matches HIGH_RISK_ROLES server-side
   // List access: anyone who can reach either full detail or billing --
   // mirrors the Worker's CUSTOMER_LOOKUP_ROLES exactly (support ∪
@@ -214,6 +226,7 @@ export default function AdminShell() {
 
   const goToStaff = () => { window.location.hash = "#staff"; };
   const goToSystemHealth = () => { window.location.hash = "#system-health"; };
+  const goToAiUsage = () => { window.location.hash = "#ai-usage"; };
 
   let main;
   if (route.view === "customers" || route.view === "customerDetail" || route.view === "customerBilling") {
@@ -256,6 +269,10 @@ export default function AdminShell() {
     // the caller is support/billing_ops/superadmin (AdminAuthProvider only
     // renders AdminShell once status === "authorized").
     main = <SystemHealthPage />;
+  } else if (route.view === "aiUsage") {
+    main = hasAiUsageAccess
+      ? <AIUsagePage />
+      : <ModuleAccessDenied requiredRoleLabel="AI Usage & Cost requires the Billing Ops or Superadmin role." />;
   } else {
     // Every active staff role can load the dashboard (handleAdminDashboard
     // has no role restriction at the auth layer) -- which sections it
@@ -282,6 +299,9 @@ export default function AdminShell() {
             )}
             {hasStaffAccess && (
               <NavLink active={route.view === "staff"} onClick={goToStaff}>Staff</NavLink>
+            )}
+            {hasAiUsageAccess && (
+              <NavLink active={route.view === "aiUsage"} onClick={goToAiUsage}>AI Usage</NavLink>
             )}
             <NavLink active={route.view === "systemHealth"} onClick={goToSystemHealth}>System Health</NavLink>
           </nav>

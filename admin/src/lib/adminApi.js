@@ -311,3 +311,15 @@ export async function fetchStaffInvitations(accessToken) {
 export async function revokeStaffInvitation(accessToken, userId) {
   return postAdminApi(accessToken, "/api/admin/staff/invite/revoke", { userId });
 }
+
+// ─── AI Usage & Cost ─────────────────────────────────────────────────────────
+export async function fetchAIUsage(accessToken, period) {
+  try {
+    const res = await fetch(`${WORKER_URL}/api/admin/ai-usage?period=${encodeURIComponent(period)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return await readAdminApiResponse(res);
+  } catch {
+    return { ok: false, reason: "network_error" };
+  }
+}

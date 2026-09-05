@@ -32,3 +32,16 @@ export function formatMoney(amountMinorUnits, currency) {
     return `${(amountMinorUnits / 100).toFixed(2)} ${currency?.toUpperCase()}`;
   }
 }
+
+// AI Usage & Cost: a plain USD float (not Stripe minor units) that's often
+// well under a cent per call -- formatMoney's 2-decimal Intl formatting
+// would round e.g. $0.0034 down to "$0.00". Always shows 2-6 decimals via
+// Intl's own significant-digit rounding, never a hardcoded fixed precision.
+export function formatUsd(amountUsd) {
+  if (amountUsd == null) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(amountUsd);
+  } catch {
+    return `$${amountUsd.toFixed(6)}`;
+  }
+}
