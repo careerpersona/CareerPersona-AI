@@ -89,8 +89,8 @@ function GroupTable({ groups }) {
                   <td style={{ padding: "8px 12px", textAlign: "right", color: TEXT, fontWeight: 600 }}>{formatUsd(g.costUsd)}</td>
                 </tr>
                 {isOpen && g.children.map((c) => (
-                  <tr key={c.feature} style={{ borderBottom: `1px solid ${BORDER}`, background: "#15131E" }}>
-                    <td style={{ padding: "6px 12px 6px 34px", color: MUTED, fontSize: 12.5 }}>{c.feature}</td>
+                  <tr key={c.callSiteId || c.feature} style={{ borderBottom: `1px solid ${BORDER}`, background: "#15131E" }}>
+                    <td style={{ padding: "6px 12px 6px 34px", color: MUTED, fontSize: 12.5 }}>{c.label || c.feature}</td>
                     <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{c.requests.toLocaleString()}</td>
                     <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{formatTokens(c.tokensIn)} / {formatTokens(c.tokensOut)}</td>
                     <td style={{ padding: "6px 12px", textAlign: "right", color: MUTED, fontSize: 12.5 }}>{formatUsd(c.costUsd)}</td>
@@ -211,6 +211,9 @@ export default function AIUsagePage() {
 
             <Card title="Usage & cost by group">
               <GroupTable groups={d.byGroup} />
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 10 }}>
+                Always shows all 11 groups and their 38 known call sites, including ones with no usage yet ($0.00 / 0). Where several call sites share one underlying log tag (e.g. Proactive Job Alerts' three cadences), each shows that tag's real combined total rather than a fabricated split — sum by group, not by adding every row.
+              </div>
             </Card>
 
             <Card title="Usage & cost by customer (top 20 by cost)">

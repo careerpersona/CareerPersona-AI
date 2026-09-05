@@ -4029,30 +4029,13 @@ function planForStatus(subscriptionStatus) {
 //   Smart Apply Auto Prep          smart_apply_auto_prep (1 call site)
 //
 // 12 + 3 + 2 + 3 + 5 + 4 + 3 + 1 + 1 + 3 + 1 = 38, matching the audit total
-// exactly. Any tag NOT in this map (none exist today -- `feature` is
-// client-supplied and unvalidated, see handleClaude) falls into "other"
-// rather than being silently dropped, so a future/unexpected tag still shows
-// up with its real cost instead of vanishing from the report.
-const AI_FEATURE_TAG_TO_GROUP = {
-  resume_analysis: "resume_intelligence",
-  resume_analysis_followup: "resume_intelligence",
-  interview_prep: "interview_intelligence",
-  interview_prep_followup: "interview_intelligence",
-  networking_outreach: "networking_intelligence",
-  salary_analysis: "market_opportunity_intelligence",
-  job_intelligence: "market_opportunity_intelligence",
-  opportunity_intelligence: "market_opportunity_intelligence",
-  smart_apply: "smart_apply_job_tracking",
-  job_tracker_change: "smart_apply_job_tracking",
-  job_change_analysis: "smart_apply_job_tracking",
-  ai_request: "career_guidance_coaching",
-  linkedin_intelligence: "linkedin_intelligence",
-  linkedin_intelligence_premium: "linkedin_intelligence",
-  outcome_intelligence: "outcome_intelligence",
-  referral_intelligence: "referral_intelligence",
-  proactive_job_alerts: "proactive_job_alerts",
-  smart_apply_auto_prep: "smart_apply_auto_prep",
-};
+// exactly. The catalog below is now the single source of truth for tag ->
+// group membership (each entry's own `groupId`) -- a separate tag-to-group
+// lookup object would just be a second copy of the same mapping that could
+// drift out of sync with it. Any REAL tag not covered by the catalog (none
+// exist today -- `feature` is client-supplied and unvalidated, see
+// handleClaude) still needs a home: see the "other" fallback pass in
+// aggregateAiUsageRows, right after the catalog-driven loop.
 
 const AI_FEATURE_GROUP_LABELS = {
   resume_intelligence: "Resume Intelligence",
@@ -4068,6 +4051,71 @@ const AI_FEATURE_GROUP_LABELS = {
   smart_apply_auto_prep: "Smart Apply Auto Prep",
   other: "Other / Unclassified",
 };
+
+// Static catalog of the audit's full 38 call sites (fix for: byGroup only
+// showed groups/tags that happened to have usage in the queried window --
+// the Back Office must always show the complete architecture, including
+// zero-usage groups/features). Each entry names one real call site from the
+// audit and the one feature tag it writes to; several call sites
+// deliberately share a tag (see the group comment above -- e.g. all 3
+// Proactive Job Alerts cadences write "proactive_job_alerts", all 4 Career
+// Guidance actions write "ai_request") because ai_request_log genuinely
+// cannot distinguish them today. Those siblings show the SAME real number
+// (the true total for their shared tag) rather than a fabricated split --
+// inventing a per-call-site breakdown the log can't support would violate
+// "do not invent costs." Group totals are computed from DISTINCT tags, not
+// by summing children, so a shared tag is never counted more than once.
+const AI_CALL_SITE_CATALOG = [
+  // Resume Intelligence -- 12
+  { id: "resume_ats_analysis", label: "ATS Resume Analysis", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_deeper_insights_followup", label: "Deeper Insights (follow-up)", tag: "resume_analysis_followup", groupId: "resume_intelligence" },
+  { id: "resume_deep_insights", label: "Deep Resume Insights", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_cover_letter", label: "Cover Letter Generation", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_score_benchmark", label: "Score Benchmarking", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_job_fit", label: "Job Fit Analyzer", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_ai_builder", label: "AI Resume Builder", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_apply_single_fix", label: "Apply Single Fix", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_apply_all_fixes", label: "Apply All Fixes", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_improve_pass", label: "Keyword Improve Pass", tag: "resume_analysis", groupId: "resume_intelligence" },
+  { id: "resume_rescore_followup", label: "Re-score After Improve (follow-up)", tag: "resume_analysis_followup", groupId: "resume_intelligence" },
+  { id: "resume_image_ocr", label: "Resume Image OCR Upload", tag: "resume_analysis", groupId: "resume_intelligence" },
+  // Interview Intelligence -- 3
+  { id: "interview_generate_questions", label: "Generate Interview Questions", tag: "interview_prep", groupId: "interview_intelligence" },
+  { id: "interview_answer_feedback", label: "Per-Answer Feedback", tag: "interview_prep", groupId: "interview_intelligence" },
+  { id: "interview_mock_summary", label: "Mock Interview Summary (follow-up)", tag: "interview_prep_followup", groupId: "interview_intelligence" },
+  // Networking Intelligence -- 2
+  { id: "networking_initial_message", label: "Initial Outreach Message", tag: "networking_outreach", groupId: "networking_intelligence" },
+  { id: "networking_followup_message", label: "7-Day Follow-Up Message", tag: "networking_outreach", groupId: "networking_intelligence" },
+  // Market & Opportunity Intelligence -- 3
+  { id: "market_salary_analysis", label: "Salary Analysis", tag: "salary_analysis", groupId: "market_opportunity_intelligence" },
+  { id: "market_job_intelligence", label: "Job Intelligence", tag: "job_intelligence", groupId: "market_opportunity_intelligence" },
+  { id: "market_opportunity_intelligence", label: "Opportunity Intelligence", tag: "opportunity_intelligence", groupId: "market_opportunity_intelligence" },
+  // Smart Apply & Job Tracking -- 5
+  { id: "smart_apply_manual_generate", label: "Smart Apply — Generate", tag: "smart_apply", groupId: "smart_apply_job_tracking" },
+  { id: "smart_apply_retry", label: "Smart Apply — Retry", tag: "smart_apply", groupId: "smart_apply_job_tracking" },
+  { id: "smart_apply_prepare_saved", label: "Smart Apply — Prepare from Saved Jobs", tag: "smart_apply", groupId: "smart_apply_job_tracking" },
+  { id: "job_tracker_change", label: "Job Tracker — Why This Job Changed", tag: "job_tracker_change", groupId: "smart_apply_job_tracking" },
+  { id: "job_change_analysis", label: "Smart Apply Queue — Job-Change Re-analysis", tag: "job_change_analysis", groupId: "smart_apply_job_tracking" },
+  // Career Guidance & Coaching -- 4
+  { id: "guidance_daily_briefing", label: "Daily Briefing", tag: "ai_request", groupId: "career_guidance_coaching" },
+  { id: "guidance_action_plan", label: "Today's Action Plan", tag: "ai_request", groupId: "career_guidance_coaching" },
+  { id: "guidance_career_progress", label: "Career Progress Assessment", tag: "ai_request", groupId: "career_guidance_coaching" },
+  { id: "guidance_ai_coach_chat", label: "AI Career Coach Chat", tag: "ai_request", groupId: "career_guidance_coaching" },
+  // LinkedIn Intelligence -- 3
+  { id: "linkedin_base_content", label: "Base Content Generation", tag: "linkedin_intelligence", groupId: "linkedin_intelligence" },
+  { id: "linkedin_premium_strategy", label: "Premium Strategy & Recruiter Visibility", tag: "linkedin_intelligence_premium", groupId: "linkedin_intelligence" },
+  { id: "linkedin_profile_evolution", label: "Profile Evolution Tracking", tag: "linkedin_intelligence_premium", groupId: "linkedin_intelligence" },
+  // Outcome Intelligence -- 1
+  { id: "outcome_intelligence", label: "Outcome Intelligence", tag: "outcome_intelligence", groupId: "outcome_intelligence" },
+  // Referral Intelligence -- 1
+  { id: "referral_intelligence", label: "Referral Intelligence", tag: "referral_intelligence", groupId: "referral_intelligence" },
+  // Proactive Job Alerts -- 3
+  { id: "proactive_critical_opportunity", label: "Critical Opportunity Digest (6h)", tag: "proactive_job_alerts", groupId: "proactive_job_alerts" },
+  { id: "proactive_watchlist_activity", label: "Watchlist Activity Monitor (12h)", tag: "proactive_job_alerts", groupId: "proactive_job_alerts" },
+  { id: "proactive_weekly_analyses", label: "Weekly Analyses", tag: "proactive_job_alerts", groupId: "proactive_job_alerts" },
+  // Smart Apply Auto Prep -- 1
+  { id: "smart_apply_auto_prep", label: "Smart Apply Auto Prep", tag: "smart_apply_auto_prep", groupId: "smart_apply_auto_prep" },
+];
 
 function normalizeAiRequestLogRow(row) {
   return {
@@ -4119,30 +4167,59 @@ function aggregateAiUsageRows(normalizedRows) {
     ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
     : null;
 
-  // Group rollup, built from byFeature (not a second pass over normalizedRows)
-  // so a group's totals are always exactly the sum of its own children --
-  // trivially verifiable, never a separately-accumulated number that could
-  // drift from the per-feature figures the admin can already see today.
+  // Group rollup -- driven by the STATIC catalog (all 11 groups, all 38 call
+  // sites), not by which tags happened to have usage this period. Every
+  // group and every one of its catalog call sites always appears; a tag
+  // with no rows in `byFeature` simply reads as the zero-value fallback
+  // below, never omitted. Group totals are summed over DISTINCT tags only
+  // (tracked via seenTags), not over children -- several catalog entries
+  // intentionally share one tag (see AI_CALL_SITE_CATALOG's own comment),
+  // and summing children directly would count that tag's real total once
+  // per sibling instead of once per group.
+  const zeroFeatureRow = (tag) => ({ feature: tag, requests: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, errorCount: 0 });
   const byGroup = new Map();
+  for (const entry of AI_CALL_SITE_CATALOG) {
+    const g = byGroup.get(entry.groupId) || {
+      groupId: entry.groupId, groupLabel: AI_FEATURE_GROUP_LABELS[entry.groupId] || AI_FEATURE_GROUP_LABELS.other,
+      requests: 0, tokensIn: 0, tokensOut: 0, tokensTotal: 0, costUsd: 0, children: [], seenTags: new Set(),
+    };
+    const f = byFeature.get(entry.tag) || zeroFeatureRow(entry.tag);
+    g.children.push({
+      callSiteId: entry.id, label: entry.label, feature: entry.tag,
+      requests: f.requests, tokensIn: f.tokensIn, tokensOut: f.tokensOut,
+      tokensTotal: f.tokensIn + f.tokensOut, costUsd: f.costUsd, errorCount: f.errorCount,
+    });
+    if (!g.seenTags.has(entry.tag)) {
+      g.seenTags.add(entry.tag);
+      g.requests += f.requests; g.tokensIn += f.tokensIn; g.tokensOut += f.tokensOut;
+      g.tokensTotal += f.tokensIn + f.tokensOut; g.costUsd += f.costUsd; // real logged cost only -- zero-usage tags contribute exactly 0, never estimated
+    }
+    byGroup.set(entry.groupId, g);
+  }
+  for (const g of byGroup.values()) delete g.seenTags; // internal bookkeeping only, not part of the response shape
+
+  // Safety net: a REAL tag with actual logged rows that isn't in the static
+  // catalog (none exist today -- `feature` is client-supplied and
+  // unvalidated, see handleClaude) would otherwise vanish from byGroup
+  // entirely, silently hiding real cost. Anything uncatalogued lands in a
+  // 12th "other" bucket instead -- it only ever appears if such a tag is
+  // actually present in this period's data.
+  const catalogedTags = new Set(AI_CALL_SITE_CATALOG.map((e) => e.tag));
   for (const f of byFeature.values()) {
-    const groupId = AI_FEATURE_TAG_TO_GROUP[f.feature] || "other";
-    const g = byGroup.get(groupId) || {
-      groupId, groupLabel: AI_FEATURE_GROUP_LABELS[groupId] || AI_FEATURE_GROUP_LABELS.other,
+    if (catalogedTags.has(f.feature)) continue;
+    const g = byGroup.get("other") || {
+      groupId: "other", groupLabel: AI_FEATURE_GROUP_LABELS.other,
       requests: 0, tokensIn: 0, tokensOut: 0, tokensTotal: 0, costUsd: 0, children: [],
     };
-    g.requests += f.requests;
-    g.tokensIn += f.tokensIn;
-    g.tokensOut += f.tokensOut;
-    g.tokensTotal += f.tokensIn + f.tokensOut;
-    g.costUsd += f.costUsd; // real logged cost only -- rows with no cost data contribute 0, never estimated
+    g.requests += f.requests; g.tokensIn += f.tokensIn; g.tokensOut += f.tokensOut;
+    g.tokensTotal += f.tokensIn + f.tokensOut; g.costUsd += f.costUsd;
     g.children.push({
-      feature: f.feature,
+      callSiteId: `uncataloged_${f.feature}`, label: f.feature, feature: f.feature,
       requests: f.requests, tokensIn: f.tokensIn, tokensOut: f.tokensOut,
-      tokensTotal: f.tokensIn + f.tokensOut, costUsd: f.costUsd,
+      tokensTotal: f.tokensIn + f.tokensOut, costUsd: f.costUsd, errorCount: f.errorCount,
     });
-    byGroup.set(groupId, g);
+    byGroup.set("other", g);
   }
-  for (const g of byGroup.values()) g.children.sort((a, b) => b.costUsd - a.costUsd);
 
   return { totals, byFeature, byUser, byGroup, p95LatencyMs };
 }
