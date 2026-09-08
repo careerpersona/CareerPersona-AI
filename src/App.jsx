@@ -1609,7 +1609,7 @@ function AppName({ size = 18, onClick, className, aiGap = 5 }) {
   return (
     <span className={className} onClick={onClick} style={{ fontSize: size, fontWeight: 800, letterSpacing: "-0.5px", cursor: onClick ? "pointer" : "default" }}>
       <span style={{ color: C.text }}>Career</span><span style={{ color: C.purple }}>Persona</span>
-      <span className={className ? `${className}-badge` : undefined} style={{ display: "inline-flex", justifyContent: "center", alignItems: "center", letterSpacing: "normal", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "0 6px", borderRadius: 5, marginLeft: aiGap, verticalAlign: "middle" }}>AI</span>
+      <span className={className ? `${className}-badge` : undefined} style={{ display: "inline-flex", justifyContent: "center", alignItems: "center", letterSpacing: "normal", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: size * 0.65, fontWeight: 700, padding: "0 6px", borderRadius: 5, marginInlineStart: aiGap, verticalAlign: "middle" }}>AI</span>
     </span>
   );
 }
@@ -1630,12 +1630,12 @@ function UserMenu({ profile, page, setPage, onLogout }) {
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
           <div style={{ position: "absolute", top: "110%", insetInlineEnd: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
-            <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
-            <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
-            <button onClick={() => { setPage("faq"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "faq" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>❓ {t("userMenu.faq")}</button>
-            <button onClick={() => { setPage("support"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "support" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>✉️ {t("userMenu.support")}</button>
+            <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
+            <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
+            <button onClick={() => { setPage("faq"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "faq" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>❓ {t("userMenu.faq")}</button>
+            <button onClick={() => { setPage("support"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "support" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>✉️ {t("userMenu.support")}</button>
             <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>🚪 {t("userMenu.signOut")}</button>
+            <button onClick={() => { onLogout(); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: "#fff", color: C.red, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "start", display: "flex", alignItems: "center", gap: 8 }}>🚪 {t("userMenu.signOut")}</button>
           </div>
         </div>
       )}
@@ -1652,10 +1652,10 @@ function LanguageMenu({ variant = "icon" }) {
   return (
     <div style={{ position: "relative" }}>
       {variant === "row" ? (
-        <button title={t("language.title")} onClick={() => setOpen(o => !o)} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }}>
+        <button title={t("language.title")} onClick={() => setOpen(o => !o)} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }}>
           <span style={{ fontSize: 20 }}>🌐</span>
           <span style={{ fontSize: 18 }}>{LANGUAGES.find(l => l.code === language)?.flag}</span>
-          <span style={{ marginLeft: "auto", color: C.textMuted, fontSize: 12 }}>▼</span>
+          <span style={{ marginInlineStart: "auto", color: C.textMuted, fontSize: 12 }}>▼</span>
         </button>
       ) : (
         <button onClick={() => setOpen(o => !o)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: open ? "#fff" : "transparent", color: open ? C.purple : C.textMuted, fontSize: 14, cursor: "pointer" }} title={t("language.title")}>🌐</button>
@@ -1667,7 +1667,7 @@ function LanguageMenu({ variant = "icon" }) {
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("language.title")}</div>
             <div style={{ padding: "6px 0", maxHeight: 320, overflowY: "auto" }}>
               {LANGUAGES.map(lng => (
-                <button key={lng.code} onClick={() => { setLanguage(lng.code); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", border: "none", background: lng.code === language ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                <button key={lng.code} onClick={() => { setLanguage(lng.code); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", border: "none", background: lng.code === language ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}>
                   <span style={{ fontSize: 16 }}>{lng.flag}</span>
                   <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1 }}>{lng.native}</span>
                   {lng.code === language && <span style={{ color: C.purple, fontWeight: 700 }}>✓</span>}
@@ -1705,7 +1705,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
   return (
     <div style={{ position: "relative" }}>
       {variant === "row" ? (
-        <button onClick={toggle} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }}>
+        <button onClick={toggle} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: open ? C.purpleLight : "#fff", color: open ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }}>
           <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
             <span style={{ fontSize: 20 }}>🔔</span>
             {unreadCount > 0 && <span style={{ position: "absolute", top: -6, right: -8, background: "#ef4444", color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>}
@@ -1738,7 +1738,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
                       <span style={{ fontSize: 12, fontWeight: n.read ? 500 : 600, color: C.text, flex: 1 }}>{pill(n)}</span>
                       <span style={{ fontSize: 11, color: C.textMuted, whiteSpace: "nowrap" }}>{n.time}</span>
                     </div>
-                    {(n.body || n.title) && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, paddingLeft: 14 }}>{n.body || n.title}</div>}
+                    {(n.body || n.title) && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, paddingInlineStart: 14 }}>{n.body || n.title}</div>}
                   </div>
                 ))}
               </div>
@@ -2076,7 +2076,7 @@ function ResumeDoc({ content, profile }) {
                           {(company || location) && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginTop: 2 }}>
                               {company && <div style={{ fontSize: 12.5, color: ACC, fontStyle: 'italic' }}>{company}</div>}
-                              {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 'auto' }}>{location}</div>}
+                              {location && <div style={{ fontSize: 11.5, color: DATE, whiteSpace: 'nowrap', flexShrink: 0, marginInlineStart: 'auto' }}>{location}</div>}
                             </div>
                           )}
                         </div>
@@ -2115,7 +2115,7 @@ function ResumeDoc({ content, profile }) {
 
                   if (item.type === 'bullet') {
                     elements.push(
-                      <div key={ii} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingLeft: 4 }}>
+                      <div key={ii} style={{ display: 'flex', gap: 7, fontSize: 12.5, color: BODY, marginBottom: 3, paddingInlineStart: 4 }}>
                         <span style={{ flexShrink: 0, color: ACC, fontSize: 15, lineHeight: '1.3' }}>•</span>
                         <span style={{ minWidth: 0 }}>{item.text}</span>
                       </div>
@@ -2387,7 +2387,7 @@ function AuthPage({ t, authLinkErrorCode, setPage }) {
                 <Input label={t("auth.passwordLabel")} type="password" placeholder="••••••••" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} onKeyDown={e => e.key === "Enter" && handle()} />
               </div>
               {mode === "login" && (
-                <div style={{ textAlign: "right", marginTop: 8 }}>
+                <div style={{ textAlign: "end", marginTop: 8 }}>
                   <button onClick={() => { setForgotPassword(true); setForgotEmail(form.email); setError(""); }} style={{ background: "none", border: "none", color: C.purple, fontSize: 13, cursor: "pointer", fontWeight: 600, padding: 0, fontFamily: "inherit" }}>
                     {t("auth.forgotPasswordLink")}
                   </button>
@@ -2993,20 +2993,20 @@ function MarkdownText({ text }) {
     if (/^[-*+] /.test(line)) {
       const items = [];
       while (i < lines.length && /^[-*+] /.test(lines[i])) { items.push(<li key={i} style={{ marginBottom: 2 }}>{fmt(lines[i].slice(2), `ul${i}`)}</li>); i++; }
-      els.push(<ul key={`ul${s}`} style={{ margin: "3px 0", paddingLeft: 18, lineHeight: 1.55 }}>{items}</ul>);
+      els.push(<ul key={`ul${s}`} style={{ margin: "3px 0", paddingInlineStart: 18, lineHeight: 1.55 }}>{items}</ul>);
       continue;
     }
     if (/^\d+\. /.test(line)) {
       const items = [];
       while (i < lines.length && /^\d+\. /.test(lines[i])) { items.push(<li key={i} style={{ marginBottom: 2 }}>{fmt(lines[i].replace(/^\d+\. /, ""), `ol${i}`)}</li>); i++; }
-      els.push(<ol key={`ol${s}`} style={{ margin: "3px 0", paddingLeft: 18, lineHeight: 1.55 }}>{items}</ol>);
+      els.push(<ol key={`ol${s}`} style={{ margin: "3px 0", paddingInlineStart: 18, lineHeight: 1.55 }}>{items}</ol>);
       continue;
     }
     if (line.includes("|") && lines[i + 1] && /^\|?[-| :]+\|?$/.test(lines[i + 1])) {
       const splitRow = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
       const headers = splitRow(line); i += 2;
       const rows = []; while (i < lines.length && lines[i].includes("|")) { rows.push(splitRow(lines[i])); i++; }
-      els.push(<div key={`tbl${s}`} style={{ overflowX: "auto", margin: "4px 0" }}><table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}><thead><tr>{headers.map((h, ci) => <th key={ci} style={{ padding: "4px 8px", borderBottom: "2px solid rgba(0,0,0,0.15)", textAlign: "left", fontWeight: 700 }}>{fmt(h, `th${s}${ci}`)}</th>)}</tr></thead><tbody>{rows.map((row, ri) => <tr key={ri}>{row.map((c, ci) => <td key={ci} style={{ padding: "3px 8px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>{fmt(c, `td${s}${ri}${ci}`)}</td>)}</tr>)}</tbody></table></div>);
+      els.push(<div key={`tbl${s}`} style={{ overflowX: "auto", margin: "4px 0" }}><table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}><thead><tr>{headers.map((h, ci) => <th key={ci} style={{ padding: "4px 8px", borderBottom: "2px solid rgba(0,0,0,0.15)", textAlign: "start", fontWeight: 700 }}>{fmt(h, `th${s}${ci}`)}</th>)}</tr></thead><tbody>{rows.map((row, ri) => <tr key={ri}>{row.map((c, ci) => <td key={ci} style={{ padding: "3px 8px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>{fmt(c, `td${s}${ri}${ci}`)}</td>)}</tr>)}</tbody></table></div>);
       continue;
     }
     if (!line.trim()) { els.push(<div key={`g${s}`} style={{ height: 4 }} />); i++; continue; }
@@ -3518,7 +3518,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 }}>
                 {topOpportunities.map((j, i) => (
                   <div key={j.job_id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: C.text, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8, minWidth: 0 }}>{j.title || j.jobTitle} — {j.company}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginInlineEnd: 8, minWidth: 0 }}>{j.title || j.jobTitle} — {j.company}</span>
                     {j.matchScore != null && <span style={{ fontSize: 11, fontWeight: 700, color: matchScoreColor(j.matchScore), flexShrink: 0 }}>{j.matchScore}%</span>}
                   </div>
                 ))}
@@ -3714,7 +3714,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {/* Career Goal */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600 }}>{t("dashboard.careerGoalLabel")}</span>
-                  <span style={{ fontSize: 12, color: C.text, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{profile?.career_goal || <span style={{ color: C.textMuted, fontWeight: 400 }}>{t("dashboard.notSet")}</span>}</span>
+                  <span style={{ fontSize: 12, color: C.text, fontWeight: 600, textAlign: "end", maxWidth: "60%" }}>{profile?.career_goal || <span style={{ color: C.textMuted, fontWeight: 400 }}>{t("dashboard.notSet")}</span>}</span>
                 </div>
                 {/* AI Progress Score */}
                 <div>
@@ -3728,14 +3728,14 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
                 {topBlocker && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                     <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>{t("dashboard.currentBlocker")}</span>
-                    <span style={{ fontSize: 12, color: C.red, fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{topBlocker.issue}</span>
+                    <span style={{ fontSize: 12, color: C.red, fontWeight: 600, textAlign: "end", maxWidth: "60%" }}>{topBlocker.issue}</span>
                   </div>
                 )}
                 {/* Next Milestone */}
                 {cp.nextMilestone && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                     <span style={{ fontSize: 12, color: C.textMid, fontWeight: 600, flexShrink: 0 }}>{t("dashboard.nextMilestoneLabel")}</span>
-                    <span style={{ fontSize: 12, color: C.text, textAlign: "right", maxWidth: "60%", lineHeight: 1.4 }}>{cp.nextMilestone}</span>
+                    <span style={{ fontSize: 12, color: C.text, textAlign: "end", maxWidth: "60%", lineHeight: 1.4 }}>{cp.nextMilestone}</span>
                   </div>
                 )}
                 {/* Career Health */}
@@ -4726,7 +4726,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
             </div>
           )}
           {d.trends && (
-            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
+            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderInlineStart: `3px solid ${C.blue}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>{t("jobIntel.trend")}</div>
               <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.trends}</div>
             </div>
@@ -4766,7 +4766,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
             </div>
           )}
           {d.insight && (
-            <div style={{ background: C.purpleLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.purple}` }}>
+            <div style={{ background: C.purpleLight, borderRadius: 8, padding: "10px 12px", borderInlineStart: `3px solid ${C.purple}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 3 }}>{t("jobIntel.keyInsight")}</div>
               <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.insight}</div>
             </div>
@@ -4813,7 +4813,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
             </div>
           )}
           {d.positioning && (
-            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
+            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderInlineStart: `3px solid ${C.green}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>{t("jobIntel.marketPositioning")}</div>
               <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.positioning}</div>
             </div>
@@ -4836,7 +4836,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
             </div>
           )}
           {d.recommendation && (
-            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.blue}` }}>
+            <div style={{ background: C.blueLight, borderRadius: 8, padding: "10px 12px", borderInlineStart: `3px solid ${C.blue}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.blue, marginBottom: 3 }}>{t("jobIntel.strategicRec")}</div>
               <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.recommendation}</div>
             </div>
@@ -4866,7 +4866,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
             </div>
           )}
           {d.insight && (
-            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderLeft: `3px solid ${C.green}` }}>
+            <div style={{ background: C.greenLight, borderRadius: 8, padding: "10px 12px", borderInlineStart: `3px solid ${C.green}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>{t("jobIntel.analyticalConclusion")}</div>
               <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6 }}>{d.insight}</div>
             </div>
@@ -4952,7 +4952,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
                   <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.4 }}>{subtitle}</div>
                 </div>
                 {data?.status && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: statusColor(data.status), background: statusBg(data.status), borderRadius: 20, padding: "4px 12px", flexShrink: 0, marginLeft: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: statusColor(data.status), background: statusBg(data.status), borderRadius: 20, padding: "4px 12px", flexShrink: 0, marginInlineStart: 12 }}>
                     {data.status}
                   </span>
                 )}
@@ -6108,7 +6108,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   const isLoaded = activeResumeId === r.id;
                   const isEditing = editingResumeName === r.name && isLoaded;
                   return (
-                    <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: C.bgSoft, border: `1.5px solid ${C.border}`, borderLeft: isLoaded ? `3px solid ${C.purple}` : `3px solid transparent`, borderRadius: 10, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+                    <div key={r.id} className="resume-lib-item" style={{ padding: "10px 14px", background: C.bgSoft, border: `1.5px solid ${C.border}`, borderInlineStart: isLoaded ? `3px solid ${C.purple}` : `3px solid transparent`, borderRadius: 10, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {/* Circular selection toggle */}
                         <button
@@ -6157,7 +6157,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                                 { icon: "🗑️", label: t("resume.deleteResume"),     action: () => handleDeleteResume(r), danger: true },
                               ].map(({ icon, label, action, danger }) => (
                                 <button key={label} onClick={() => { action(); setOpenDropdownId(null); }}
-                                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: danger ? C.red : C.text, textAlign: "left", fontFamily: "inherit" }}
+                                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: danger ? C.red : C.text, textAlign: "start", fontFamily: "inherit" }}
                                   onMouseEnter={e => e.currentTarget.style.background = danger ? `${C.red}0A` : C.bgSoft}
                                   onMouseLeave={e => e.currentTarget.style.background = "none"}
                                 >
@@ -6299,7 +6299,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   <span style={{ fontSize: 18 }}>✅</span>
                   <div>
                     <span style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{delta >= 0 ? `+${delta}` : delta} {t("resume.atsPoints")}</span>
-                    <span style={{ fontSize: 12, color: C.textMid, marginLeft: 8 }}>{t("resume.optimizedSuccessfully")}</span>
+                    <span style={{ fontSize: 12, color: C.textMid, marginInlineStart: 8 }}>{t("resume.optimizedSuccessfully")}</span>
                   </div>
                 </div>
                 <div className="improve-summary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
@@ -6503,7 +6503,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   </button>
                 ))}
                 {coverVersions && (
-                  <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginLeft: "auto" }}>
+                  <Btn onClick={() => generateCoverVersions()} loading={coverVersionsLoading} variant="secondary" style={{ fontSize: 11, padding: "5px 12px", marginInlineStart: "auto" }}>
                     {t("resume.regenerateAll")}
                   </Btn>
                 )}
@@ -6573,7 +6573,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                   if (items.length <= initialShow) return null;
                   const expanded = insightsSectionExpanded[sectionKey];
                   return (
-                    <button onClick={() => toggleInsightSection(sectionKey)} style={{ marginTop: 10, background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color, padding: 0, textAlign: "left" }}>
+                    <button onClick={() => toggleInsightSection(sectionKey)} style={{ marginTop: 10, background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color, padding: 0, textAlign: "start" }}>
                       {expanded ? t("resume.showLessInsights") : t("resume.showMoreInsights").replace("{n}", items.length - initialShow)}
                     </button>
                   );
@@ -6718,7 +6718,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                                   <span style={{ fontSize: 9, fontWeight: 700, color: severityColor[issue.severity] || C.blue, background: `${(severityColor[issue.severity] || C.blue)}20`, borderRadius: 4, padding: "2px 7px", textTransform: "uppercase" }}>{issue.severity}</span>
                                   <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid }}>{issue.category}</span>
-                                  <Btn onClick={() => applyIssueFix(issue)} loading={isApplying} variant="secondary" style={{ fontSize: 10, padding: "3px 8px", marginLeft: "auto" }} disabled={!!applyingIssueFix}>
+                                  <Btn onClick={() => applyIssueFix(issue)} loading={isApplying} variant="secondary" style={{ fontSize: 10, padding: "3px 8px", marginInlineStart: "auto" }} disabled={!!applyingIssueFix}>
                                     {isApplying ? t("resume.fixing") : t("resume.aiFix")}
                                   </Btn>
                                 </div>
@@ -6753,7 +6753,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                                 <span style={{ color: C.red, textDecoration: "line-through" }}>{v.original}</span>
                                 <span style={{ color: C.textMuted }}>→</span>
                                 <span style={{ color: C.green, fontWeight: 700 }}>{v.stronger}</span>
-                                <button onClick={() => applyVerbFix(v.original, v.stronger)} style={{ marginLeft: 4, background: C.green, border: "none", borderRadius: 4, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit" }}>{t("resume.applyVerb")}</button>
+                                <button onClick={() => applyVerbFix(v.original, v.stronger)} style={{ marginInlineStart: 4, background: C.green, border: "none", borderRadius: 4, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit" }}>{t("resume.applyVerb")}</button>
                               </div>
                             ))}
                           </div>
@@ -6836,7 +6836,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                                 }
                               </div>
                             </div>
-                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                            <div style={{ textAlign: "end", flexShrink: 0 }}>
                               <div style={{ fontSize: 9, color: C.textMuted }}>{entry.date ? new Date(entry.date).toLocaleDateString() : ""}</div>
                               <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1 }}>{entry.analysisType}</div>
                             </div>
@@ -6886,7 +6886,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         {trendScores.map((s, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                            <div style={{ fontSize: 9, color: C.textMuted, width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                            <div style={{ fontSize: 9, color: C.textMuted, width: 14, textAlign: "end", flexShrink: 0 }}>{i + 1}</div>
                             <PBar val={s} color={hubHealthColor(s)} />
                             <div style={{ fontSize: 9, fontWeight: 700, color: hubHealthColor(s), width: 26, flexShrink: 0 }}>{s}%</div>
                           </div>
@@ -7283,7 +7283,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                         <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px", marginBottom: 8 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>{exp.title} @ {exp.company}</div>
                           {exp.optimizedBullets?.map((b, j) => (
-                            <div key={j} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingLeft: 12 }}>• {b}</div>
+                            <div key={j} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingInlineStart: 12 }}>• {b}</div>
                           ))}
                         </div>
                       ))}
@@ -7307,7 +7307,7 @@ JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis_followup");
                     <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("resume.linkedinStrategyHeading")}</div>
                       {strategyAnalysis.priorityActions?.map((a, i) => (
-                        <div key={i} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingLeft: 12 }}>• {a}</div>
+                        <div key={i} style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 4, paddingInlineStart: 12 }}>• {a}</div>
                       ))}
                       {strategyAnalysis.reasoning && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6, fontStyle: "italic" }}>{strategyAnalysis.reasoning}</div>}
                     </div>
@@ -7472,9 +7472,9 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
                 <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("jobSearch.selectResumeTitle")}</div>
                 <div style={{ padding: "6px 0", maxHeight: 280, overflowY: "auto" }}>
                   {resumes.map(r => (
-                    <button key={r.id} onClick={() => { onSelect(r.id); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", border: "none", background: activeResume?.id === r.id ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                    <button key={r.id} onClick={() => { onSelect(r.id); setOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", border: "none", background: activeResume?.id === r.id ? C.bgSoft : "#fff", cursor: "pointer", textAlign: "start", fontFamily: "inherit" }}>
                       <span style={{ fontSize: 14, color: C.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.name}{r.is_default && <span style={{ marginLeft: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("jobSearch.defaultBadge")}</span>}
+                        {r.name}{r.is_default && <span style={{ marginInlineStart: 6, fontSize: 10, color: C.purple, fontWeight: 700 }}>{t("jobSearch.defaultBadge")}</span>}
                       </span>
                       {activeResume?.id === r.id && <span style={{ color: C.purple, fontWeight: 700, flexShrink: 0 }}>✓</span>}
                     </button>
@@ -8075,7 +8075,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           where it's easiest to miss right after a tap. */}
       {trackToast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: isMobile ? "calc(20px + env(safe-area-inset-bottom, 0px))" : 24, display: "flex", justifyContent: isMobile ? "center" : "flex-end", padding: isMobile ? "0 16px" : "0 24px", zIndex: 60, pointerEvents: "none" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderLeft: isMobile ? `4px solid ${C.green}` : `1px solid ${C.green}30`, borderRadius: 10, padding: isMobile ? "14px 16px" : "10px 16px", fontSize: isMobile ? 14 : 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: isMobile ? "0 12px 32px rgba(0,0,0,0.22)" : "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: isMobile ? "cp-toast-in-mobile 0.35s ease-out" : "cp-toast-in 0.25s ease-out" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 10, background: C.greenLight, border: `1px solid ${C.green}30`, borderInlineStart: isMobile ? `4px solid ${C.green}` : `1px solid ${C.green}30`, borderRadius: 10, padding: isMobile ? "14px 16px" : "10px 16px", fontSize: isMobile ? 14 : 13, color: C.text, fontWeight: 500, maxWidth: isMobile ? "calc(100vw - 32px)" : 420, boxShadow: isMobile ? "0 12px 32px rgba(0,0,0,0.22)" : "0 8px 24px rgba(0,0,0,0.15)", pointerEvents: "auto", animation: isMobile ? "cp-toast-in-mobile 0.35s ease-out" : "cp-toast-in 0.25s ease-out" }}>
             {isMobile ? (
               <span style={{ width: 24, height: 24, borderRadius: "50%", background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>✓</span>
             ) : (
@@ -8107,7 +8107,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, color: C.textMid, fontWeight: 500, position: "relative" }}><span aria-hidden="true" style={{ position: "absolute", inset: "-6px" }} /><input type="checkbox" checked={filters.remote} onChange={e => setFilters(f => ({ ...f, remote: e.target.checked }))} /> {t("jobSearch.remoteOnly")}</label>
           {error && <span style={{ color: C.red, fontSize: 13 }}>{error}</span>}
           {savedJobsSyncError && <span style={{ color: C.red, fontSize: 13 }}>{t("jobSearch.saveSyncError")}</span>}
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div style={{ marginInlineStart: "auto", display: "flex", gap: 10 }}>
             <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc,.txt" style={{ display: "none" }} onChange={handleResumeUpload} />
             <JobSearchResumeControl
               resumes={resumes || []}
@@ -8143,7 +8143,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 14, color: C.textMuted, fontWeight: 500 }}>
               {t("jobSearch.jobsFoundFor").replace("{n}", displayJobs.length !== jobs.length ? `${displayJobs.length} of ${jobs.length}` : jobs.length)}"<strong style={{ color: C.text }}>{filters.title}</strong>"
-              {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginLeft: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} {t("jobSearch.newBadge")}</span> : null; })()}
+              {(() => { const nc = jobs.filter(isNewJob).length; return nc > 0 ? <span style={{ marginInlineStart: 8, background: C.green, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{nc} {t("jobSearch.newBadge")}</span> : null; })()}
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
@@ -8206,7 +8206,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                               <div style={{ flex: 1, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
                                 <div style={{ height: "100%", borderRadius: 4, width: `${Math.round(row.raw * 100)}%`, background: matchScoreColor(Math.round(row.raw * 100)) }} />
                               </div>
-                              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "right", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
+                              <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "end", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
                             </>
                           )}
                         </div>
@@ -8237,7 +8237,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                       {job.experienceLevel && <span style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 600 }}>{job.experienceLevel}</span>}
                       {isNewJob(job) && <span style={{ background: C.green, color: "#fff", borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.newBadge")}</span>}
                       {dupeSet.has(job.id) && <span style={{ background: `${C.yellow}25`, color: C.yellow, borderRadius: 5, padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>{t("jobSearch.dupBadge")}</span>}
-                      {displayMatch != null && <span style={{ marginLeft: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
+                      {displayMatch != null && <span style={{ marginInlineStart: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
                     </div>
                     {/* Title */}
                     <div style={{ fontSize: compact ? 14 : 15, fontWeight: 800, color: C.text, marginBottom: 2, lineHeight: 1.3 }}>{job.title}</div>
@@ -8294,7 +8294,7 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
                         {job.experienceLevel && <Badge color={C.purple}>{job.experienceLevel}</Badge>}
                         {isNewJob(job) && <Badge color={C.green}>{t("jobSearch.newBadge")}</Badge>}
                         {dupeSet.has(job.id) && <Badge color={C.yellow}>{t("jobSearch.dupBadge")}</Badge>}
-                        {displayMatch != null && <span style={{ marginLeft: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
+                        {displayMatch != null && <span style={{ marginInlineStart: "auto", background: `${matchScoreColor(displayMatch)}15`, color: matchScoreColor(displayMatch), border: `1px solid ${matchScoreColor(displayMatch)}30`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{t("jobSearch.matchSuffix").replace("{v}", displayMatch)}</span>}
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{job.title}</div>
                       <div style={{ fontSize: 14, color: C.textMuted, marginBottom: 6 }}>{job.company} · {job.location}</div>
@@ -8757,7 +8757,7 @@ Return ONLY this JSON (no markdown):
                       <span style={{ fontSize: 11, fontWeight: 700, color: modeColor, background: modeBg, padding: "2px 8px", borderRadius: 20, lineHeight: 1.5 }}>{modeLabel}</span>
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ textAlign: "end", flexShrink: 0 }}>
                     {score != null && <div style={{ fontSize: 15, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}<span style={{ fontSize: 11, fontWeight: 500, color: C.textMuted }}>/10</span></div>}
                     {dateStr && <div style={{ fontSize: 11, color: C.textMuted, marginTop: score != null ? 4 : 0 }}>{dateStr}</div>}
                   </div>
@@ -9107,7 +9107,7 @@ function OutcomeAnalysisDeepDives({ analysis, t }) {
           const open = openKey === s.key;
           return (
             <div key={s.key} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-              <button onClick={() => setOpenKey(open ? null : s.key)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.text, textAlign: "left" }}>
+              <button onClick={() => setOpenKey(open ? null : s.key)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.text, textAlign: "start" }}>
                 {s.title}<span>{open ? "−" : "+"}</span>
               </button>
               {open && (
@@ -9179,7 +9179,7 @@ function OutcomeIntelligenceIntro({ collapsed, t }) {
   const body = (
     <>
       <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, marginBottom: 12 }}>{t("tracker.oiIntroBody")}</div>
-      <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+      <ul style={{ margin: 0, paddingInlineStart: 20, display: "flex", flexDirection: "column", gap: 6 }}>
         {bullets.map((b, i) => <li key={i} style={{ fontSize: 13, color: C.textMid }}>{b}</li>)}
       </ul>
     </>
@@ -9194,7 +9194,7 @@ function OutcomeIntelligenceIntro({ collapsed, t }) {
   }
   return (
     <Card style={{ padding: 0, overflow: "hidden" }}>
-      <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: C.text, textAlign: "left" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: C.text, textAlign: "start" }}>
         {t("tracker.oiIntroTitle")}<span>{open ? "−" : "+"}</span>
       </button>
       {open && <div style={{ padding: "0 18px 18px" }}>{body}</div>}
@@ -9535,8 +9535,8 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
         <Btn onClick={() => { setShowForm(true); setEditId(null); }} style={{ padding: "12px 24px" }}>{t("tracker.addApplication")}</Btn>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-        <button onClick={() => setTab("applications")} style={{ padding: "10px 4px", marginRight: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "applications" ? C.purple : "transparent"}`, color: tab === "applications" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("tracker.applicationsTab")}</button>
-        <button onClick={() => setTab("insights")} style={{ padding: "10px 4px", marginRight: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "insights" ? C.purple : "transparent"}`, color: tab === "insights" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        <button onClick={() => setTab("applications")} style={{ padding: "10px 4px", marginInlineEnd: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "applications" ? C.purple : "transparent"}`, color: tab === "applications" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("tracker.applicationsTab")}</button>
+        <button onClick={() => setTab("insights")} style={{ padding: "10px 4px", marginInlineEnd: 20, background: "none", border: "none", borderBottom: `2px solid ${tab === "insights" ? C.purple : "transparent"}`, color: tab === "insights" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
           {t("tracker.insightsTab")}
           {!isPremium && <span style={{ fontSize: 10, fontWeight: 800, color: C.purple, background: C.purpleLight, padding: "2px 7px", borderRadius: 10 }}>{t("tracker.premiumBadge")}</span>}
         </button>
@@ -9686,7 +9686,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                       {/* gap:0 above overrides Btn's base flex gap so this margin is the
                           ONLY space between the dot and the label -- avoids the two rules
                           stacking into a double gap. */}
-                      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: SCOLOR[app.status] || C.textMuted, marginRight: 4, flexShrink: 0 }} />
+                      <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: SCOLOR[app.status] || C.textMuted, marginInlineEnd: 4, flexShrink: 0 }} />
                       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{app.status ? tStatus(app.status) : t("tracker.statusUnknown")} ▾</span>
                     </Btn>
                     {openStatusMenu === app.id && (
@@ -9703,7 +9703,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                         <div style={{ position: "absolute", top: "110%", insetInlineStart: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
                           {STATUSES.map(s => (
                             <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
-                              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
+                              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginInlineEnd: 9, flexShrink: 0 }} />
                               {tStatus(s)}
                             </Btn>
                           ))}
@@ -9852,7 +9852,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
             <div style={{ fontSize: 14, color: C.purple, fontWeight: 600, marginBottom: 16 }}>{txt(results.benchmarkInsight, t("salary.estimatedCompFallback"))}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: 18, paddingBottom: 18 }} className="three-col">
               {[[t("salary.low"), results.salaryRange?.low, C.textMuted], [t("salary.median"), results.salaryRange?.median, C.purple], [t("salary.high"), results.salaryRange?.high, C.green]].map(([l, v, c]) => (
-                <div key={l} style={{ textAlign: "center", borderRight: l !== t("salary.high") ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
+                <div key={l} style={{ textAlign: "center", borderInlineEnd: l !== t("salary.high") ? `1px solid ${C.border}` : "none", padding: "8px 0" }}>
                   <div style={{ fontSize: 28, fontWeight: 800, color: c }}>{fmt(v)}</div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{t("salary.salarySuffix").replace("{level}", l)}</div>
                 </div>
@@ -10081,7 +10081,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
           linkedin/email/followup/tips selector below, which is completely
           untouched inside the "outreach" branch. */}
       <div style={{ display: "flex", gap: 8, borderBottom: `1px solid ${C.border}`, marginBottom: 20 }}>
-        <button onClick={() => setMainTab("outreach")} style={{ padding: "10px 4px", marginRight: 16, background: "none", border: "none", borderBottom: mainTab === "outreach" ? `2px solid ${C.purple}` : "2px solid transparent", color: mainTab === "outreach" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("networking.outreachTab")}</button>
+        <button onClick={() => setMainTab("outreach")} style={{ padding: "10px 4px", marginInlineEnd: 16, background: "none", border: "none", borderBottom: mainTab === "outreach" ? `2px solid ${C.purple}` : "2px solid transparent", color: mainTab === "outreach" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("networking.outreachTab")}</button>
         <button onClick={() => setMainTab("intelligence")} style={{ padding: "10px 4px", background: "none", border: "none", borderBottom: mainTab === "intelligence" ? `2px solid ${C.purple}` : "2px solid transparent", color: mainTab === "intelligence" ? C.purple : C.textMuted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t("networking.intelligenceTab")}</button>
       </div>
 
@@ -10319,7 +10319,7 @@ function SwipeToApply({ onApply, applying, justApplied, containerStyle }) {
   return (
     <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: C.green, height: 40, minWidth: 140, userSelect: "none", touchAction: "pan-y", cursor: "pointer", ...containerStyle }}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>{t("savedJobs.appliedConfirm")}</div>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingInlineStart: 16, color: "#fff", fontSize: 13, fontWeight: 700, opacity: progress }}>{t("savedJobs.appliedConfirm")}</div>
       <div style={{ position: "absolute", left: offset, top: 0, bottom: 0, width: "100%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, color: C.text, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.12)", transition: swiping ? "none" : "left 0.2s ease" }}>
         {applying ? t("savedJobs.applyingBtn") : t("savedJobs.swipeToApply")}
       </div>
@@ -10873,7 +10873,7 @@ function SavedJobDetailsView({ job }) {
                   <div style={{ flex: 1, height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
                     <div style={{ height: "100%", borderRadius: 4, width: `${Math.round(row.raw * 100)}%`, background: matchScoreColor(Math.round(row.raw * 100)) }} />
                   </div>
-                  <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "right", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
+                  <span style={{ fontFamily: "monospace", fontSize: 11, color: C.textMuted, width: 34, textAlign: "end", flexShrink: 0 }}>{Math.round(row.raw * 100)}%</span>
                 </>
               )}
             </div>
@@ -11458,7 +11458,7 @@ function PricingPage({ setPage, billingState, refreshBillingState }) {
           <Card key={plan.id} style={{ position: "relative", border: plan.popular ? `2px solid ${C.purple}` : `1px solid ${C.border}` }}>
             {plan.popular && <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: `linear-gradient(135deg,${C.purple},${C.purpleMid})`, color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 16px", borderRadius: 20, whiteSpace: "nowrap" }}>{t("pricing.mostPopular")}</div>}
             <div style={{ fontSize: 17, fontWeight: 800, color: plan.color, marginBottom: 4 }}>{plan.name}</div>
-            <div style={{ marginBottom: 6 }}><span style={{ fontSize: 32, fontWeight: 900, color: C.text }}>{plan.price}</span><span style={{ fontSize: 14, color: C.textMuted, marginLeft: 4 }}>{plan.sub}</span></div>
+            <div style={{ marginBottom: 6 }}><span style={{ fontSize: 32, fontWeight: 900, color: C.text }}>{plan.price}</span><span style={{ fontSize: 14, color: C.textMuted, marginInlineStart: 4 }}>{plan.sub}</span></div>
             <div style={{ height: 1, background: C.border, margin: "16px 0 18px" }} />
             {plan.includesLabel && <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, marginBottom: 10 }}>{plan.includesLabel}</div>}
             {plan.features.map((f, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 14, color: C.textMid, lineHeight: 1.5 }}><span style={{ color: plan.color, flexShrink: 0, fontWeight: 700 }}>✓</span>{f}</div>)}
@@ -11702,7 +11702,7 @@ function ProfilePage({ profile, updateProfile, onOnboardingSave }) {
         {submitted && Object.keys(errors).length > 0 && (
           <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, marginBottom: 14 }}>
             <div style={{ color: C.red, fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{t("profile.pleaseFixFollowing")}</div>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <ul style={{ margin: 0, paddingInlineStart: 18 }}>
               {Object.keys(errors).map(field => <li key={field} style={{ color: C.red, fontSize: 13 }}>{t(PROFILE_ERROR_MESSAGE_KEY[field])}</li>)}
             </ul>
           </div>
@@ -12096,7 +12096,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                 {analysis.careerPivotOpportunities.map((opp, i) => (
                   <div key={i} style={{ background: C.bgSoft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, marginRight: 8 }}>{opp.role}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, marginInlineEnd: 8 }}>{opp.role}</div>
                       <div style={{ textAlign: "center", flexShrink: 0 }}>
                         <div style={{ fontSize: 16, fontWeight: 800, color: matchColor(opp.fit) }}>{opp.fit}%</div>
                         <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 600 }}>{t("opportunity.fitLabel")}</div>
@@ -12234,7 +12234,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
                         {s.demand === "Exploding" ? "🔥" : s.demand === "High" ? "📈" : "↗"} {tStatusVal(s.demand, t)}
                       </div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
+                    <div style={{ textAlign: "end" }}>
                       <div style={{ fontSize: 14, fontWeight: 800, color: C.green }}>{s.salaryPremium}</div>
                       <div style={{ fontSize: 10, color: C.textMuted }}>{t("opportunity.salaryPremium")}</div>
                     </div>
@@ -12506,7 +12506,7 @@ function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jo
                 {s === "All" ? t("jobTracker.filterAll") : s === "Updated" ? t("jobTracker.filterUpdated") : s === "New Match" ? t("jobTracker.filterNewMatch") : t("jobTracker.filterClosed")}
               </Btn>
             ))}
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ marginLeft: "auto", fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ marginInlineStart: "auto", fontSize: 12, padding: "5px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.bgSoft, color: C.textMid, cursor: "pointer" }}>
               <option value="changed">{t("jobTracker.sortChanged")}</option>
               <option value="match">{t("jobTracker.sortMatch")}</option>
               <option value="date">{t("jobTracker.sortDate")}</option>
@@ -12530,7 +12530,7 @@ function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jo
               {filteredJobs.map(row => {
                 const salaryChanged = row.previous_salary_min != null && (row.previous_salary_min !== row.salary_min || row.previous_salary_max !== row.salary_max);
                 return (
-                  <Card key={row.id} onClick={() => markSeen(row)} style={{ borderLeft: row.has_unread_change ? `3px solid ${C.purple}` : undefined, cursor: row.has_unread_change ? "pointer" : "default" }}>
+                  <Card key={row.id} onClick={() => markSeen(row)} style={{ borderInlineStart: row.has_unread_change ? `3px solid ${C.purple}` : undefined, cursor: row.has_unread_change ? "pointer" : "default" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 200 }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
@@ -12587,7 +12587,7 @@ function JobTrackerPage({ profile, resumes, activeResumeId, companyWatchlist, jo
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredCompanies.map(c => (
-                <Card key={c.id} style={{ borderLeft: c.status === "new_activity" ? `3px solid ${C.purple}` : undefined }}>
+                <Card key={c.id} style={{ borderInlineStart: c.status === "new_activity" ? `3px solid ${C.purple}` : undefined }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>{c.company_name}</div>
@@ -12969,11 +12969,11 @@ function SettingsPage({ profile, updateProfile, setPage, billingState, refreshBi
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}><span style={{ fontSize: 20 }}>⚖️</span><span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t("settings.legalHeading")}</span></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.privacyPolicy")}</button>
-          <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.termsOfService")}</button>
-          <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.refundPolicy")}</button>
-          <button onClick={() => setPage("legal-fairuse")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.fairUsePolicy")}</button>
-          <button onClick={() => setPage("legal-cookies")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid }}>{t("legal.cookiePolicy")}</button>
+          <button onClick={() => setPage("legal-privacy")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "start", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.privacyPolicy")}</button>
+          <button onClick={() => setPage("legal-terms")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "start", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.termsOfService")}</button>
+          <button onClick={() => setPage("legal-refund")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "start", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.refundPolicy")}</button>
+          <button onClick={() => setPage("legal-fairuse")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "start", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid, borderBottom: `1px solid ${C.border}` }}>{t("legal.fairUsePolicy")}</button>
+          <button onClick={() => setPage("legal-cookies")} style={{ border: "none", background: "none", padding: "10px 0", textAlign: "start", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: C.textMid }}>{t("legal.cookiePolicy")}</button>
         </div>
       </Card>
 
@@ -13100,7 +13100,7 @@ function renderLegalContent(text) {
   let key = 0;
   const flushList = () => {
     if (listBuffer.length) {
-      blocks.push(<ul key={`ul-${key++}`} style={{ margin: "0 0 14px", paddingLeft: 22, color: C.textMid, fontSize: 14, lineHeight: 1.7 }}>{listBuffer}</ul>);
+      blocks.push(<ul key={`ul-${key++}`} style={{ margin: "0 0 14px", paddingInlineStart: 22, color: C.textMid, fontSize: 14, lineHeight: 1.7 }}>{listBuffer}</ul>);
       listBuffer = [];
     }
   };
@@ -13111,7 +13111,7 @@ function renderLegalContent(text) {
       <div key={`tbl-${key++}`} style={{ overflowX: "auto", marginBottom: 14 }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 480, fontSize: 13 }}>
           <thead>
-            <tr>{headerRow.map((cell, ci) => <th key={`th-${key}-${ci}`} scope="col" style={{ padding: "8px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{parseInline(cell, `th${key}-${ci}`)}</th>)}</tr>
+            <tr>{headerRow.map((cell, ci) => <th key={`th-${key}-${ci}`} scope="col" style={{ padding: "8px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "start", fontWeight: 700, color: C.text }}>{parseInline(cell, `th${key}-${ci}`)}</th>)}</tr>
           </thead>
           <tbody>
             {bodyRows.map((row, ri) => (
@@ -13137,7 +13137,7 @@ function renderLegalContent(text) {
     if (line.startsWith("## ")) { flushList(); blocks.push(<h3 key={`h-${key++}`} style={{ fontSize: 18, fontWeight: 800, color: C.text, margin: "26px 0 10px" }}>{parseInline(line.slice(3), `h${key}`)}</h3>); continue; }
     if (line.startsWith("# ")) { flushList(); blocks.push(<h2 key={`h-${key++}`} style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: "0 0 12px" }}>{parseInline(line.slice(2), `h${key}`)}</h2>); continue; }
     if (line.startsWith("- ")) { listBuffer.push(<li key={`li-${key++}`} style={{ marginBottom: 6 }}>{parseInline(line.slice(2), `li${key}`)}</li>); continue; }
-    if (line.startsWith("> ")) { flushList(); blocks.push(<div key={`bq-${key++}`} style={{ borderLeft: `3px solid ${C.purpleLight}`, paddingLeft: 14, margin: "10px 0", color: C.textMuted, fontSize: 13.5, fontStyle: "italic" }}>{parseInline(line.slice(2), `bq${key}`)}</div>); continue; }
+    if (line.startsWith("> ")) { flushList(); blocks.push(<div key={`bq-${key++}`} style={{ borderInlineStart: `3px solid ${C.purpleLight}`, paddingInlineStart: 14, margin: "10px 0", color: C.textMuted, fontSize: 13.5, fontStyle: "italic" }}>{parseInline(line.slice(2), `bq${key}`)}</div>); continue; }
     flushList();
     blocks.push(<p key={`p-${key++}`} style={{ margin: "0 0 14px", color: C.textMid, fontSize: 14, lineHeight: 1.75 }}>{parseInline(line, `p${key}`)}</p>);
   }
@@ -13175,7 +13175,7 @@ function SupportPage() {
         <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>{t("support.emailUsHeading")}</div>
         <a href="mailto:info@sellatrend.com" style={{ fontSize: 15, color: C.purple, fontWeight: 700, marginBottom: 14, display: "inline-block", textDecoration: "none" }}>info@sellatrend.com</a>
         <div style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{t("support.reportIncludeIntro")}</div>
-        <ul style={{ margin: 0, paddingLeft: 20, color: C.textMid, fontSize: 13, lineHeight: 1.8 }}>
+        <ul style={{ margin: 0, paddingInlineStart: 20, color: C.textMid, fontSize: 13, lineHeight: 1.8 }}>
           <li>{t("support.reportIncludeEmail")}</li>
           <li>{t("support.reportIncludeDescription")}</li>
           <li>{t("support.reportIncludeFeature")}</li>
@@ -13230,7 +13230,7 @@ function FAQLimitsTable({ t }) {
           <thead>
             <tr>
               {["limitsColFeature", "limitsColFree", "limitsColPro", "limitsColPremium"].map(k => (
-                <th key={k} scope="col" style={{ padding: "6px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "left", fontWeight: 700, color: C.text }}>{t(`faq.${k}`)}</th>
+                <th key={k} scope="col" style={{ padding: "6px 10px", borderBottom: `2px solid ${C.border}`, textAlign: "start", fontWeight: 700, color: C.text }}>{t(`faq.${k}`)}</th>
               ))}
             </tr>
           </thead>
@@ -13277,7 +13277,7 @@ function FAQPage() {
                     onClick={() => toggle(n)}
                     aria-expanded={isOpen}
                     aria-controls={`faq-panel-${n}`}
-                    style={{ width: "100%", padding: "14px 16px", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", fontFamily: "inherit" }}
+                    style={{ width: "100%", padding: "14px 16px", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "start", fontFamily: "inherit" }}
                   >
                     <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t(`faq.q${n}`)}</span>
                     <span style={{ flexShrink: 0, color: C.textMuted, fontSize: 13, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
@@ -13967,7 +13967,7 @@ export default function App() {
                 <div onClick={() => setDesktopMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 149 }} />
                 <nav aria-label={t("nav.menu")} style={{ position: "absolute", top: "100%", insetInlineStart: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
                   {nav.map(n => (
-                    <button key={n.id} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
+                    <button key={n.id} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "start" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
                       {/* Fixed-width, centered icon slot -- not a per-item fix. Every nav
                           icon here is a wide-presentation emoji (~22px natural width)
                           except "♥" (Saved Jobs), which renders as a narrow text-style
@@ -14008,7 +14008,7 @@ export default function App() {
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 0, background: "#fff", zIndex: 99, overflowY: "auto", padding: "16px" }}>
           <nav aria-label={t("nav.menu")}>
             {nav.map(n => (
-              <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
+              <button key={n.id} style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { setPage(n.id); setMobileMenuOpen(false); }}>
                 <span style={{ fontSize: 20 }}>{n.icon}</span>{n.label}
               </button>
             ))}
@@ -14017,19 +14017,19 @@ export default function App() {
           <LanguageMenu variant="row" />
           <NotificationsMenu variant="row" notifications={notifications} refresh={refreshNotifications} markAllRead={markAllRead} unreadCount={unreadCount} />
           <div style={{ borderTop: `1px solid ${C.border}`, margin: "8px 0" }} />
-          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "profile" ? C.purpleLight : "#fff", color: page === "profile" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { setPage("profile"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>👤</span>{t("userMenu.profile")}
           </button>
-          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "settings" ? C.purpleLight : "#fff", color: page === "settings" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("settings"); setMobileMenuOpen(false); }}>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "settings" ? C.purpleLight : "#fff", color: page === "settings" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { setPage("settings"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>⚙️</span>{t("userMenu.settings")}
           </button>
-          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "faq" ? C.purpleLight : "#fff", color: page === "faq" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("faq"); setMobileMenuOpen(false); }}>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "faq" ? C.purpleLight : "#fff", color: page === "faq" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { setPage("faq"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>❓</span>{t("userMenu.faq")}
           </button>
-          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "support" ? C.purpleLight : "#fff", color: page === "support" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { setPage("support"); setMobileMenuOpen(false); }}>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: page === "support" ? C.purpleLight : "#fff", color: page === "support" ? C.purple : C.text, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { setPage("support"); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>✉️</span>{t("userMenu.support")}
           </button>
-          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: "#fff", color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "left" }} onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
+          <button style={{ width: "100%", padding: "16px 20px", borderRadius: 10, border: "none", background: "#fff", color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 6, textAlign: "start" }} onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
             <span style={{ fontSize: 20 }}>🚪</span>{t("userMenu.signOut")}
           </button>
         </div>

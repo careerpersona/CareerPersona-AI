@@ -95,7 +95,7 @@ function CriticalAlertCard({ alert, userId }) {
       ]
     : [];
   return (
-    <Card style={{ borderLeft: `3px solid ${TIER_COLOR[c.alert_tier]}` }}>
+    <Card style={{ borderInlineStart: `3px solid ${TIER_COLOR[c.alert_tier]}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{c.job_title} — {c.company}</div>

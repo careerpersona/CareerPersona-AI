@@ -48,7 +48,7 @@ function ReferralAnalysisDeepDives({ content, t }) {
           const open = openKey === s.key;
           return (
             <div key={s.key} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-              <button onClick={() => setOpenKey(open ? null : s.key)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.text, textAlign: "left" }}>
+              <button onClick={() => setOpenKey(open ? null : s.key)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: open ? C.bgSoft : "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.text, textAlign: "start" }}>
                 {s.title}<span>{open ? "−" : "+"}</span>
               </button>
               {open && (
