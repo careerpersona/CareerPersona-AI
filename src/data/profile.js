@@ -64,12 +64,18 @@ export async function upsertProfile(userId, updates) {
   if ("phone" in baseUpdate) baseUpdate.phone = normalizePhone(baseUpdate.phone, updates.country);
   if ("email_address" in detailUpdate) detailUpdate.email_address = normalizeEmail(detailUpdate.email_address);
 
-  await Promise.all([
+  const [baseResult, detailResult] = await Promise.all([
     Object.keys(baseUpdate).length
       ? supabase.from("profiles").update(baseUpdate).eq("id", userId)
-      : Promise.resolve(),
+      : Promise.resolve({ error: null }),
     Object.keys(detailUpdate).length
       ? supabase.from("profile_details").upsert({ user_id: userId, ...detailUpdate })
-      : Promise.resolve(),
+      : Promise.resolve({ error: null }),
   ]);
+  // Supabase-js resolves with {error} on a PostgREST-level failure (RLS,
+  // constraint violation, a 500) rather than rejecting the promise -- this
+  // was never checked, so a real DB write failure looked identical to a
+  // successful save to every caller up the chain (updateProfile, ProfilePage).
+  if (baseResult.error) throw baseResult.error;
+  if (detailResult.error) throw detailResult.error;
 }
