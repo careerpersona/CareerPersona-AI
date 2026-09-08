@@ -98,7 +98,7 @@ import { fetchAdzuna, fetchRapid, fetchFreshPostings, deduplicate } from "./src/
 // own header comment for why.
 import { buildCompatibilityRecord } from "./src/lib/compatibility/index.js";
 import { selectJobsForAutoPrep } from "./src/lib/smartApplyAutoPrep/selection.js";
-import { buildSmartApplyPrompt, validateSmartApplyPackage } from "./src/lib/smartApply/generation.js";
+import { buildSmartApplyPrompt, validateSmartApplyPackage, preserveKnownContactInfo } from "./src/lib/smartApply/generation.js";
 import { getDailyPeriodKey, getMonthlyPeriodKey, combineBudgetResults } from "./src/lib/platform/aiBudget.js";
 // Proactive Job Alerts -- Discovery Engine + AI Layer are pure src/lib/
 // modules, imported directly, same pattern already proven above by
@@ -2134,6 +2134,13 @@ async function fetchProfileForAutoPrep(userId, env) {
   return {
     full_name: base.full_name || "",
     email_address: details.email_address || "",
+    // Fallback identity email -- profiles.email is populated by the signup
+    // trigger for every account (mirrors the `email` field src/data/profile.js's
+    // fetchProfile merge always carries, just sourced from the DB column here
+    // instead of the live auth session since a cron has no session). Lets
+    // buildIdentityBlock (src/lib/smartApply/generation.js) give the AI a real
+    // email even when the user never separately filled in email_address.
+    email: base.email || "",
     phone: base.phone || "",
     country: base.country || "",
     location: base.location || "",
@@ -2285,6 +2292,7 @@ async function runSmartApplyAutoPrepForUser(userId, skillDictionary, env) {
       const braceStart = text.indexOf("{"), braceEnd = text.lastIndexOf("}");
       const clean = (braceStart >= 0 && braceEnd > braceStart) ? text.slice(braceStart, braceEnd + 1) : text;
       const result = JSON.parse(clean);
+      result.tailoredResume = preserveKnownContactInfo(result.tailoredResume, profile, profile.country || undefined);
       const integrity = validateSmartApplyPackage(result, profile.country || undefined);
       await markAutoPrepResult(queued.id, result, integrity.ok, env);
       prepared++;

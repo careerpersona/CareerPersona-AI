@@ -38,7 +38,7 @@ import { I18nContext, useLanguagePreference, useI18n } from "./i18n/I18nContext"
 import { normalizeFullName, normalizeEmail, isEmailValid, normalizePhonesInText, detectContactType, resolveCountry, validateFields, getCountries } from "./lib/contactNormalization";
 import { parseResumeDoc } from "./lib/resumeParsing";
 import { computeResumeCompleteness } from "./lib/resumeCompleteness";
-import { buildSmartApplyPrompt, validateSmartApplyPackage, summarizeSmartApplyIntegrity } from "./lib/smartApply/generation";
+import { buildSmartApplyPrompt, validateSmartApplyPackage, summarizeSmartApplyIntegrity, preserveKnownContactInfo } from "./lib/smartApply/generation";
 import { LANGUAGES } from "./i18n/languages";
 import { MapPin, Mail, Phone, Globe } from 'lucide-react';
 
@@ -7828,7 +7828,9 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
       console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After JSON.parse succeeded`);
 
       console.log(`[SmartApply] ⏳ [5/6] Validating package integrity for "${job.title}"`);
-      _integrity = validateSmartApplyPackage(result, resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country));
+      const _packageCountry = resolveCountry(filters.country !== "REMOTE" ? filters.country : undefined, profile?.country);
+      result.tailoredResume = preserveKnownContactInfo(result.tailoredResume, profile, _packageCountry);
+      _integrity = validateSmartApplyPackage(result, _packageCountry);
       _stage = "after_validation";
       console.log(`[SmartApply] ✅ [5/6] Integrity check: ${_integrity.ok ? "passed" : "FAILED — " + summarizeSmartApplyIntegrity(_integrity)}`);
       console.log(`[FORENSIC] job_id=${job.id} queue_id=${queued.id} — After validateSmartApplyPackage. ok=${_integrity.ok}`);
@@ -10885,7 +10887,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
     setQueueError("");
     try {
       const appId = uid();
-      const newApp = { id: appId, company: item.company, jobTitle: item.job_title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", resume: item.tailored_resume || "", coverLetter: item.cover_letter || "" };
+      const newApp = { id: appId, company: item.company, jobTitle: item.job_title, status: "Applied", date: new Date().toISOString().split("T")[0], notes: "", resume: item.tailored_resume || "", coverLetter: item.cover_letter || "", smartApplyUsed: true, smartApplyQueueItemId: item.id, smartApplyScore: item.interview_probability ?? null };
       await insertApplicationRow(profile.id, newApp);
       setApplications(p => [newApp, ...p]);
       await markApplied(item.id, appId);
@@ -10926,7 +10928,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const integrity = validateSmartApplyPackage(result, resolveCountry(profile?.country));
+      const retryCountry = resolveCountry(profile?.country);
+      result.tailoredResume = preserveKnownContactInfo(result.tailoredResume, profile, retryCountry);
+      const integrity = validateSmartApplyPackage(result, retryCountry);
       if (integrity.ok) {
         await markReady(item.id, result);
         console.log(`[SmartApply] ✅ Retry complete — status: ready ✓`);
@@ -10965,7 +10969,9 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       const jsonStart = raw.indexOf("{"); const jsonEnd = raw.lastIndexOf("}");
       const cleanRaw = (jsonStart >= 0 && jsonEnd > jsonStart) ? raw.slice(jsonStart, jsonEnd + 1) : raw;
       const result = JSON.parse(cleanRaw);
-      const integrity = validateSmartApplyPackage(result, resolveCountry(profile?.country));
+      const prepCountry = resolveCountry(profile?.country);
+      result.tailoredResume = preserveKnownContactInfo(result.tailoredResume, profile, prepCountry);
+      const integrity = validateSmartApplyPackage(result, prepCountry);
       if (integrity.ok) await markReady(queued.id, result);
       else await markNeedsReview(queued.id, result);
     } catch (e) {

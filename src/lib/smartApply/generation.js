@@ -22,9 +22,16 @@
 import { parseResumeDoc } from "../resumeParsing.js";
 import { isEmailPresent, isPhonePresent } from "../contactNormalization.js";
 
+// Email precedence: profile.email_address (the user's own chosen contact email,
+// set on the Profile page's Job Preferences section) if they've filled it in,
+// otherwise profile.email (the Supabase Auth email every account has from
+// signup — see fetchProfile's merge in src/data/profile.js). Bug fix: this
+// used to check email_address only, so any account that never separately
+// filled in that optional field passed no email at all to the identity block,
+// even though a real one always exists.
 export const buildIdentityBlock = (profile) => [
   profile?.full_name ? `Name: ${profile.full_name}` : "",
-  profile?.email_address ? `Email: ${profile.email_address}` : "",
+  (profile?.email_address || profile?.email) ? `Email: ${profile.email_address || profile.email}` : "",
   profile?.phone ? `Phone: ${profile.phone}` : "",
 ].filter(Boolean).join("\n");
 
@@ -82,6 +89,35 @@ const checkResumeContactInfo = (tailoredResume, country) => {
     hasEmail: isEmailPresent(text),
     hasPhone: isPhonePresent(text, country),
   };
+};
+
+// Deterministic safety net, not a prompting improvement: the prompt already
+// instructs the model to carry contact info over verbatim (see CONTACT INFO
+// RULES above), but an LLM rewrite of the resume header can still drop it —
+// observed live where the model replaced the source resume's name with the
+// profile's and, having done so, omitted the email/phone that came with the
+// original name. This runs after generation and re-adds only a value already
+// confirmed real by an existing source (the profile's own email_address,
+// email, or phone fields) — it never invents a value. If no real value exists
+// for a field that's missing, the resume is left untouched and Package
+// Integrity Validation correctly still flags it as needing review.
+export const preserveKnownContactInfo = (tailoredResume, profile, country) => {
+  const text = tailoredResume || "";
+  if (!text) return text;
+  const missingEmail = !isEmailPresent(text);
+  const missingPhone = !isPhonePresent(text, country);
+  if (!missingEmail && !missingPhone) return text;
+
+  const recoveredEmail = missingEmail ? (profile?.email_address || profile?.email || "") : "";
+  const recoveredPhone = missingPhone ? (profile?.phone || "") : "";
+  const additions = [recoveredEmail, recoveredPhone].filter(Boolean);
+  if (additions.length === 0) return text; // nothing real available to add
+
+  const lines = text.split("\n");
+  const firstContentLine = lines.findIndex(l => l.trim().length > 0);
+  const insertAt = firstContentLine < 0 ? 0 : firstContentLine + 1;
+  lines.splice(insertAt, 0, additions.join(" | "));
+  return lines.join("\n");
 };
 
 // Recursively scans every string value anywhere in the generated package for placeholder
