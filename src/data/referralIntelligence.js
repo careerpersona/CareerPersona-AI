@@ -126,6 +126,15 @@ export async function runReferralAnalysis({ contacts, watchlist, savedJobs, appl
   }
 
   const content = await buildReferralIntelligencePayload({ contacts, targetCompanies, companyReadinessList, availability });
+  // buildReferralIntelligencePayload returns null only on a genuine parse/
+  // generation failure (the "not enough data" case already returned early
+  // above, before any AI call). Persisting a content:null row here would
+  // create a history record indistinguishable from a real, successfully
+  // computed result -- throw instead so the caller's existing error handling
+  // (ReferralIntelligencePanel's try/catch -> runError) takes over and
+  // nothing is saved, the same as the not-enough-data case above.
+  if (!content) throw new Error("referral_intelligence_parse_failed");
+
   await saveAnalysis(userId, {
     contactCount: contacts.length,
     companyCount: targetCompanies.length,

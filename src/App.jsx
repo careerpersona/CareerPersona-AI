@@ -2783,14 +2783,17 @@ Return ONLY this JSON, no markdown:
     result = parsed?.v === 1 ? { ...parsed, generatedAt: new Date().toISOString() } : null;
   } catch { result = null; }
 
-  return result || {
-    v: 1, generatedAt: new Date().toISOString(),
-    marketPatterns: { status: "Building", summary: "Save jobs and search in your target market to build a landscape for AI pattern analysis. The more you search and save, the more accurate the patterns become.", evidence: ["Search for roles in your target field to begin building your landscape"], trends: "Start your job search to generate market pattern data." },
-    employerDemand: { status: "Building", summary: "Search and save jobs in your target market to reveal what employers consistently ask for across many job descriptions.", topSkills: [], qualifications: [], insight: "Save at least 5 jobs to unlock employer demand analysis." },
-    marketFit: { status: "Building", narrative: "Complete your profile and save some target jobs to unlock a market fit assessment. This analysis compares your full profile against the aggregate requirements of your target market — not a single job description.", strengths: [], gaps: [], positioning: "Add your target role and experience to your profile to begin market fit analysis." },
-    searchStrategy: { status: "Building", summary: "Set your career goal in your profile and begin saving jobs to enable search strategy alignment analysis.", alignment: "No career goal set — add a target role and timeline to your profile.", recommendation: "Define your target role, preferred location, and career goal to enable strategic alignment analysis." },
-    searchPerformance: { status: "Building", summary: "Apply to positions and track outcomes in the Tracker to enable search performance analysis. Response rate data builds over time.", patterns: [], insight: "Track at least 5 applications to begin performance analysis." },
-  };
+  // A malformed/unparseable response is a genuine generation failure, not a
+  // "not enough data yet" state -- the AI is always asked to return a full
+  // analysis regardless of how sparse the input is, so it expresses low
+  // confidence through the status fields (e.g. "Limited"), never by failing
+  // to return valid JSON. Previously this fell back to a hardcoded
+  // success-shaped "Building" placeholder that generate() would persist and
+  // display identically to a real result, silently masking the failure.
+  // Throwing lets the caller's existing catch block (genError + the
+  // already-built "no analysis yet, retry" empty state) handle it correctly.
+  if (!result) throw new Error("job_intelligence_parse_failed");
+  return result;
 }
 
 // ─── APPLICATION OUTCOME INTELLIGENCE ───────────────────────────────────────
@@ -4975,6 +4978,28 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
 
 // RESUME_STEPS defined inline in JSX via t() — see Spinner usage below
 
+// Shared .docx text extraction, used by every resume-upload entry point
+// (Resume Hub, Job Search's attach-resume, Interview Prep's attach-resume).
+// A real .docx is a ZIP-packaged XML document, not plain text -- reading it
+// with FileReader.readAsText/file.text() (the previous approach at all three
+// call sites) decodes the raw ZIP bytes as UTF-8, which cannot produce
+// correct text for a genuine Word-generated file. Loads mammoth.js from
+// cdnjs on first use, the same dynamic-script pattern already used for
+// pdf.js's PDF extraction just below.
+async function extractDocxText(file) {
+  if (!window.mammoth) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.12.2/mammoth.browser.min.js";
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const buf = await file.arrayBuffer();
+  const { value } = await window.mammoth.extractRawText({ arrayBuffer: buf });
+  return (value || "").trim();
+}
+
 function ResumePage({ onNavigate, profile, applications, savedJobs, resumes, resumesLoading, saveResume, deleteResume, saveAnalysis, updateResumeLanguage, analysisHistory, saveHistoryToDb, activeResumeId, onResumeLoad, entryTarget, onConsumeEntryTarget, jobLanguage, isPremium, billingState, onOnboardingSave, onOnboardingSkip }) {
   const { t, language } = useI18n();
   // Mirrors the exact billingState -> canUseAI derivation JobSearchPage already
@@ -5487,12 +5512,19 @@ JOB DESCRIPTION:${jobDesc}`, 2500, "resume_analysis");
       } catch {
         setError(t("resume.pdfReadFailed"));
       } finally { setExtracting(false); }
-    } else if (['doc','docx'].includes(ext)) {
-      // DOCX: try to read as text (works for simple .docx)
+    } else if (ext === 'docx') {
+      try {
+        const text = await extractDocxText(file);
+        if (text) setResume(text); else setError(t("resume.docxReadFailed"));
+      } catch {
+        setError(t("resume.docxReadFailed"));
+      } finally { setExtracting(false); }
+    } else if (ext === 'doc') {
+      // Legacy binary .doc (OLE2 format, not ZIP/XML) -- mammoth.js only
+      // parses .docx. Unchanged from before: same best-effort text read.
       const reader = new FileReader();
       reader.onload = (ev) => {
         const text = ev.target.result;
-        // Check if readable text was extracted
         const readableChars = (text.match(/[a-zA-Z\s.,!?]/g) || []).length;
         if (readableChars > 50) {
           setResume(text);
@@ -7715,9 +7747,14 @@ function JobSearchPage({ savedJobs, setSavedJobs, applications, profile, resumes
         }
         text = text.trim();
         if (!text) { setError(t("jobSearch.pdfExtractFailed")); return; }
-      } else if (ext === "docx" || ext === "doc" || ext === "txt") {
+      } else if (ext === "docx") {
+        text = await extractDocxText(file);
+        if (!text) { setError(t("jobSearch.fileReadFailed")); return; }
+      } else if (ext === "doc" || ext === "txt") {
+        // Legacy binary .doc (OLE2, not ZIP/XML) has no clean in-browser
+        // parser -- mammoth.js only handles .docx. Unchanged from before.
         const raw = await file.text();
-        text = (ext === "docx" || ext === "doc") ? String(raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : raw.trim();
+        text = (ext === "doc") ? String(raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : raw.trim();
         if (!text) { setError(t("jobSearch.fileReadFailed")); return; }
       } else {
         setError(t("jobSearch.unsupportedFileType"));
@@ -8500,7 +8537,13 @@ function InterviewPage({ profile, applications, savedJobs, billingState, setPage
         }
         if (text.trim()) { setResume(text.trim()); setResumeFileName(file.name); }
         else setError(t("interview.pdfScanError"));
-      } else if (["docx","doc","txt"].includes(ext)) {
+      } else if (ext === "docx") {
+        const clean = await extractDocxText(file);
+        if (clean) { setResume(clean); setResumeFileName(file.name); }
+        else setError(t("interview.fileReadError"));
+      } else if (["doc","txt"].includes(ext)) {
+        // Legacy binary .doc (OLE2, not ZIP/XML) has no clean in-browser
+        // parser -- mammoth.js only handles .docx. Unchanged from before.
         const text = await file.text();
         let clean = (ext === "txt") ? text : String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         if (clean && clean.trim()) { setResume(clean.trim()); setResumeFileName(file.name); }
