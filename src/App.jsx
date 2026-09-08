@@ -3091,7 +3091,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveBriefing(result).catch(err => console.error("[Briefing] save failed", err));
       logActivity("Daily briefing generated");
-      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: "Your personalized career briefing has been generated.", linkPage: "dashboard" });
+      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing ready", body: t("notifications.bodies.briefingReady"), linkPage: "dashboard" });
     } catch (e) {
       console.error("[Briefing] Generation failed:", e?.message || e);
       setBriefingError(t("dashboard.briefingError"));
@@ -3131,7 +3131,7 @@ function DashboardPage({ profile, applications, savedJobs, setPage, resumes, sma
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       savePlan(result).catch(err => console.error("[ActionPlan] save failed", err));
       logActivity("Daily plan generated");
-      insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: "Today's action plan has been generated.", linkPage: "dashboard" });
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan ready", body: t("notifications.bodies.actionPlanReady"), linkPage: "dashboard" });
     } catch (e) {
       console.error("[ActionPlan] Generation failed:", e?.message || e);
       setPlanError(t("dashboard.planError"));
@@ -3867,7 +3867,7 @@ function BriefingPage({ profile, applications, savedJobs, setPage, resumes, smar
       try { sessionStorage.setItem("cp_briefing_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveBriefing(result).catch(err => console.error("briefing save failed", err));
       logActivity("Daily briefing regenerated");
-      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing updated", body: "Your personalized career briefing has been regenerated.", linkPage: "briefing" });
+      insertNotification(profile?.id, { type: "briefing", title: "Daily briefing updated", body: t("notifications.bodies.briefingUpdated"), linkPage: "briefing" });
     } catch { /* keep existing briefing */ }
     finally { setGenLoading(false); }
   };
@@ -4031,7 +4031,7 @@ function PlanPage({ profile, applications, savedJobs, setPage, onNavigateResume 
       try { sessionStorage.setItem("cp_plan_dash", JSON.stringify(result)); } catch { /* storage unavailable */ }
       savePlan(result).catch(err => console.error("[PlanPage] save failed", err));
       logActivity("Daily plan regenerated");
-      insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: "Today's action plan has been regenerated.", linkPage: "plan" });
+      insertNotification(profile?.id, { type: "action_plan", title: "Action plan updated", body: t("notifications.bodies.actionPlanUpdated"), linkPage: "plan" });
     } catch (e) {
       console.error("[PlanPage] Generation failed:", e?.message || e);
       setGenError(t("plan.genError"));
@@ -4275,7 +4275,7 @@ function CareerProgressPage({ profile, applications, savedJobs, setPage, updateP
       const ctx = userContext.getContextString();
       const result = await buildCareerProgressPayload(ctx, profile?.career_goal, profile?.career_timeline, t);
       setAnalysis(result);
-      insertNotification(profile?.id, { type: "career_progress", title: "Career progress report ready.", body: "Your career progress report has been generated." });
+      insertNotification(profile?.id, { type: "career_progress", title: "Career progress report ready.", body: t("notifications.bodies.careerProgressReady") });
       try { sessionStorage.setItem("cp_progress_analysis", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveAnalysis(result).catch(err => console.error("career progress save failed", err));
       logActivity("Career progress assessment generated");
@@ -4666,7 +4666,7 @@ function JobIntelligencePage({ profile, applications, savedJobs, setPage, billin
     try {
       const result = await buildJobIntelligencePayload(profile, savedJobs, applications);
       setAnalysis(result);
-      insertNotification(profile?.id, { type: "job_intel", title: "Job Intelligence updated.", body: "Job Intelligence has finished analyzing your opportunities." });
+      insertNotification(profile?.id, { type: "job_intel", title: "Job Intelligence updated.", body: t("notifications.bodies.jobIntelReady") });
       try { sessionStorage.setItem("cp_job_intel_analysis", JSON.stringify(result)); } catch { /* storage unavailable */ }
       saveAnalysis(result).catch(err => console.error("[JobIntel] save failed", err));
       logActivity("Job Intelligence landscape analysis generated");
@@ -5196,7 +5196,7 @@ RESUME:${resume}
 JOB DESCRIPTION:${jobDesc}`, 4000, "resume_analysis");
       const parsed = JSON.parse(raw);
       setResults(parsed); setTab("resume");
-      insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: "Your resume has been analyzed. View your ATS score and improvement tips." });
+      insertNotification(profile?.id, { type: "resume", title: "Resume analysis complete.", body: t("notifications.bodies.resumeReady") });
       // Animate score bars from 0 to final (PBar has CSS transition: width 1s ease)
       setAnimatedBreakdown({ keywordMatch: 0, formatting: 0, relevance: 0 });
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -8622,7 +8622,7 @@ CANDIDATE ANSWER:${ans.slice(0, 800)}`, 1200, "interview_prep");
     const answeredCount = Object.keys(answersMap).length;
     const baseSummary = { answered: answeredCount, skipped: mockQuestions.length - answeredCount, total: mockQuestions.length, avgScore: avg, aiSummary: null };
     setMockSummary(baseSummary);
-    insertNotification(profile?.id, { type: "interview", title: "Mock interview complete.", body: "AI Score: " + avg + "/10 — your interview feedback is ready." });
+    insertNotification(profile?.id, { type: "interview", title: "Mock interview complete.", body: t("notifications.bodies.interviewReady").replace("{score}", avg) });
 
     let finalSummary = baseSummary;
     if (answeredCount > 0) {
@@ -9765,7 +9765,7 @@ ${form.jobTitle} in ${form.location}, ${form.experience || "any"} exp, skills: $
         setError(t("salary.incompleteData"));
       } else {
         setResults(parsed);
-        insertNotification(profile?.id, { type: "salary", title: "Salary report ready.", body: "Your salary and market report is ready to view." });
+        insertNotification(profile?.id, { type: "salary", title: "Salary report ready.", body: t("notifications.bodies.salaryReady") });
         // Save immediately so quick navigation doesn't race the 600ms debounce
         saveSearch(form, parsed).catch(() => {});
       }
@@ -9930,7 +9930,7 @@ function NetworkingPage({ profile, applications, savedJobs, isPremium, watchlist
     });
     if (!exists) {
       setSavedContacts(p => [contact, ...p]);
-      insertNotification(profile?.id, { type: "networking", title: "Contact saved.", body: contact.name + (contact.company ? " at " + contact.company : "") + " added to your Saved Outreach." });
+      insertNotification(profile?.id, { type: "networking", title: "Contact saved.", body: contact.company ? t("notifications.bodies.contactSavedAtCompany").replace("{name}", contact.name).replace("{company}", contact.company) : t("notifications.bodies.contactSaved").replace("{name}", contact.name) });
     }
     setShowSavePrompt(false);
   };
@@ -11785,7 +11785,7 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       const withMeta = { ...result, generatedAt: new Date().toISOString(), v: 1 };
       setAnalysis(withMeta);
       saveOppAnalysis(withMeta).catch(err => console.error("[Opportunity] save failed", err));
-      insertNotification(profile?.id, { type: "opportunity", title: "Opportunity analysis ready.", body: "A new career opportunity analysis is available." });
+      insertNotification(profile?.id, { type: "opportunity", title: "Opportunity analysis ready.", body: t("notifications.bodies.opportunityReady") });
     } catch {
       setAnalysisError(t("opportunity.analysisFailed"));
     } finally {
@@ -13118,19 +13118,20 @@ function LegalDocumentPage({ title, content, setPage, backTo = "settings", backL
 // comment above. The legal-drafts card that used to live here was removed
 // (not just hidden) so this page carries zero dependency on src/legal/.
 function SupportPage() {
+  const { t } = useI18n();
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 6 }}>Contact / Support</h1>
-      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>Reach us directly by email — we don't yet have a ticketing system or support portal, so email is the fastest way to get help.</p>
+      <h1 style={{ fontSize: 26, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("support.heading")}</h1>
+      <p style={{ color: C.textMuted, fontSize: 14, marginBottom: 24 }}>{t("support.subtitle")}</p>
 
       <Card>
-        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>Email Us</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 10 }}>{t("support.emailUsHeading")}</div>
         <a href="mailto:info@sellatrend.com" style={{ fontSize: 15, color: C.purple, fontWeight: 700, marginBottom: 14, display: "inline-block", textDecoration: "none" }}>info@sellatrend.com</a>
-        <div style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>When reporting a problem, please include:</div>
+        <div style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>{t("support.reportIncludeIntro")}</div>
         <ul style={{ margin: 0, paddingLeft: 20, color: C.textMid, fontSize: 13, lineHeight: 1.8 }}>
-          <li>The email address associated with your account</li>
-          <li>A description of the problem</li>
-          <li>The feature or area of CareerPersona AI you were using, if relevant</li>
+          <li>{t("support.reportIncludeEmail")}</li>
+          <li>{t("support.reportIncludeDescription")}</li>
+          <li>{t("support.reportIncludeFeature")}</li>
         </ul>
       </Card>
     </div>
