@@ -6,8 +6,13 @@ import { supabase } from "../lib/supabaseClient";
 // `upsertConflict` lets callers specify the ON CONFLICT column(s) — required
 // for tables whose unique key differs from the primary key (e.g. saved_jobs
 // uses "user_id,job_id" so saves are idempotent before a _db_id is assigned).
+// Returns the first error encountered (or null on success) so the caller can
+// surface it -- previously this only logged to the console, so a failed save/
+// remove was invisible to the user (worse: the UI's optimistic state already
+// showed the change as applied, so a failed write looked identical to a
+// successful one).
 async function syncListDiff(table, prev, next, userId, toRow, key, upsertConflict) {
-  if (!userId) return;
+  if (!userId) return null;
   const prevById = new Map(prev.map(x => [x[key], x]));
   const nextIds = new Set(next.map(x => x[key]));
 
@@ -20,15 +25,17 @@ async function syncListDiff(table, prev, next, userId, toRow, key, upsertConflic
   try {
     if (removed.length) {
       const { error } = await supabase.from(table).delete().eq("user_id", userId).in(key, removed.map(x => x[key]));
-      if (error) console.error(`syncListDiff(${table}) delete error`, error);
+      if (error) { console.error(`syncListDiff(${table}) delete error`, error); return error; }
     }
     if (changed.length) {
       const upsertOpts = upsertConflict ? { onConflict: upsertConflict } : undefined;
       const { error } = await supabase.from(table).upsert(changed.map(x => toRow(x, userId)), upsertOpts);
-      if (error) console.error(`syncListDiff(${table}) upsert error`, error);
+      if (error) { console.error(`syncListDiff(${table}) upsert error`, error); return error; }
     }
+    return null;
   } catch (err) {
     console.error(`syncListDiff(${table}) failed`, err);
+    return err;
   }
 }
 
@@ -73,6 +80,9 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
   // empty array a fresh session starts from) with no signal a caller could
   // read, so an outage rendered identically to a real empty list.
   const [loadError, setLoadError] = useState(null);
+  // Mirrors loadError but for the background write path (syncListDiff) --
+  // set when a save/remove fails, cleared on the next attempt that succeeds.
+  const [syncError, setSyncError] = useState(null);
   const loadedForUser = useRef(null);
   const prevRef = useRef(val);
   const skipNextSync = useRef(false);
@@ -100,7 +110,7 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     localStorage.setItem(localKey, JSON.stringify(val));
     if (skipNextSync.current) { skipNextSync.current = false; prevRef.current = val; return; }
     if (val !== prevRef.current) {
-      syncListDiff(table, prevRef.current, val, userId, toRow, idKey, opts.upsertConflict);
+      syncListDiff(table, prevRef.current, val, userId, toRow, idKey, opts.upsertConflict).then(setSyncError);
       prevRef.current = val;
     }
   }, [val]);
@@ -123,5 +133,5 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return [val, setValue, refresh, loadError];
+  return [val, setValue, refresh, loadError, syncError];
 }

@@ -1211,6 +1211,7 @@ export default {
     fileReadFailed: "Could not read this file. Please paste your resume text instead.",
     unsupportedFileType: "Unsupported file type. Please upload PDF, DOCX, or TXT.",
     fileReadFailedGeneric: "Could not read the file. Please paste your resume text instead.",
+    saveSyncError: "Couldn't save this job. Check your connection and try again.",
     enterTitlePrompt: "Enter a job title to search",
     searchFailed: "Search failed: {message}. Please try again.",
     signInForSmartApply: "Please sign in to use Smart Apply.",
