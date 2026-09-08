@@ -68,6 +68,11 @@ async function migrateLocalOnce(table, localKey, userId, toRow, migrateConflict 
 // opts.migrateConflict — passed to migrateLocalOnce; same reason.
 export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "id", opts = {}) {
   const [val, setVal] = useState(() => { try { return JSON.parse(localStorage.getItem(localKey) || "[]"); } catch { return []; } });
+  // Distinguishes "genuinely no rows" from "the load failed" -- previously a
+  // failed load fell through to whatever was already in `val` (usually the
+  // empty array a fresh session starts from) with no signal a caller could
+  // read, so an outage rendered identically to a real empty list.
+  const [loadError, setLoadError] = useState(null);
   const loadedForUser = useRef(null);
   const prevRef = useRef(val);
   const skipNextSync = useRef(false);
@@ -79,7 +84,8 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     (async () => {
       await migrateLocalOnce(table, localKey, userId, toRow, opts.migrateConflict);
       const { data, error } = await supabase.from(table).select("*").eq("user_id", userId).order("created_at", { ascending: false });
-      if (error) { console.error(`useSyncedList(${table}) load error`, error); return; }
+      if (error) { console.error(`useSyncedList(${table}) load error`, error); setLoadError(error); return; }
+      setLoadError(null);
       if (data) {
         const mapped = data.map(fromRow);
         skipNextSync.current = true;
@@ -106,7 +112,8 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
   const refresh = useCallback(async () => {
     if (!userId) return;
     const { data, error } = await supabase.from(table).select("*").eq("user_id", userId).order("created_at", { ascending: false });
-    if (error) { console.error(`useSyncedList(${table}) refresh error`, error); return; }
+    if (error) { console.error(`useSyncedList(${table}) refresh error`, error); setLoadError(error); return; }
+    setLoadError(null);
     if (data) {
       const mapped = data.map(fromRow);
       skipNextSync.current = true;
@@ -116,5 +123,5 @@ export function useSyncedList(table, localKey, userId, toRow, fromRow, idKey = "
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return [val, setValue, refresh];
+  return [val, setValue, refresh, loadError];
 }

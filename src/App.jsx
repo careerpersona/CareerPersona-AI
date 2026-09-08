@@ -5676,11 +5676,16 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
       return prev.slice(0, idx) + improved + prev.slice(idx + original.length);
     });
     setDeepInsights(prev => prev ? { ...prev, weakBullets: prev.weakBullets?.filter(b => b.original !== original) } : prev);
+    // Marks the working text as edited, same flag handleImproveResume already sets after
+    // its own edits -- without it, handleSaveToLibrary treats `resume` as still the
+    // untouched original and silently skips saving this edit at all.
+    setIsOptimized(true);
   };
 
   const applyVerbFix = (original, stronger) => {
     setResume(prev => prev.replace(new RegExp(`\\b${original}\\b`, 'gi'), stronger));
     setDeepInsights(prev => prev ? { ...prev, weakActionVerbs: prev.weakActionVerbs?.filter(v => v.original !== original) } : prev);
+    setIsOptimized(true);
   };
 
   const [applyingIssueFix, setApplyingIssueFix] = useState(null);
@@ -5691,6 +5696,7 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
       const fixed = await askClaude(`You are a professional resume editor. Apply exactly this fix to the resume: "${issue.fix}". Return ONLY the complete improved resume text — no explanation, no preamble, no markdown.\n\nRESUME:\n${resume}`, 3000, "resume_analysis");
       setResume(fixed.trim());
       setDeepInsights(prev => prev ? { ...prev, issues: prev.issues?.filter(i => i.problem !== issue.problem) } : prev);
+      setIsOptimized(true);
     } catch (e) { console.error("[IssueFix]", e); }
     finally { setApplyingIssueFix(null); }
   };
@@ -5722,6 +5728,7 @@ Write a complete, polished ATS-friendly resume in plain text. Include: Contact I
       }
       setResume(current);
       setDeepInsights(prev => prev ? { ...prev, weakBullets: [], weakActionVerbs: [], issues: [] } : prev);
+      setIsOptimized(true);
       // Background: refresh cover letters with the fully-fixed resume.
       if (coverVersions) generateCoverVersions(current);
     } catch (e) { console.error("[ApplyAllFixes]", e); }
@@ -9323,7 +9330,7 @@ function OutcomeIntelligencePanel({ applications, savedJobs, smartApplyQueue, pr
   );
 }
 
-function TrackerPage({ applications, deleteApplication, saveApplication, resumes, savedJobs, smartApplyQueue, profile, isPremium, outcomePatternsHook, outcomeAnalysesHook, recommendationEvalHook, forceInsightsTab, onForceInsightsTabHandled }) {
+function TrackerPage({ applications, deleteApplication, saveApplication, resumes, savedJobs, smartApplyQueue, profile, isPremium, outcomePatternsHook, outcomeAnalysesHook, recommendationEvalHook, forceInsightsTab, onForceInsightsTabHandled, loadError }) {
   const { t } = useI18n();
   const tStatus = s => t(`tracker.${STATUS_LABEL_KEY[s]}`, s);
   const [tab, setTab] = useSessionState("cp_tracker_tab", "applications");
@@ -9466,6 +9473,7 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
 
   return (
     <div>
+      {loadError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{t("tracker.loadError")}</div>}
       {deleteError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{deleteError}</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#DC2626", fontSize: 13 }}>{saveError}</div>}
       {/* Quick status-change confirmation -- same fixed-position toast pattern used
@@ -10848,7 +10856,7 @@ function SavedJobDetailsView({ job }) {
   );
 }
 
-function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markNeedsReview, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem, billingState, onNavigate }) {
+function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications, profile, resumes, onQueueChange, queue, queueLoading, markApplied, markReady, markNeedsReview, markFailed, resetToQueued, purgeQueueByJobId, enqueue, activeResumeId, patchQueueItem, billingState, onNavigate, loadError }) {
   const { t, language } = useI18n();
   // Same billingState -> canUseAI derivation already used by JobSearchPage/ResumePage --
   // reused, not a second entitlement source. Real enforcement stays server-side.
@@ -11003,6 +11011,7 @@ function SavedJobsPage({ savedJobs, setSavedJobs, setApplications, applications,
       <h1 style={{ fontSize: 28, fontWeight: 800, color: C.text, marginBottom: 6 }}>{t("savedJobs.heading")}</h1>
       <p style={{ color: C.textMuted, fontSize: 15, marginBottom: 28 }}>{t("savedJobs.subtitleCount").replace("{n}", savedJobs.length)}</p>
 
+      {loadError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 16 }}>{t("savedJobs.loadError")}</div>}
       {queueError && <div style={{ background: C.redLight, border: `1px solid ${C.red}30`, borderRadius: 9, padding: 12, color: C.red, fontSize: 13, marginBottom: 16 }}>{queueError}</div>}
 
       {/* ── Section 1: Your Saved Jobs ─────────────────────────── */}
@@ -11552,7 +11561,8 @@ function ProfilePage({ profile, updateProfile, onOnboardingSave }) {
     setErrors(fieldErrors);
   };
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
     const { normalized, fieldErrors } = runValidation(form);
     setForm(normalized);
     setErrors(fieldErrors);
@@ -11560,7 +11570,15 @@ function ProfilePage({ profile, updateProfile, onOnboardingSave }) {
     const firstError = Object.keys(fieldErrors)[0];
     if (firstError) { setError(t(PROFILE_ERROR_MESSAGE_KEY[firstError])); return; } // invalid data never reaches the database
     setError("");
-    updateProfile(normalized);
+    setSaving(true);
+    try {
+      await updateProfile(normalized);
+    } catch {
+      setError(t("profile.saveFailed"));
+      setSaving(false);
+      return; // DB write failed -- don't show success or advance onboarding
+    }
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
     // Only present when this Profile visit originated from the first-launch
@@ -11645,7 +11663,7 @@ function ProfilePage({ profile, updateProfile, onOnboardingSave }) {
         {/* Mirrors the validation summary above: immediate feedback exactly where
             the user performed the save action, not just at the top of the page. */}
         {saved && <div style={{ background: C.greenLight, border: `1px solid ${C.green}30`, borderRadius: 9, padding: 12, color: C.green, fontSize: 13, marginBottom: 14 }}>{t("profile.savedSuccess")}</div>}
-        <Btn onClick={save} style={{ padding: "12px 28px" }}>{saved ? t("profile.saved") : t("profile.saveChanges")}</Btn>
+        <Btn onClick={save} disabled={saving} loading={saving} style={{ padding: "12px 28px" }}>{saved ? t("profile.saved") : t("profile.saveChanges")}</Btn>
       </Card>
     </div>
   );
@@ -13353,8 +13371,8 @@ export default function App() {
     return () => clearTimeout(id);
   }, [user, logout]);
   const [profile, setProfile] = useState(() => { try { return JSON.parse(localStorage.getItem("cp_user") || "null"); } catch { return null; } });
-  const [applications, setApplications] = useApplications(user?.id);
-  const [savedJobs, setSavedJobs] = useSavedJobs(user?.id);
+  const [applications, setApplications, , applicationsLoadError] = useApplications(user?.id);
+  const [savedJobs, setSavedJobs, , savedJobsLoadError] = useSavedJobs(user?.id);
   const validPages = new Set(["dashboard","briefing","plan","progress","resume","jobs","saved","jobtracker","interview","tracker","salary","network","alerts","pricing","profile","settings","opportunity","jobintel","support","faq","legal-privacy","legal-terms","legal-refund","legal-fairuse","legal-cookies"]);
 
   // Read initial page from URL hash, then localStorage fallback
@@ -13464,12 +13482,17 @@ export default function App() {
     // starts from Supabase, not from the previous user's stale cached data
     ["cp_apps","cp_saved","cp_network_contacts","cp_network_form","cp_network_results","cp_network_draft","cp_network_emailto","cp_network_emailsent"].forEach(k => { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } });
   };
-  const updateProfile = (updates) => {
+  const updateProfile = async (updates) => {
     const updated = { ...profile, ...updates };
     setProfile(updated);
     localStorage.setItem("cp_user", JSON.stringify(updated));
     saveAccount(updated);
-    if (updated.id) upsertProfile(updated.id, updates).catch(() => {});
+    // Awaited (not fire-and-forget) so a failed write reaches the caller as a
+    // rejected promise instead of being silently discarded -- callers that
+    // don't await this (most call sites) are unaffected: the local/optimistic
+    // update above still happens exactly as before, only a DB failure now
+    // surfaces to whoever does await it (e.g. ProfilePage's save()).
+    if (updated.id) await upsertProfile(updated.id, updates);
   };
 
   // Single billing refresh entry point. Every billing action funnels through here.
@@ -13970,10 +13993,10 @@ export default function App() {
         {page === "progress" && <CareerProgressPage profile={profile} applications={applications} savedJobs={savedJobs} setPage={setPage} updateProfile={updateProfile} resumes={resumes} analysisHistory={analysisHistory} onNavigateResume={navigateToResume} />}
         {page === "resume" && <ResumePage onSave={handleSaveApp} onNavigate={setPage} profile={profile} applications={applications} savedJobs={savedJobs} resumes={resumes} resumesLoading={resumesLoading} saveResume={rootSaveResume} deleteResume={rootDeleteResume} downloadResume={rootDownloadResume} saveAnalysis={rootSaveAnalysis} updateVersionLabel={rootUpdateVersionLabel} updateResumeLanguage={rootUpdateResumeLanguage} jobLanguage={profile?.job_language || "en"} analysisHistory={analysisHistory} saveHistoryToDb={saveHistoryToDb} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} entryTarget={resumeEntryTarget} onConsumeEntryTarget={() => setResumeEntryTarget(null)} isPremium={isPremium} billingState={billingState} onOnboardingSave={resumeIsOnboarding ? () => { setResumeIsOnboarding(false); setOnboardingTransition({ message: t("firstLaunch.resumeSavedMessage"), nextPage: "dashboard" }); } : undefined} onOnboardingSkip={resumeIsOnboarding ? () => { setResumeIsOnboarding(false); setOnboardingTransition({ message: t("firstLaunch.resumeSkippedMessage"), nextPage: "dashboard" }); } : undefined} />}
         {page === "jobs" && <JobSearchPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} enqueue={rootEnqueue} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} purgeQueueByJobId={rootPurgeByJobId} onNavigate={setPage} billingState={billingState} activeResumeId={activeResumeId} onResumeLoad={setActiveResumeId} saveResume={rootSaveResume} onNavigateResume={navigateToResume} jobWatchlist={jobWatchlistHook} companyWatchlist={companyWatchlistHook} />}
-        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} onNavigate={setPage} billingState={billingState} />}
+        {page === "saved" && <SavedJobsPage savedJobs={savedJobs} setSavedJobs={setSavedJobs} setApplications={setApplications} applications={applications} profile={profile} resumes={resumes} onQueueChange={refreshSmartApplyQueue} queue={smartApplyQueue} queueLoading={smartApplyQueueLoading} markApplied={rootMarkApplied} markReady={rootMarkReady} markNeedsReview={rootMarkNeedsReview} markFailed={rootMarkFailed} resetToQueued={rootResetToQueued} purgeQueueByJobId={rootPurgeByJobId} enqueue={rootEnqueue} activeResumeId={activeResumeId} patchQueueItem={rootPatchQueueItem} onNavigate={setPage} billingState={billingState} loadError={savedJobsLoadError} />}
         {page === "jobtracker" && <JobTrackerPage profile={profile} resumes={resumes} activeResumeId={activeResumeId} companyWatchlist={companyWatchlistHook} jobWatchlist={jobWatchlistHook} setPage={setPage} />}
         {page === "interview" && <InterviewPage profile={profile} applications={applications} savedJobs={savedJobs} billingState={billingState} setPage={setPage} />}
-        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} />}
+        {page === "tracker" && <TrackerPage applications={applications} deleteApplication={handleDeleteApplication} saveApplication={handleSaveApplication} resumes={resumes} savedJobs={savedJobs} smartApplyQueue={smartApplyQueue} profile={profile} isPremium={isPremium} outcomePatternsHook={outcomePatternsHook} outcomeAnalysesHook={outcomeAnalysesHook} recommendationEvalHook={recommendationEvalHook} forceInsightsTab={forceTrackerInsightsTab} onForceInsightsTabHandled={() => setForceTrackerInsightsTab(false)} loadError={applicationsLoadError} />}
         {page === "salary" && <SalaryPage profile={profile} applications={applications} savedJobs={savedJobs} billingState={billingState} setPage={setPage} />}
         {page === "network" && <NetworkingPage profile={profile} applications={applications} savedJobs={savedJobs} isPremium={isPremium} watchlist={companyWatchlist} referralPatterns={outcomePatternsHook.patterns} referralAnalysesHook={referralAnalysesHook} billingState={billingState} setPage={setPage} />}
         {page === "pricing" && <PricingPage profile={profile} setPage={setPage} billingState={billingState} refreshBillingState={refreshBillingState} />}
