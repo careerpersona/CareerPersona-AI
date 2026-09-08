@@ -29,6 +29,7 @@ import { useAiBriefing } from "./data/aiBriefing";
 import { useAiActionPlan } from "./data/aiActionPlan";
 import { useCareerProgressAnalysis } from "./data/careerProgress";
 import { useJobIntelligenceAnalysis } from "./data/jobIntelligence";
+import { useOpportunityIntelligenceAnalysis } from "./data/opportunityIntelligenceAnalysis";
 import { useUserContext } from "./data/userContext";
 import { loadSkillSynonyms } from "./data/skillSynonyms";
 import { extractSkillKeywords, buildCompatibilityRecord, normalizeSkillSet } from "./lib/compatibility";
@@ -11667,6 +11668,19 @@ function OpportunityPage({ profile, savedJobs, applications, setPage, watchlist,
   const { data: salaryData } = useSalaryResearch(profile?.id);
   const [networkContacts] = useNetworkingContacts(profile?.id);
 
+  // Persistence -- one AI opportunity analysis per user per day, same pattern
+  // as Job Intelligence (useJobIntelligenceAnalysis). Fixes the A-Z audit's
+  // finding that this analysis was never persisted, so a reload always lost
+  // it even though AI quota had already been spent generating it.
+  const { analysis: savedOppAnalysis, loading: oppAnalysisLoading, loadedFor: oppLoadedFor, save: saveOppAnalysis } = useOpportunityIntelligenceAnalysis(profile?.id);
+  const oppAppliedRef = useRef(undefined);
+  useEffect(() => {
+    if (oppAnalysisLoading || oppLoadedFor !== profile?.id) return;
+    if (oppAppliedRef.current === profile?.id) return;
+    oppAppliedRef.current = profile?.id;
+    if (savedOppAnalysis?.v === 1) setAnalysis(savedOppAnalysis);
+  }, [savedOppAnalysis, oppAnalysisLoading, oppLoadedFor, profile?.id]);
+
   const saved = savedJobs || [];
   const apps = applications || [];
   const contacts = networkContacts || [];
@@ -11750,7 +11764,9 @@ User context: ${ctx}. Target role: ${profile?.preferred_job_title || profile?.jo
       const s = raw.indexOf("{"); const e = raw.lastIndexOf("}");
       const result = s >= 0 && e > s ? JSON.parse(raw.slice(s, e + 1)) : null;
       if (!result?.careerPivotOpportunities) throw new Error("invalid");
-      setAnalysis({ ...result, generatedAt: new Date().toISOString() });
+      const withMeta = { ...result, generatedAt: new Date().toISOString(), v: 1 };
+      setAnalysis(withMeta);
+      saveOppAnalysis(withMeta).catch(err => console.error("[Opportunity] save failed", err));
       insertNotification(profile?.id, { type: "opportunity", title: "Opportunity analysis ready.", body: "A new career opportunity analysis is available." });
     } catch {
       setAnalysisError(t("opportunity.analysisFailed"));
