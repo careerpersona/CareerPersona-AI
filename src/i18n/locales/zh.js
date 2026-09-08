@@ -435,6 +435,8 @@
     retryNoResume: "未找到简历。请先在职位搜索中添加您的简历。",
     retryError: "重试失败。请再次尝试。",
     removeError: "删除失败。请再次尝试。",
+
+    loadError: "无法加载您收藏的职位。请检查网络连接后重试。",
     sectionTitle: "您保存的职位",
     statusSaved: "已保存",
     statusAiReady: "AI包已就绪",
@@ -585,6 +587,8 @@
     invalidEmail: "请输入有效的电子邮件地址，或将此字段留空。",
     invalidPhone: "请输入有效的电话号码，或将此字段留空。",
     savedSuccess: "✓ 档案保存成功！",
+
+    saveFailed: "保存失败,请重试。",
     yourName: "您的姓名",
     addJobTitle: "添加您的职位名称",
     personalInfo: "个人信息",
@@ -652,6 +656,8 @@
     notesPlaceholder: "面试笔记、跟进任务、讨论的薪资…",
     saveApplication: "💾 保存申请",
     cancel: "取消",
+    loadError: "无法加载您的申请记录。请检查网络连接后重试。",
+
     noApplicationsYet: "暂无申请",
     noMatchesFound: "未找到匹配项",
     addManuallyHint: "手动添加一个，或从简历定制器保存",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "无法读取此文件。请改为粘贴您的简历文本。",
     unsupportedFileType: "不支持的文件类型。请上传 PDF、DOCX 或 TXT。",
     fileReadFailedGeneric: "无法读取该文件。请改为粘贴您的简历文本。",
+
+    saveSyncError: "无法保存该职位。请检查网络连接后重试。",
     enterTitlePrompt: "请输入职位名称进行搜索",
     searchFailed: "搜索失败：{message}。请重试。",
     signInForSmartApply: "请登录以使用智能申请。",

@@ -435,6 +435,8 @@
     retryNoResume: "Currículo não encontrado. Por favor, adicione seu currículo na Busca de Empregos primeiro.",
     retryError: "Nova tentativa falhou. Por favor, tente novamente.",
     removeError: "Falha ao remover. Por favor, tente novamente.",
+
+    loadError: "Não foi possível carregar suas vagas salvas. Verifique sua conexão e tente novamente.",
     sectionTitle: "Os seus empregos guardados",
     statusSaved: "Guardado",
     statusAiReady: "Pacote IA pronto",
@@ -585,6 +587,8 @@
     invalidEmail: "Insira um endereço de e-mail válido ou deixe este campo em branco.",
     invalidPhone: "Insira um número de telefone válido ou deixe este campo em branco.",
     savedSuccess: "✓ Perfil guardado com sucesso!",
+
+    saveFailed: "Falha ao salvar. Tente novamente.",
     yourName: "O Seu Nome",
     addJobTitle: "Adicione o seu cargo",
     personalInfo: "Informações Pessoais",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Notas da entrevista, tarefas de acompanhamento, salário discutido…",
     saveApplication: "💾 Guardar Candidatura",
     cancel: "Cancelar",
+    loadError: "Não foi possível carregar suas candidaturas. Verifique sua conexão e tente novamente.",
+
     noApplicationsYet: "Ainda não há candidaturas",
     noMatchesFound: "Nenhuma correspondência encontrada",
     addManuallyHint: "Adicione uma manualmente ou guarde a partir do Adaptador de Currículo",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Não foi possível ler este ficheiro. Por favor, cole o texto do seu currículo.",
     unsupportedFileType: "Tipo de ficheiro não suportado. Carregue um PDF, DOCX ou TXT.",
     fileReadFailedGeneric: "Não foi possível ler o ficheiro. Por favor, cole o texto do seu currículo.",
+
+    saveSyncError: "Não foi possível salvar esta vaga. Verifique sua conexão e tente novamente.",
     enterTitlePrompt: "Insira um cargo para pesquisar",
     searchFailed: "Falha na pesquisa: {message}. Tente novamente.",
     signInForSmartApply: "Inicie sessão para usar a Candidatura Inteligente.",

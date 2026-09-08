@@ -435,6 +435,8 @@
     retryNoResume: "Aucun CV trouvé. Veuillez d'abord ajouter votre CV dans Recherche d'Emplois.",
     retryError: "Nouvelle tentative échouée. Veuillez réessayer.",
     removeError: "Échec de la suppression. Veuillez réessayer.",
+
+    loadError: "Impossible de charger vos offres enregistrées. Vérifiez votre connexion et réessayez.",
     sectionTitle: "Vos emplois sauvegardés",
     statusSaved: "Sauvegardé",
     statusAiReady: "Package IA prêt",
@@ -585,6 +587,8 @@
     invalidEmail: "Veuillez saisir une adresse e-mail valide, ou laissez ce champ vide.",
     invalidPhone: "Veuillez saisir un numéro de téléphone valide, ou laissez ce champ vide.",
     savedSuccess: "✓ Profil enregistré avec succès !",
+
+    saveFailed: "Échec de l'enregistrement. Veuillez réessayer.",
     yourName: "Votre Nom",
     addJobTitle: "Ajoutez votre intitulé de poste",
     personalInfo: "Informations Personnelles",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Notes d'entretien, tâches de suivi, salaire discuté…",
     saveApplication: "💾 Enregistrer la Candidature",
     cancel: "Annuler",
+    loadError: "Impossible de charger vos candidatures. Vérifiez votre connexion et réessayez.",
+
     noApplicationsYet: "Aucune candidature pour le moment",
     noMatchesFound: "Aucun résultat trouvé",
     addManuallyHint: "Ajoutez-en une manuellement ou enregistrez depuis l'Adaptateur de CV",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Impossible de lire ce fichier. Veuillez plutôt coller le texte de votre CV.",
     unsupportedFileType: "Type de fichier non pris en charge. Veuillez télécharger un PDF, DOCX ou TXT.",
     fileReadFailedGeneric: "Impossible de lire le fichier. Veuillez plutôt coller le texte de votre CV.",
+
+    saveSyncError: "Impossible d'enregistrer cette offre. Vérifiez votre connexion et réessayez.",
     enterTitlePrompt: "Saisissez un intitulé de poste pour rechercher",
     searchFailed: "Échec de la recherche : {message}. Veuillez réessayer.",
     signInForSmartApply: "Veuillez vous connecter pour utiliser la Candidature Intelligente.",

@@ -435,6 +435,8 @@
     retryNoResume: "履歴書が見つかりません。まず求人検索で履歴書を追加してください。",
     retryError: "再試行に失敗しました。もう一度お試しください。",
     removeError: "削除に失敗しました。もう一度お試しください。",
+
+    loadError: "保存した求人を読み込めませんでした。接続を確認してもう一度お試しください。",
     sectionTitle: "保存した求人",
     statusSaved: "保存済み",
     statusAiReady: "AIパッケージ準備完了",
@@ -585,6 +587,8 @@
     invalidEmail: "有効なメールアドレスを入力するか、このフィールドを空欄にしてください。",
     invalidPhone: "有効な電話番号を入力するか、このフィールドを空欄にしてください。",
     savedSuccess: "✓ プロフィールが正常に保存されました！",
+
+    saveFailed: "保存に失敗しました。もう一度お試しください。",
     yourName: "お名前",
     addJobTitle: "職種を追加してください",
     personalInfo: "個人情報",
@@ -652,6 +656,8 @@
     notesPlaceholder: "面接メモ、フォローアップ事項、提示された給与など…",
     saveApplication: "💾 応募を保存",
     cancel: "キャンセル",
+    loadError: "応募状況を読み込めませんでした。接続を確認してもう一度お試しください。",
+
     noApplicationsYet: "まだ応募がありません",
     noMatchesFound: "該当する応募が見つかりません",
     addManuallyHint: "手動で追加するか、履歴書テーラーから保存してください",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "このファイルを読み取れませんでした。代わりに履歴書のテキストを貼り付けてください。",
     unsupportedFileType: "サポートされていないファイル形式です。PDF、DOCX、またはTXTをアップロードしてください。",
     fileReadFailedGeneric: "ファイルを読み取れませんでした。代わりに履歴書のテキストを貼り付けてください。",
+
+    saveSyncError: "この求人を保存できませんでした。接続を確認してもう一度お試しください。",
     enterTitlePrompt: "検索する職種を入力してください",
     searchFailed: "検索に失敗しました：{message}。もう一度お試しください。",
     signInForSmartApply: "スマート応募を利用するにはサインインしてください。",

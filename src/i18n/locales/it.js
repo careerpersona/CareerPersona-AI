@@ -435,6 +435,8 @@
     retryNoResume: "Nessun curriculum trovato. Aggiungi il tuo curriculum in Ricerca Lavoro prima.",
     retryError: "Nuovo tentativo fallito. Riprova.",
     removeError: "Rimozione fallita. Riprova.",
+
+    loadError: "Impossibile caricare i lavori salvati. Controlla la connessione e riprova.",
     sectionTitle: "I tuoi lavori salvati",
     statusSaved: "Salvato",
     statusAiReady: "Pacchetto IA pronto",
@@ -585,6 +587,8 @@
     invalidEmail: "Inserisci un indirizzo email valido, oppure lascia questo campo vuoto.",
     invalidPhone: "Inserisci un numero di telefono valido, oppure lascia questo campo vuoto.",
     savedSuccess: "✓ Profilo salvato con successo!",
+
+    saveFailed: "Salvataggio non riuscito. Riprova.",
     yourName: "Il Tuo Nome",
     addJobTitle: "Aggiungi il tuo titolo professionale",
     personalInfo: "Informazioni Personali",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Note del colloquio, attività di follow-up, stipendio discusso…",
     saveApplication: "💾 Salva Candidatura",
     cancel: "Annulla",
+    loadError: "Impossibile caricare le tue candidature. Controlla la connessione e riprova.",
+
     noApplicationsYet: "Ancora nessuna candidatura",
     noMatchesFound: "Nessuna corrispondenza trovata",
     addManuallyHint: "Aggiungine una manualmente o salva da Adattatore CV",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Impossibile leggere questo file. Incolla invece il testo del tuo curriculum.",
     unsupportedFileType: "Tipo di file non supportato. Carica un PDF, DOCX o TXT.",
     fileReadFailedGeneric: "Impossibile leggere il file. Incolla invece il testo del tuo curriculum.",
+
+    saveSyncError: "Impossibile salvare questo lavoro. Controlla la connessione e riprova.",
     enterTitlePrompt: "Inserisci un titolo di lavoro per la ricerca",
     searchFailed: "Ricerca fallita: {message}. Riprova.",
     signInForSmartApply: "Accedi per usare Candidatura Smart.",

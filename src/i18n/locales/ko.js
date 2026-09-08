@@ -435,6 +435,8 @@
     retryNoResume: "이력서를 찾을 수 없습니다. 먼저 취업 검색에서 이력서를 추가하세요.",
     retryError: "재시도 실패. 다시 시도해 주세요.",
     removeError: "삭제 실패. 다시 시도해 주세요.",
+
+    loadError: "저장된 채용 공고를 불러올 수 없습니다. 연결 상태를 확인하고 다시 시도해 주세요.",
     sectionTitle: "저장한 채용공고",
     statusSaved: "저장됨",
     statusAiReady: "AI 패키지 준비 완료",
@@ -585,6 +587,8 @@
     invalidEmail: "유효한 이메일 주소를 입력하거나 이 필드를 비워 두세요.",
     invalidPhone: "유효한 전화번호를 입력하거나 이 필드를 비워 두세요.",
     savedSuccess: "✓ 프로필이 성공적으로 저장되었습니다!",
+
+    saveFailed: "저장하지 못했습니다. 다시 시도해 주세요.",
     yourName: "이름",
     addJobTitle: "직함을 추가하세요",
     personalInfo: "개인 정보",
@@ -652,6 +656,8 @@
     notesPlaceholder: "면접 메모, 후속 조치, 논의된 연봉…",
     saveApplication: "💾 지원 정보 저장",
     cancel: "취소",
+    loadError: "지원 내역을 불러올 수 없습니다. 연결 상태를 확인하고 다시 시도해 주세요.",
+
     noApplicationsYet: "아직 지원 내역이 없습니다",
     noMatchesFound: "일치하는 항목이 없습니다",
     addManuallyHint: "수동으로 추가하거나 이력서 맞춤화에서 저장하세요",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "이 파일을 읽을 수 없습니다. 대신 이력서 텍스트를 붙여넣어 주세요.",
     unsupportedFileType: "지원되지 않는 파일 형식입니다. PDF, DOCX 또는 TXT를 업로드해 주세요.",
     fileReadFailedGeneric: "파일을 읽을 수 없습니다. 대신 이력서 텍스트를 붙여넣어 주세요.",
+
+    saveSyncError: "이 채용 공고를 저장할 수 없습니다. 연결 상태를 확인하고 다시 시도해 주세요.",
     enterTitlePrompt: "검색할 직함을 입력하세요",
     searchFailed: "검색 실패: {message}. 다시 시도해 주세요.",
     signInForSmartApply: "스마트 지원을 사용하려면 로그인해 주세요.",

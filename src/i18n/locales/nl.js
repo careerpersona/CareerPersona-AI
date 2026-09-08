@@ -435,6 +435,8 @@
     retryNoResume: "Geen cv gevonden. Voeg eerst uw cv toe in Vacatures Zoeken.",
     retryError: "Opnieuw proberen mislukt. Probeer het opnieuw.",
     removeError: "Verwijderen mislukt. Probeer het opnieuw.",
+
+    loadError: "Je opgeslagen vacatures konden niet worden geladen. Controleer je verbinding en probeer het opnieuw.",
     sectionTitle: "Uw opgeslagen banen",
     statusSaved: "Opgeslagen",
     statusAiReady: "AI-pakket gereed",
@@ -585,6 +587,8 @@
     invalidEmail: "Voer een geldig e-mailadres in, of laat dit veld leeg.",
     invalidPhone: "Voer een geldig telefoonnummer in, of laat dit veld leeg.",
     savedSuccess: "✓ Profiel succesvol opgeslagen!",
+
+    saveFailed: "Opslaan mislukt. Probeer het opnieuw.",
     yourName: "Jouw Naam",
     addJobTitle: "Voeg je functietitel toe",
     personalInfo: "Persoonlijke Informatie",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Interviewnotities, opvolgtaken, besproken salaris…",
     saveApplication: "💾 Sollicitatie Opslaan",
     cancel: "Annuleren",
+    loadError: "Je sollicitaties konden niet worden geladen. Controleer je verbinding en probeer het opnieuw.",
+
     noApplicationsYet: "Nog geen sollicitaties",
     noMatchesFound: "Geen overeenkomsten gevonden",
     addManuallyHint: "Voeg er handmatig een toe of sla op vanuit CV-aanpasser",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Kon dit bestand niet lezen. Plak in plaats daarvan de tekst van je cv.",
     unsupportedFileType: "Niet-ondersteund bestandstype. Upload een PDF, DOCX of TXT.",
     fileReadFailedGeneric: "Kon het bestand niet lezen. Plak in plaats daarvan de tekst van je cv.",
+
+    saveSyncError: "Deze vacature kon niet worden opgeslagen. Controleer je verbinding en probeer het opnieuw.",
     enterTitlePrompt: "Voer een functietitel in om te zoeken",
     searchFailed: "Zoeken mislukt: {message}. Probeer het opnieuw.",
     signInForSmartApply: "Log in om Slim Solliciteren te gebruiken.",

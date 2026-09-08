@@ -435,6 +435,8 @@
     retryNoResume: "Özgeçmiş bulunamadı. Lütfen önce İş Arama'ya özgeçmişinizi ekleyin.",
     retryError: "Yeniden deneme başarısız. Lütfen tekrar deneyin.",
     removeError: "Kaldırma başarısız. Lütfen tekrar deneyin.",
+
+    loadError: "Kaydedilen işleriniz yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.",
     sectionTitle: "Kaydedilen işleriniz",
     statusSaved: "Kaydedildi",
     statusAiReady: "YZ Paketi Hazır",
@@ -585,6 +587,8 @@
     invalidEmail: "Lütfen geçerli bir e-posta adresi girin veya bu alanı boş bırakın.",
     invalidPhone: "Lütfen geçerli bir telefon numarası girin veya bu alanı boş bırakın.",
     savedSuccess: "✓ Profil başarıyla kaydedildi!",
+
+    saveFailed: "Kaydetme başarısız oldu. Lütfen tekrar deneyin.",
     yourName: "Adınız",
     addJobTitle: "Meslek unvanınızı ekleyin",
     personalInfo: "Kişisel Bilgiler",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Mülakat notları, takip görevleri, görüşülen maaş…",
     saveApplication: "💾 Başvuruyu Kaydet",
     cancel: "İptal",
+    loadError: "Başvurularınız yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.",
+
     noApplicationsYet: "Henüz başvuru yok",
     noMatchesFound: "Eşleşme bulunamadı",
     addManuallyHint: "Manuel olarak ekleyin veya Özgeçmiş Uyarlayıcı'dan kaydedin",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Bu dosya okunamadı. Lütfen bunun yerine özgeçmiş metninizi yapıştırın.",
     unsupportedFileType: "Desteklenmeyen dosya türü. Lütfen PDF, DOCX veya TXT yükleyin.",
     fileReadFailedGeneric: "Dosya okunamadı. Lütfen bunun yerine özgeçmiş metninizi yapıştırın.",
+
+    saveSyncError: "Bu iş ilanı kaydedilemedi. Bağlantınızı kontrol edip tekrar deneyin.",
     enterTitlePrompt: "Aramak için bir iş unvanı girin",
     searchFailed: "Arama başarısız oldu: {message}. Lütfen tekrar deneyin.",
     signInForSmartApply: "Akıllı Başvuru'yu kullanmak için lütfen giriş yapın.",

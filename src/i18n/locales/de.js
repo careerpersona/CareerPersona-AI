@@ -435,6 +435,8 @@
     retryNoResume: "Kein Lebenslauf gefunden. Bitte fügen Sie Ihren Lebenslauf zuerst in der Jobsuche hinzu.",
     retryError: "Wiederholung fehlgeschlagen. Bitte versuchen Sie es erneut.",
     removeError: "Entfernen fehlgeschlagen. Bitte versuchen Sie es erneut.",
+
+    loadError: "Deine gespeicherten Jobs konnten nicht geladen werden. Überprüfe deine Verbindung und versuche es erneut.",
     sectionTitle: "Ihre gespeicherten Jobs",
     statusSaved: "Gespeichert",
     statusAiReady: "KI-Paket bereit",
@@ -585,6 +587,8 @@
     invalidEmail: "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie dieses Feld leer.",
     invalidPhone: "Bitte geben Sie eine gültige Telefonnummer ein oder lassen Sie dieses Feld leer.",
     savedSuccess: "✓ Profil erfolgreich gespeichert!",
+
+    saveFailed: "Speichern fehlgeschlagen. Bitte versuche es erneut.",
     yourName: "Ihr Name",
     addJobTitle: "Fügen Sie Ihre Berufsbezeichnung hinzu",
     personalInfo: "Persönliche Informationen",
@@ -652,6 +656,8 @@
     notesPlaceholder: "Interviewnotizen, Folgeaufgaben, besprochenes Gehalt…",
     saveApplication: "💾 Bewerbung speichern",
     cancel: "Abbrechen",
+    loadError: "Deine Bewerbungen konnten nicht geladen werden. Überprüfe deine Verbindung und versuche es erneut.",
+
     noApplicationsYet: "Noch keine Bewerbungen",
     noMatchesFound: "Keine Treffer gefunden",
     addManuallyHint: "Fügen Sie eine manuell hinzu oder speichern Sie sie aus dem Lebenslauf-Anpasser",
@@ -1200,6 +1206,8 @@
     fileReadFailed: "Diese Datei konnte nicht gelesen werden. Bitte fügen Sie den Text Ihres Lebenslaufs stattdessen ein.",
     unsupportedFileType: "Nicht unterstützter Dateityp. Bitte laden Sie PDF, DOCX oder TXT hoch.",
     fileReadFailedGeneric: "Die Datei konnte nicht gelesen werden. Bitte fügen Sie den Text Ihres Lebenslaufs stattdessen ein.",
+
+    saveSyncError: "Dieser Job konnte nicht gespeichert werden. Überprüfe deine Verbindung und versuche es erneut.",
     enterTitlePrompt: "Geben Sie eine Stellenbezeichnung zur Suche ein",
     searchFailed: "Suche fehlgeschlagen: {message}. Bitte versuchen Sie es erneut.",
     signInForSmartApply: "Bitte melden Sie sich an, um Smart Apply zu nutzen.",
