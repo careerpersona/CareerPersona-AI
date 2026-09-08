@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { LOCALES } from "./locales";
+import { RTL_LANGUAGES } from "./languages";
 
 export const I18nContext = createContext(null);
 
@@ -30,16 +31,18 @@ export function useLanguagePreference(initialLanguage, onLanguageChange) {
     }
   }, [initialLanguage]);
 
-  // Only sets the `lang` attribute (accessibility/correctness, no visual
-  // effect). Deliberately does NOT set `dir="rtl"` for Arabic — that mirrors
-  // the entire page layout (header, nav, grids) via the browser's CSS
-  // writing-mode handling, which would redesign the header/navigation this
-  // pass is explicitly required to leave untouched. Arabic script still
-  // renders its own characters right-to-left regardless, since that's
-  // inherent to the Unicode bidi algorithm for the text itself. Proper RTL
-  // layout support is a separate, larger design decision for later.
+  // Stage 1 of RTL support (see project memory: Arabic RTL governance gap):
+  // sets both `lang` and `dir` on the document root. `dir="rtl"` for Arabic
+  // is what makes the browser's own direction-relative CSS behavior (flex
+  // start/end, CSS Grid line numbering, native form control alignment) kick
+  // in for the header/nav/chat/etc. that already rely on it — see the RTL
+  // architecture audit. The remaining physical-CSS-property conversion
+  // (marginLeft/Right, textAlign left/right, dropdown anchoring, arrows,
+  // toggles, badges, number formatting) is explicitly later-stage work, not
+  // done here.
   useEffect(() => {
     document.documentElement.lang = language;
+    document.documentElement.dir = RTL_LANGUAGES.has(language) ? "rtl" : "ltr";
   }, [language]);
 
   const setLanguage = useCallback((code) => {
