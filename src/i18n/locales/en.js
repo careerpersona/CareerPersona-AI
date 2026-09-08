@@ -1,7 +1,8 @@
 ﻿// Baseline locale — every other locale falls back to this one for any
-// key it doesn't yet define. Namespaces are added page-by-page as the
-// app is translated; only global chrome (nav, user menu, notifications,
-// language switcher) is translated so far.
+// key it doesn't yet define. Every page and shared component uses t() —
+// the i18n rollout is complete (see project memory, i18n rollout status);
+// a small number of specific, documented English-only exceptions remain
+// (e.g. legal document pages).
 export default {
   nav: {
     dashboard: "Dashboard",
