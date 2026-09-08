@@ -1629,7 +1629,7 @@ function UserMenu({ profile, page, setPage, onLogout }) {
       {open && (
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "110%", insetInlineEnd: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, minWidth: 160, overflow: "hidden" }}>
             <button onClick={() => { setPage("profile"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "profile" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>👤 {t("userMenu.profile")}</button>
             <button onClick={() => { setPage("settings"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "settings" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>⚙️ {t("userMenu.settings")}</button>
             <button onClick={() => { setPage("faq"); setOpen(false); }} style={{ width: "100%", padding: "12px 16px", border: "none", background: page === "faq" ? C.bgSoft : "#fff", color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>❓ {t("userMenu.faq")}</button>
@@ -1663,7 +1663,7 @@ function LanguageMenu({ variant = "icon" }) {
       {open && (
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "110%", insetInlineEnd: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 220, overflow: "hidden" }}>
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("language.title")}</div>
             <div style={{ padding: "6px 0", maxHeight: 320, overflowY: "auto" }}>
               {LANGUAGES.map(lng => (
@@ -1721,7 +1721,7 @@ function NotificationsMenu({ variant = "icon", notifications, refresh, markAllRe
       {open && (
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 320, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "110%", insetInlineEnd: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 320, overflow: "hidden" }}>
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("notifications.title")}</div>
             {notifications.length === 0 ? (
               <div style={{ padding: "32px 16px", textAlign: "center" }}>
@@ -7466,7 +7466,7 @@ function JobSearchResumeControl({ resumes, activeResume, open, setOpen, uploadin
       {open && (
         <div>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-          <div style={{ position: "absolute", top: "110%", right: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "110%", insetInlineEnd: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 100, width: 280, overflow: "hidden" }}>
             {hasResumes ? (
               <>
                 <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14, color: C.text }}>{t("jobSearch.selectResumeTitle")}</div>
@@ -9692,13 +9692,15 @@ function TrackerPage({ applications, deleteApplication, saveApplication, resumes
                     {openStatusMenu === app.id && (
                       <div>
                         <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
-                        {/* left:0 (not right:0) so the menu's left edge aligns with the
-                            trigger's left edge, opening directly beneath the pill --
-                            matches the Networking module's contact status dropdown. The
-                            trigger is now the leftmost item in a full-width mobile row, so
-                            right-anchoring would extend the menu off the left edge of the
-                            card instead of sitting under the pill. */}
-                        <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
+                        {/* insetInlineStart:0 (not insetInlineEnd:0) so the menu's start
+                            edge aligns with the trigger's start edge, opening directly
+                            beneath the pill -- matches the Networking module's contact
+                            status dropdown. The trigger is now the leading item in a
+                            full-width mobile row, so end-anchoring would extend the menu
+                            past the leading edge of the card instead of sitting under the
+                            pill. Logical (not physical left:0) so this still holds under
+                            RTL, where "leading edge" is the visual right. */}
+                        <div style={{ position: "absolute", top: "110%", insetInlineStart: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 190, overflow: "hidden" }}>
                           {STATUSES.map(s => (
                             <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: app.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => quickUpdateStatus(app, s)}>
                               <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: SCOLOR[s], marginRight: 9, flexShrink: 0 }} />
@@ -10194,7 +10196,7 @@ To: ${form.targetName||"contact"} (${form.targetRole||"role"} at ${form.targetCo
                               {openStatusMenu === c.id && (
                                 <div>
                                 <div onClick={() => setOpenStatusMenu(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }} />
-                                <div style={{ position: "absolute", top: "110%", left: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
+                                <div style={{ position: "absolute", top: "110%", insetInlineStart: 0, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, minWidth: 180, overflow: "hidden" }}>
                                   {["Waiting for Reply","Replied","Met","Connected","No Response"].map(s => (
                                     <Btn key={s} variant="ghost" style={{ width: "100%", borderRadius: 0, border: "none", padding: "10px 14px", background: c.status === s ? C.bgSoft : "#fff", color: C.text, fontSize: 13, fontWeight: 600, justifyContent: "flex-start" }} onClick={() => { updateContactStatus(c.id, s); setOpenStatusMenu(null); }}>
                                       {statusEmoji[s]} {tStatus(s)}
@@ -13784,7 +13786,7 @@ export default function App() {
     <I18nContext.Provider value={{ language, setLanguage, t }}>
     <div style={{ minHeight: "100vh", background: C.bgSoft, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", color: C.text }}>
       {isImpersonationEntry && impersonationExpiresAtMs && <ImpersonationBanner expiresAt={impersonationExpiresAtMs} onExit={logout} />}
-      <a href="#main-content" style={{ position: "absolute", left: -9999, top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 }} onFocus={e => { e.target.style.left = "16px"; e.target.style.top = "16px"; e.target.style.width = "auto"; e.target.style.height = "auto"; e.target.style.padding = "10px 16px"; e.target.style.background = "#fff"; e.target.style.color = C.purple; e.target.style.fontWeight = 700; e.target.style.borderRadius = 8; e.target.style.boxShadow = "0 2px 10px rgba(0,0,0,0.2)"; }} onBlur={e => { e.target.style.left = "-9999px"; e.target.style.width = "1px"; e.target.style.height = "1px"; e.target.style.padding = 0; e.target.style.boxShadow = "none"; }}>{t("nav.skipToContent")}</a>
+      <a href="#main-content" style={{ position: "absolute", insetInlineStart: -9999, top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 }} onFocus={e => { e.target.style.insetInlineStart = "16px"; e.target.style.top = "16px"; e.target.style.width = "auto"; e.target.style.height = "auto"; e.target.style.padding = "10px 16px"; e.target.style.background = "#fff"; e.target.style.color = C.purple; e.target.style.fontWeight = 700; e.target.style.borderRadius = 8; e.target.style.boxShadow = "0 2px 10px rgba(0,0,0,0.2)"; }} onBlur={e => { e.target.style.insetInlineStart = "-9999px"; e.target.style.width = "1px"; e.target.style.height = "1px"; e.target.style.padding = 0; e.target.style.boxShadow = "none"; }}>{t("nav.skipToContent")}</a>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13963,7 +13965,7 @@ export default function App() {
             {desktopMenuOpen && (
               <div>
                 <div onClick={() => setDesktopMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 149 }} />
-                <nav aria-label={t("nav.menu")} style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
+                <nav aria-label={t("nav.menu")} style={{ position: "absolute", top: "100%", insetInlineStart: 0, marginTop: 6, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.14)", zIndex: 150, minWidth: 230, maxHeight: "calc(100vh - 80px)", overflowY: "auto", padding: 6 }}>
                   {nav.map(n => (
                     <button key={n.id} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.purpleLight : "#fff", color: page === n.id ? C.purple : C.text, fontSize: 14, fontWeight: page === n.id ? 700 : 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left" }} onClick={() => { if (n.id === "resume" && navigateToResume) { navigateToResume("upload"); } else { setPage(n.id); } setDesktopMenuOpen(false); }}>
                       {/* Fixed-width, centered icon slot -- not a per-item fix. Every nav
