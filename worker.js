@@ -143,7 +143,7 @@ const KV_TTL = {
   admin:           3600,  // 1 hr  — rarely changes
   no_subscription: 3600,  // 1 hr  — stable until checkout
 };
-const CONFIG_KV_TTL = 3600; // platform_config values change rarely
+const CONFIG_KV_TTL = 300; // was 3600 -- platform_config is correctness-sensitive (Stripe price IDs, quotas); matches pro_past_due's existing "needs fast resolution" precedent above
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
