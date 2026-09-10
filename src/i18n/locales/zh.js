@@ -255,6 +255,8 @@
     createAccount: "创建账户",
     pleaseWait: "请稍候…",
     continueWithGoogle: "使用 Google 继续",
+    continueWithApple: "使用 Apple 继续",
+    orDivider: "或",
     fullNameLabel: "姓名",
     fullNamePlaceholder: "张三",
     emailLabel: "邮箱",

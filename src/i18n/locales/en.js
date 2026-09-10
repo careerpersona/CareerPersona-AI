@@ -261,6 +261,8 @@ export default {
     createAccount: "Create Account",
     pleaseWait: "Please wait…",
     continueWithGoogle: "Continue with Google",
+    continueWithApple: "Continue with Apple",
+    orDivider: "or",
     fullNameLabel: "Full Name",
     fullNamePlaceholder: "John Smith",
     emailLabel: "Email",

@@ -255,6 +255,8 @@
     createAccount: "アカウントを作成",
     pleaseWait: "お待ちください…",
     continueWithGoogle: "Googleで続ける",
+    continueWithApple: "Appleで続ける",
+    orDivider: "または",
     fullNameLabel: "氏名",
     fullNamePlaceholder: "山田太郎",
     emailLabel: "メールアドレス",

@@ -255,6 +255,8 @@
     createAccount: "Создать аккаунт",
     pleaseWait: "Подождите…",
     continueWithGoogle: "Продолжить через Google",
+    continueWithApple: "Продолжить через Apple",
+    orDivider: "или",
     fullNameLabel: "Полное имя",
     fullNamePlaceholder: "Иван Иванов",
     emailLabel: "Эл. почта",

@@ -255,6 +255,8 @@
     createAccount: "계정 만들기",
     pleaseWait: "잠시만 기다려 주세요…",
     continueWithGoogle: "Google로 계속하기",
+    continueWithApple: "Apple로 계속하기",
+    orDivider: "또는",
     fullNameLabel: "이름",
     fullNamePlaceholder: "홍길동",
     emailLabel: "이메일",

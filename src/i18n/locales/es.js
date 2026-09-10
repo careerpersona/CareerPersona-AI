@@ -255,6 +255,8 @@
     createAccount: "Crear cuenta",
     pleaseWait: "Espera un momento…",
     continueWithGoogle: "Continuar con Google",
+    continueWithApple: "Continuar con Apple",
+    orDivider: "o",
     fullNameLabel: "Nombre completo",
     fullNamePlaceholder: "Juan Pérez",
     emailLabel: "Correo electrónico",

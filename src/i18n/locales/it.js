@@ -255,6 +255,8 @@
     createAccount: "Crea account",
     pleaseWait: "Attendere…",
     continueWithGoogle: "Continua con Google",
+    continueWithApple: "Continua con Apple",
+    orDivider: "o",
     fullNameLabel: "Nome completo",
     fullNamePlaceholder: "Mario Rossi",
     emailLabel: "E-mail",

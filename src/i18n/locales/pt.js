@@ -255,6 +255,8 @@
     createAccount: "Criar conta",
     pleaseWait: "Aguarde…",
     continueWithGoogle: "Continuar com o Google",
+    continueWithApple: "Continuar com a Apple",
+    orDivider: "ou",
     fullNameLabel: "Nome completo",
     fullNamePlaceholder: "João Silva",
     emailLabel: "E-mail",

@@ -255,6 +255,8 @@
     createAccount: "Hesap Oluştur",
     pleaseWait: "Lütfen bekleyin…",
     continueWithGoogle: "Google ile devam et",
+    continueWithApple: "Apple ile devam et",
+    orDivider: "veya",
     fullNameLabel: "Ad Soyad",
     fullNamePlaceholder: "Ahmet Yılmaz",
     emailLabel: "E-posta",

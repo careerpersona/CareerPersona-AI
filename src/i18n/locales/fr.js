@@ -255,6 +255,8 @@
     createAccount: "Créer un compte",
     pleaseWait: "Veuillez patienter…",
     continueWithGoogle: "Continuer avec Google",
+    continueWithApple: "Continuer avec Apple",
+    orDivider: "ou",
     fullNameLabel: "Nom complet",
     fullNamePlaceholder: "Jean Dupont",
     emailLabel: "E-mail",

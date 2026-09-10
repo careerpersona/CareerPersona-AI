@@ -255,6 +255,8 @@
     createAccount: "Account aanmaken",
     pleaseWait: "Een moment geduld…",
     continueWithGoogle: "Doorgaan met Google",
+    continueWithApple: "Doorgaan met Apple",
+    orDivider: "of",
     fullNameLabel: "Volledige naam",
     fullNamePlaceholder: "Jan Jansen",
     emailLabel: "E-mail",

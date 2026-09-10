@@ -255,6 +255,8 @@
     createAccount: "إنشاء حساب",
     pleaseWait: "يرجى الانتظار…",
     continueWithGoogle: "المتابعة باستخدام Google",
+    continueWithApple: "المتابعة باستخدام Apple",
+    orDivider: "أو",
     fullNameLabel: "الاسم الكامل",
     fullNamePlaceholder: "محمد أحمد",
     emailLabel: "البريد الإلكتروني",

@@ -255,6 +255,8 @@
     createAccount: "खाता बनाएं",
     pleaseWait: "कृपया प्रतीक्षा करें…",
     continueWithGoogle: "Google के साथ जारी रखें",
+    continueWithApple: "Apple के साथ जारी रखें",
+    orDivider: "या",
     fullNameLabel: "पूरा नाम",
     fullNamePlaceholder: "राहुल शर्मा",
     emailLabel: "ईमेल",

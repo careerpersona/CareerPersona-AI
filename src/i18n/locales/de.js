@@ -255,6 +255,8 @@
     createAccount: "Konto erstellen",
     pleaseWait: "Bitte warten…",
     continueWithGoogle: "Mit Google fortfahren",
+    continueWithApple: "Mit Apple fortfahren",
+    orDivider: "oder",
     fullNameLabel: "Vollständiger Name",
     fullNamePlaceholder: "Max Mustermann",
     emailLabel: "E-Mail",
