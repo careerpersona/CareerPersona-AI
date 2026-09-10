@@ -4913,12 +4913,12 @@ export default {
 
       if (method === "POST") {
         if (path === "/api/jobs")                    return handleJobSearch(request, env);
-        if (path === "/api/billing/checkout-session") return handleCheckoutSession(request, env);
-        if (path === "/api/billing/confirm-session") return handleConfirmSession(request, env);
-        if (path === "/api/billing/cancel")          return handleCancelSubscription(request, env);
-        if (path === "/api/billing/resume")          return handleResumeSubscription(request, env);
-        if (path === "/api/billing/change-plan")     return handleChangePlan(request, env);
-        if (path === "/api/billing/portal-session")  return handlePortalSession(request, env);
+        if (path === "/api/billing/checkout-session") return await handleCheckoutSession(request, env);
+        if (path === "/api/billing/confirm-session") return await handleConfirmSession(request, env);
+        if (path === "/api/billing/cancel")          return await handleCancelSubscription(request, env);
+        if (path === "/api/billing/resume")          return await handleResumeSubscription(request, env);
+        if (path === "/api/billing/change-plan")     return await handleChangePlan(request, env);
+        if (path === "/api/billing/portal-session")  return await handlePortalSession(request, env);
         if (path === "/api/account/request-deletion") return handleRequestAccountDeletion(request, env);
         if (path === "/api/account/cancel-deletion")  return handleCancelAccountDeletion(request, env);
         if (path === "/webhooks/stripe")             return handleStripeWebhook(request, env);
